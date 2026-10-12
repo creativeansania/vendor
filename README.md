@@ -19,7 +19,7 @@ Aplikasi Webhook berbasis **Express.js** untuk mengintegrasikan acara faktur (*I
 
 ---
 
-## 📁 Struktur Direktori
+## 📁 Struktur Direktori (Modular Architecture)
 
 ```
 d:\webhook jubelio odoo\
@@ -27,25 +27,48 @@ d:\webhook jubelio odoo\
 ├── .env.example
 ├── .env
 ├── .gitignore
+├── app.js                       # Universal launcher untuk cPanel / lsnode
 ├── README.md
 ├── src/
-│   ├── index.js                  # Entry point aplikasi Express
+│   ├── index.js                 # Entry point Express server
+│   ├── routes/
+│   │   └── index.js             # Main router aggregator
+│   ├── core/                    # Core Infrastructure (DRY & Shared)
+│   │   └── odoo/
+│   │       └── odooClient.js    # Pure XML-RPC Client, Auth, Multi-company, PDF
+│   ├── modules/                 # Domain Modules (Isolated & Maintainable)
+│   │   ├── jubelio/             # Integrasi Jubelio -> Sales Order
+│   │   │   ├── jubelio.service.js
+│   │   │   ├── jubelio.controller.js
+│   │   │   └── jubelio.routes.js
+│   │   ├── so-bypass/           # Auto Confirm & Delivery/Invoice Bypass
+│   │   │   ├── soBypass.service.js
+│   │   │   ├── soBypass.controller.js
+│   │   │   └── soBypass.routes.js
+│   │   ├── transfer/            # Resolusi Transfer MO/SO & Auto-Split
+│   │   │   ├── transfer.service.js
+│   │   │   ├── transfer.controller.js
+│   │   │   └── transfer.routes.js
+│   │   ├── landed-cost/         # Duplikasi Landed Cost dengan MO
+│   │   │   ├── landedCost.service.js
+│   │   │   ├── landedCost.controller.js
+│   │   │   └── landedCost.routes.js
+│   │   ├── notification-wa/     # Wablas WhatsApp & PDF Streaming
+│   │   │   ├── wablas.service.js
+│   │   │   ├── wablas.controller.js
+│   │   │   └── wablas.routes.js
+│   │   └── wip-vendor/          # Monitoring WIP Vendor Makloon (NEW)
+│   │       ├── wip.service.js
+│   │       ├── wip.controller.js
+│   │       └── wip.routes.js
 │   ├── config/
-│   │   └── env.js                # Konfigurasi environment & dotenv
+│   │   └── env.js               # Environment variables configuration
 │   ├── middleware/
-│   │   └── jubelioSignature.js   # Middleware verifikasi signature Jubelio
-│   ├── services/
-│   │   ├── jubelioService.js     # Client API Jubelio (Auth & Fetch Invoice)
-│   │   └── odooService.js        # Client XML-RPC Odoo (Company, SKU, Partner, SO)
-│   ├── controllers/
-│   │   └── webhookController.js  # Controller penanganan Webhook Invoice
+│   │   └── jubelioSignature.js  # HMAC signature verification
 │   └── utils/
-│       ├── channelHelper.js      # Deteksi channel & mapping generic customer / notes
-│       └── logger.js             # Logging utility dengan timestamp
-└── scripts/
-    ├── testWebhook.js            # Script pengujian / simulasi payload webhook
-    ├── testChannelMapping.js     # Unit test untuk pemetaan channel & customer resolution
-    └── inspectJubelioChannels.js # Script inspeksi channel langsung dari API Jubelio
+│       ├── channelHelper.js     # Marketplace channel detection & mapping
+│       └── logger.js            # Logging utility
+└── scripts/                     # Helper test & migration scripts
 ```
 
 ---

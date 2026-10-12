@@ -3,12 +3,9 @@ import cors from 'cors';
 import { config } from './config/env.js';
 import { logger } from './utils/logger.js';
 import { verifyJubelioSignature } from './middleware/jubelioSignature.js';
-import { handleJubelioInvoiceWebhook } from './controllers/webhookController.js';
-import { handleOdooSOConfirmWebhook } from './controllers/odooWebhookController.js';
-import { handleOdooWablasWebhook, handleStreamInvoicePdf } from './controllers/wablasWebhookController.js';
-import { handleDuplicateLandedCost } from './controllers/landedCostController.js';
-import { handleTransferMoReferenceWebhook } from './controllers/transferWebhookController.js';
-import { odooService } from './services/odooService.js';
+import { handleJubelioInvoiceWebhook } from './modules/jubelio/jubelio.controller.js';
+import { defaultOdooClient } from './core/odoo/odooClient.js';
+import apiRouter from './routes/index.js';
 
 const app = express();
 
@@ -28,8 +25,8 @@ app.get('/health', async (req, res) => {
   let companyId = null;
 
   try {
-    const uid = await odooService.authenticate();
-    companyId = await odooService.getCompanyId();
+    const uid = await defaultOdooClient.authenticate();
+    companyId = await defaultOdooClient.getCompanyId();
     odooStatus = uid ? 'connected' : 'auth_failed';
   } catch (err) {
     odooStatus = `error: ${err.message}`;
@@ -50,29 +47,11 @@ app.get('/health', async (req, res) => {
   });
 });
 
-// Jubelio Webhook Invoice Route (supports both / and /api/webhooks/jubelio/invoice)
-app.post('/api/webhooks/jubelio/invoice', verifyJubelioSignature, handleJubelioInvoiceWebhook);
+// Root Route: Jubelio Legacy Webhook Fallback
 app.post('/', verifyJubelioSignature, handleJubelioInvoiceWebhook);
 
-// Odoo Webhook Route: Auto Bypass Delivery & Invoice on SO Confirm
-app.post('/api/webhooks/odoo/so-confirm', handleOdooSOConfirmWebhook);
-app.post('/api/webhooks/odoo/bypass', handleOdooSOConfirmWebhook);
-
-// Odoo Webhook Route: Send Document PDF via Wablas WhatsApp
-app.post('/api/webhooks/odoo/send-wa', handleOdooWablasWebhook);
-app.post('/api/webhooks/odoo/send-wa-invoice', handleOdooWablasWebhook);
-
-// Odoo Route: Duplicate Landed Cost with MOs
-app.post('/api/odoo/landed-cost/duplicate', handleDuplicateLandedCost);
-app.post('/api/webhooks/odoo/duplicate-landed-cost', handleDuplicateLandedCost);
-
-// Odoo Webhook Route: Resolve MO & SO references on Transfers (PC, SFP, INT)
-app.post('/api/webhooks/odoo/transfer-mo-reference', handleTransferMoReferenceWebhook);
-app.post('/api/webhooks/odoo/transfer', handleTransferMoReferenceWebhook);
-app.post('/api/odoo/transfer/resolve-mo-so', handleTransferMoReferenceWebhook);
-
-// Public Invoice PDF streaming endpoint (for direct WhatsApp download links)
-app.get('/api/reports/invoice/:id', handleStreamInvoicePdf);
+// Mount Modular API Routes
+app.use('/api', apiRouter);
 
 // 404 Handler
 app.use((req, res) => {
@@ -95,7 +74,7 @@ app.use((err, req, res, next) => {
 // Start Server
 app.listen(config.port, () => {
   logger.info(`=======================================================`);
-  logger.info(`🚀 Webhook Jubelio -> Odoo Service Started`);
+  logger.info(`🚀 Webhook Jubelio -> Odoo Service Started (Modular Architecture)`);
   logger.info(`Listening on http://localhost:${config.port}`);
   logger.info(`Target Company Odoo: ${config.odoo.companyName}`);
   logger.info(`Health check: http://localhost:${config.port}/health`);
@@ -104,5 +83,6 @@ app.listen(config.port, () => {
   logger.info(`Odoo Wablas WA:  POST http://localhost:${config.port}/api/webhooks/odoo/send-wa`);
   logger.info(`Odoo LandedCost: POST http://localhost:${config.port}/api/odoo/landed-cost/duplicate`);
   logger.info(`Odoo Transfer:   POST http://localhost:${config.port}/api/webhooks/odoo/transfer-mo-reference`);
+  logger.info(`WIP Vendor:      POST http://localhost:${config.port}/api/webhooks/odoo/wip/mo-confirmed`);
   logger.info(`=======================================================`);
 });
