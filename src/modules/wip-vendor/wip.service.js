@@ -4,6 +4,27 @@ import { logger } from '../../utils/logger.js';
 export class WipVendorService {
   constructor(odooClient = adminOdooClient) {
     this.odoo = odooClient;
+    this._locks = new Map();
+  }
+
+  /**
+   * Helper: Mutex to serialize concurrent operations on the same resource key (e.g. wipId or moId)
+   */
+  async _withLock(key, fn) {
+    const prev = this._locks.get(key) || Promise.resolve();
+    let release;
+    const next = new Promise(resolve => { release = resolve; });
+    this._locks.set(key, prev.then(() => next, () => next));
+
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this._locks.get(key) === next) {
+        this._locks.delete(key);
+      }
+    }
   }
 
   /**
@@ -19,103 +40,103 @@ export class WipVendorService {
    * 1. Triggered when Manufacturing Order is Confirmed
    * Replaces Odoo Automation: [Custom] Buat WIP dari MO
    */
-  async onMoConfirmed(moId) {
+  async onMoConfirmed(moId, { autoSync = true } = {}) {
     await this._ensureAuth();
     const id = Number(moId);
     if (!id || isNaN(id)) {
       throw new Error(`Invalid MO ID: ${moId}`);
     }
 
-    logger.info(`[WIP Service] Checking WIP record for MO ID #${id}...`);
+    return this._withLock(`mo_${id}`, async () => {
+      logger.info(`[WIP Service] Checking WIP record for MO ID #${id}...`);
 
-    // Check if WIP already exists for this MO
-    const existingWips = await this.odoo._callObject('x_monitoring_wip_vendo', 'search_read', [
-      [['x_studio_manufacturing_order', '=', id]]
-    ], { fields: ['id', 'x_name'] });
+      // Check if WIP already exists for this MO
+      const existingWips = await this.odoo._callObject('x_monitoring_wip_vendo', 'search_read', [
+        [['x_studio_manufacturing_order', '=', id]]
+      ], { fields: ['id', 'x_name'] });
 
-    if (existingWips && existingWips.length > 0) {
-      logger.info(`[WIP Service] WIP record already exists for MO #${id} (WIP ID: ${existingWips[0].id}, Name: ${existingWips[0].x_name}). Skipping creation.`);
-      return { success: true, alreadyExists: true, wipId: existingWips[0].id };
-    }
+      if (existingWips && existingWips.length > 0) {
+        logger.info(`[WIP Service] WIP record already exists for MO #${id} (WIP ID: ${existingWips[0].id}, Name: ${existingWips[0].x_name}). Skipping creation.`);
+        return { success: true, alreadyExists: true, wipId: existingWips[0].id };
+      }
 
-    // Read MO details
-    const mos = await this.odoo._callObject('mrp.production', 'read', [[id]], {
-      fields: ['id', 'name', 'product_id', 'product_qty', 'bom_id', 'workorder_ids', 'picking_ids', 'company_id']
-    });
+      // Read MO details
+      const mos = await this.odoo._callObject('mrp.production', 'read', [[id]], {
+        fields: ['id', 'name', 'product_id', 'product_qty', 'bom_id', 'workorder_ids', 'picking_ids', 'company_id']
+      });
 
-    if (!mos || mos.length === 0) {
-      throw new Error(`Manufacturing Order #${id} not found in Odoo`);
-    }
+      if (!mos || mos.length === 0) {
+        throw new Error(`Manufacturing Order #${id} not found in Odoo`);
+      }
 
-    const mo = mos[0];
-    const moName = mo.name || `MO#${id}`;
-    logger.info(`[WIP Service] Creating new WIP record for MO "${moName}" (ID: ${id})...`);
+      const mo = mos[0];
+      const moName = mo.name || `MO#${id}`;
+      logger.info(`[WIP Service] Creating new WIP record for MO "${moName}" (ID: ${id})...`);
 
-    // Calculate initial cloth requirement from BoM lines
-    let consumptionPerPcs = 0.0;
-    if (mo.bom_id && mo.bom_id[0]) {
-      try {
-        const bomLines = await this.odoo._callObject('mrp.bom.line', 'search_read', [
-          [['bom_id', '=', mo.bom_id[0]]]
-        ], { fields: ['id', 'product_id', 'product_qty'] });
+      // Calculate initial cloth requirement from BoM lines
+      let consumptionPerPcs = 0.0;
+      if (mo.bom_id && mo.bom_id[0]) {
+        try {
+          const bomLines = await this.odoo._callObject('mrp.bom.line', 'search_read', [
+            [['bom_id', '=', mo.bom_id[0]]]
+          ], { fields: ['id', 'product_id', 'product_qty'] });
 
-        if (bomLines && bomLines.length > 0) {
-          // Look for line containing 'KAIN' or take primary line
-          const clothLine = bomLines.find(bl => (bl.product_id && bl.product_id[1] && bl.product_id[1].toUpperCase().includes('KAIN'))) || bomLines[0];
-          consumptionPerPcs = parseFloat(clothLine.product_qty) || 0.0;
+          if (bomLines && bomLines.length > 0) {
+            // Look for line containing 'KAIN' or take primary line
+            const clothLine = bomLines.find(bl => (bl.product_id && bl.product_id[1] && bl.product_id[1].toUpperCase().includes('KAIN'))) || bomLines[0];
+            consumptionPerPcs = parseFloat(clothLine.product_qty) || 0.0;
+          }
+        } catch (errBom) {
+          logger.warn(`[WIP Service] Could not fetch BoM lines for BoM #${mo.bom_id[0]}: ${errBom.message}`);
         }
-      } catch (errBom) {
-        logger.warn(`[WIP Service] Could not fetch BoM lines for BoM #${mo.bom_id[0]}: ${errBom.message}`);
       }
-    }
 
-    const qtyKebutuhanKain = (parseFloat(mo.product_qty) || 0.0) * consumptionPerPcs;
+      const qtyKebutuhanKain = (parseFloat(mo.product_qty) || 0.0) * consumptionPerPcs;
 
-    // Fetch Work Centers from Work Orders
-    let workcenterIds = [];
-    if (mo.workorder_ids && mo.workorder_ids.length > 0) {
-      try {
-        const workorders = await this.odoo._callObject('mrp.workorder', 'read', [
-          mo.workorder_ids,
-          ['workcenter_id']
-        ]);
-        workcenterIds = [...new Set(workorders.filter(wo => wo.workcenter_id).map(wo => wo.workcenter_id[0]))];
-      } catch (errWo) {
-        logger.warn(`[WIP Service] Could not fetch workcenters for MO #${id}: ${errWo.message}`);
+      // Fetch Work Centers from Work Orders
+      let workcenterIds = [];
+      if (mo.workorder_ids && mo.workorder_ids.length > 0) {
+        try {
+          const workorders = await this.odoo._callObject('mrp.workorder', 'read', [
+            mo.workorder_ids,
+            ['workcenter_id']
+          ]);
+          workcenterIds = [...new Set(workorders.filter(wo => wo.workcenter_id).map(wo => wo.workcenter_id[0]))];
+        } catch (errWo) {
+          logger.warn(`[WIP Service] Could not fetch workcenters for MO #${id}: ${errWo.message}`);
+        }
       }
-    }
 
-    const newWipPayload = {
-      x_name: moName,
-      x_studio_manufacturing_order: id,
-      x_studio_qty_kebutuhan_kain: qtyKebutuhanKain,
-      x_studio_status_produksi: 'Proses'
-    };
+      const newWipPayload = {
+        x_name: moName,
+        x_studio_manufacturing_order: id,
+        x_studio_qty_kebutuhan_kain: qtyKebutuhanKain,
+        x_studio_status_produksi: 'Proses'
+      };
 
-    if (workcenterIds.length > 0) {
-      newWipPayload.x_studio_many2many_field_869_1k3jdrdl1 = [[6, 0, workcenterIds]];
-    }
+      if (workcenterIds.length > 0) {
+        newWipPayload.x_studio_many2many_field_869_1k3jdrdl1 = [[6, 0, workcenterIds]];
+      }
 
-    const newWipId = await this.odoo._callObject('x_monitoring_wip_vendo', 'create', [newWipPayload]);
-    logger.info(`[WIP Service] 🎉 Created WIP record #${newWipId} for MO "${moName}".`);
+      const newWipId = await this.odoo._callObject('x_monitoring_wip_vendo', 'create', [newWipPayload]);
+      logger.info(`[WIP Service] 🎉 Created WIP record #${newWipId} for MO "${moName}".`);
 
-    // Immediately trigger sync if MO already has pickings
-    if (mo.picking_ids && mo.picking_ids.length > 0) {
-      setImmediate(async () => {
+      // Trigger sync if MO already has pickings and autoSync is enabled
+      if (autoSync && mo.picking_ids && mo.picking_ids.length > 0) {
         try {
           await this._syncWipFromPickings(newWipId, id);
         } catch (syncErr) {
           logger.warn(`[WIP Service] Post-creation sync warning for WIP #${newWipId}: ${syncErr.message}`);
         }
-      });
-    }
+      }
 
-    return {
-      success: true,
-      wipId: newWipId,
-      moId: id,
-      moName
-    };
+      return {
+        success: true,
+        wipId: newWipId,
+        moId: id,
+        moName
+      };
+    });
   }
 
   /**
@@ -195,7 +216,7 @@ export class WipVendorService {
       let wipId = wips && wips.length > 0 ? wips[0].id : null;
       if (!wipId) {
         logger.info(`[WIP Service] No WIP record found for MO #${moId}. Creating on-the-fly...`);
-        const created = await this.onMoConfirmed(moId);
+        const created = await this.onMoConfirmed(moId, { autoSync: false });
         wipId = created.wipId;
       }
 
@@ -217,9 +238,10 @@ export class WipVendorService {
    * Core Single-Pass Compute: Synchronizes all data and formulas for a WIP record
    */
   async _syncWipFromPickings(wipId, moId) {
-    logger.info(`[WIP Service] 🔄 Executing Single-Pass Compute for WIP #${wipId} (MO #${moId})...`);
+    return this._withLock(`wip_${wipId}`, async () => {
+      logger.info(`[WIP Service] 🔄 Executing Single-Pass Compute for WIP #${wipId} (MO #${moId})...`);
 
-    // 1. Read WIP record current state
+      // 1. Read WIP record current state
     const wips = await this.odoo._callObject('x_monitoring_wip_vendo', 'read', [[wipId]], {
       fields: [
         'id', 'x_name', 'x_studio_manufacturing_order', 'x_studio_detail_roll_kain',
@@ -303,12 +325,40 @@ export class WipVendorService {
     const accsQty = Math.max(0, totalMaterialQty - kainQty);
 
     // 5. Roll Lines Management (x_studio_detail_roll_kain)
-    const existingRollLines = wip.x_studio_detail_roll_kain && wip.x_studio_detail_roll_kain.length > 0
+    const rawRollLines = wip.x_studio_detail_roll_kain && wip.x_studio_detail_roll_kain.length > 0
       ? await this.odoo._callObject('x_monitoring_wip_vendo_line_4c93a', 'read', [
           wip.x_studio_detail_roll_kain,
           ['id', 'x_name', 'x_studio_kode_warna_roll', 'x_studio_yards', 'x_studio_uom', 'x_studio_qty_berat_kg']
         ])
       : [];
+
+    // Deduplicate any existing lines in Odoo if duplicates exist
+    const seenRollKeys = new Map();
+    const duplicateLineIdsToDelete = [];
+    const existingRollLines = [];
+
+    for (const line of rawRollLines) {
+      const key = `${line.x_name || ''}:::${line.x_studio_kode_warna_roll || 'Tanpa Lot'}`;
+      if (seenRollKeys.has(key)) {
+        // Redundant duplicate: only delete if cutting weight has not been inputted yet
+        if ((parseFloat(line.x_studio_qty_berat_kg) || 0) === 0) {
+          duplicateLineIdsToDelete.push(line.id);
+          continue;
+        }
+      } else {
+        seenRollKeys.set(key, line);
+      }
+      existingRollLines.push(line);
+    }
+
+    if (duplicateLineIdsToDelete.length > 0) {
+      logger.warn(`[WIP Service] Found ${duplicateLineIdsToDelete.length} duplicate roll lines in WIP #${wipId}. Cleaning up IDs [${duplicateLineIdsToDelete.join(', ')}]...`);
+      try {
+        await this.odoo._callObject('x_monitoring_wip_vendo_line_4c93a', 'unlink', [duplicateLineIdsToDelete]);
+      } catch (delErr) {
+        logger.warn(`[WIP Service] Failed to unlink duplicate lines: ${delErr.message}`);
+      }
+    }
 
     const newRollLines = [];
 
@@ -506,6 +556,7 @@ export class WipVendorService {
       totalHarga,
       updated: true
     };
+    });
   }
 
   /**
