@@ -2,7 +2,8 @@ import express from 'express';
 import {
   handleMoConfirmedWebhook,
   handleTransferDoneWebhook,
-  handleSubmitProductionResult
+  handleSubmitProductionResult,
+  handleUpdateCuttingRolls
 } from './wip.controller.js';
 
 const router = express.Router();
@@ -11,7 +12,8 @@ const router = express.Router();
 router.post('/mo-confirmed', handleMoConfirmedWebhook);
 router.post('/transfer-done', handleTransferDoneWebhook);
 
-// REST API endpoint for Production Results (Callable from Odoo Form or Vendor PWA)
+// REST API endpoints (For Odoo Form Webhook or Future Vendor PWA)
 router.post('/production-result', handleSubmitProductionResult);
+router.post('/cutting-rolls', handleUpdateCuttingRolls);
 
 export default router;

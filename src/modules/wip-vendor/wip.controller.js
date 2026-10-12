@@ -1,6 +1,9 @@
 import { wipVendorService } from './wip.service.js';
 import { logger } from '../../utils/logger.js';
 
+/**
+ * Webhook: MO Confirmed
+ */
 export const handleMoConfirmedWebhook = async (req, res) => {
   const payload = req.body || {};
   const query = req.query || {};
@@ -23,6 +26,9 @@ export const handleMoConfirmedWebhook = async (req, res) => {
   });
 };
 
+/**
+ * Webhook: Transfer Done (/PC/, /SPB/, /SFP/)
+ */
 export const handleTransferDoneWebhook = async (req, res) => {
   const payload = req.body || {};
   const query = req.query || {};
@@ -45,8 +51,15 @@ export const handleTransferDoneWebhook = async (req, res) => {
   });
 };
 
+/**
+ * API / Webhook: Submit Production Results (Grade A, Grade B, Sisa Makloon)
+ */
 export const handleSubmitProductionResult = async (req, res) => {
-  const { wipId, qtyGradeA, qtyGradeB, sisaMakloonKg } = req.body || {};
+  const payload = req.body || {};
+  const wipId = payload.wipId || payload._id || payload.id;
+  const qtyGradeA = payload.qtyGradeA !== undefined ? payload.qtyGradeA : payload.x_studio_qty_kirim_a_grade;
+  const qtyGradeB = payload.qtyGradeB !== undefined ? payload.qtyGradeB : payload.x_studio_qty_kirim_b_grade;
+  const sisaMakloonKg = payload.sisaMakloonKg !== undefined ? payload.sisaMakloonKg : payload.x_studio_sisa_makloon_kg;
 
   if (!wipId) {
     return res.status(400).json({ success: false, message: 'WIP ID is required' });
@@ -62,6 +75,27 @@ export const handleSubmitProductionResult = async (req, res) => {
     return res.status(200).json(result);
   } catch (err) {
     logger.error(`[WIP API] Error submitting production result for WIP #${wipId}: ${err.message}`, err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * API: Update Roll Cutting Weights from Vendor PWA
+ */
+export const handleUpdateCuttingRolls = async (req, res) => {
+  const payload = req.body || {};
+  const wipId = payload.wipId || payload.id;
+  const rollUpdates = payload.rollUpdates || payload.lines || [];
+
+  if (!wipId || !Array.isArray(rollUpdates)) {
+    return res.status(400).json({ success: false, message: 'WIP ID and rollUpdates array are required' });
+  }
+
+  try {
+    const result = await wipVendorService.updateCuttingRolls({ wipId, rollUpdates });
+    return res.status(200).json(result);
+  } catch (err) {
+    logger.error(`[WIP API] Error updating roll cuttings for WIP #${wipId}: ${err.message}`, err);
     return res.status(500).json({ success: false, message: err.message });
   }
 };
