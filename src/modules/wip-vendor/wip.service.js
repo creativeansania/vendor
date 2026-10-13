@@ -62,7 +62,7 @@ export class WipVendorService {
 
       // Read MO details
       const mos = await this.odoo._callObject('mrp.production', 'read', [[id]], {
-        fields: ['id', 'name', 'product_id', 'product_qty', 'bom_id', 'workorder_ids', 'picking_ids', 'company_id', 'warehouse_id']
+        fields: ['id', 'name', 'product_id', 'product_qty', 'bom_id', 'workorder_ids', 'picking_ids', 'company_id', 'warehouse_id', 'picking_type_id']
       });
 
       if (!mos || mos.length === 0) {
@@ -71,15 +71,16 @@ export class WipVendorService {
 
       const mo = mos[0];
       const moName = mo.name || `MO#${id}`;
+      const ptName = (mo.picking_type_id && mo.picking_type_id[1]) ? mo.picking_type_id[1].toUpperCase() : '';
       const whName = (mo.warehouse_id && mo.warehouse_id[1]) ? mo.warehouse_id[1].toUpperCase() : '';
-      const isVendorMo = whName.includes('VENDOR') || moName.startsWith('VD');
+      const isVendorMo = ptName.includes('VENDOR') || whName.includes('VENDOR') || moName.startsWith('VD');
 
       if (!isVendorMo) {
-        logger.info(`[WIP Service] MO "${moName}" (#${id}) belongs to non-vendor warehouse "${whName}". Skipping Monitoring WIP Vendor creation.`);
-        return { success: true, skipped: true, reason: `Non-vendor warehouse: ${whName}` };
+        logger.info(`[WIP Service] MO "${moName}" (#${id}) Operation Type "${ptName}" / Warehouse "${whName}" is not Vendor. Skipping Monitoring WIP Vendor creation.`);
+        return { success: true, skipped: true, reason: `Non-vendor operation type: ${ptName}` };
       }
 
-      logger.info(`[WIP Service] Creating new WIP record for MO "${moName}" (ID: ${id}, Warehouse: "${whName}")...`);
+      logger.info(`[WIP Service] Creating new WIP record for MO "${moName}" (ID: ${id}, Operation Type: "${ptName}")...`);
 
       // Calculate initial cloth requirement from BoM lines
       let consumptionPerPcs = 0.0;
@@ -161,7 +162,7 @@ export class WipVendorService {
     logger.info(`[WIP Service] Handling Transfer Done for Picking ID #${id}...`);
 
     const pickings = await this.odoo._callObject('stock.picking', 'read', [[id]], {
-      fields: ['id', 'name', 'origin', 'state', 'x_studio_manufacturing_order', 'reference_ids', 'company_id']
+      fields: ['id', 'name', 'origin', 'state', 'x_studio_manufacturing_order', 'reference_ids', 'company_id', 'picking_type_id']
     });
 
     if (!pickings || pickings.length === 0) {
@@ -171,12 +172,15 @@ export class WipVendorService {
 
     const picking = pickings[0];
     const pickingName = picking.name || '';
+    const ptName = (picking.picking_type_id && picking.picking_type_id[1]) ? picking.picking_type_id[1].toUpperCase() : '';
 
-    // Only process relevant transfers (/PC/, /SPB/, /SFP/)
-    const isRelevant = ['/PC/', '/SPB/', '/SFP/'].some(code => pickingName.includes(code));
-    if (!isRelevant) {
-      logger.info(`[WIP Service] Picking ${pickingName} (#${id}) is not a PC/SPB/SFP transfer. Skipping WIP sync.`);
-      return { success: true, skipped: true, reason: 'Not a PC/SPB/SFP transfer' };
+    // Only process relevant transfers (/PC/, /SPB/, /SFP/) belonging to Vendor Operation Type
+    const isRelevantCode = ['/PC/', '/SPB/', '/SFP/'].some(code => pickingName.includes(code));
+    const isVendorTransfer = ptName.includes('VENDOR') || pickingName.startsWith('VD');
+
+    if (!isRelevantCode || !isVendorTransfer) {
+      logger.info(`[WIP Service] Picking ${pickingName} (#${id}) Operation Type "${ptName}" is not a vendor PC/SPB/SFP transfer. Skipping WIP sync.`);
+      return { success: true, skipped: true, reason: 'Not a vendor PC/SPB/SFP transfer' };
     }
 
     // Resolve target MO(s)
@@ -211,19 +215,20 @@ export class WipVendorService {
       return { success: true, skipped: true, reason: 'No linked MO found' };
     }
 
-    // Strictly filter for Vendor MOs (exclude internal factories PBMSU, PBSS, and general warehouses WHGB, WHDGP)
+    // Strictly filter for Vendor MOs by Operation Type / Warehouse
     const vendorMoIds = [];
     const targetMos = await this.odoo._callObject('mrp.production', 'read', [
       moIds,
-      ['id', 'name', 'warehouse_id']
+      ['id', 'name', 'warehouse_id', 'picking_type_id']
     ]);
     for (const m of targetMos) {
-      const whName = (m.warehouse_id && m.warehouse_id[1]) ? m.warehouse_id[1].toUpperCase() : '';
+      const mPt = (m.picking_type_id && m.picking_type_id[1]) ? m.picking_type_id[1].toUpperCase() : '';
+      const mWh = (m.warehouse_id && m.warehouse_id[1]) ? m.warehouse_id[1].toUpperCase() : '';
       const name = m.name || '';
-      if (whName.includes('VENDOR') || name.startsWith('VD')) {
+      if (mPt.includes('VENDOR') || mWh.includes('VENDOR') || name.startsWith('VD')) {
         vendorMoIds.push(m.id);
       } else {
-        logger.info(`[WIP Service] Skipping MO ${name} (#${m.id}) in non-vendor warehouse "${whName}".`);
+        logger.info(`[WIP Service] Skipping MO ${name} (#${m.id}) with non-vendor Operation Type "${mPt}".`);
       }
     }
 
