@@ -62,7 +62,7 @@ export class WipVendorService {
 
       // Read MO details
       const mos = await this.odoo._callObject('mrp.production', 'read', [[id]], {
-        fields: ['id', 'name', 'product_id', 'product_qty', 'bom_id', 'workorder_ids', 'picking_ids', 'company_id']
+        fields: ['id', 'name', 'product_id', 'product_qty', 'bom_id', 'workorder_ids', 'picking_ids', 'company_id', 'warehouse_id']
       });
 
       if (!mos || mos.length === 0) {
@@ -71,7 +71,15 @@ export class WipVendorService {
 
       const mo = mos[0];
       const moName = mo.name || `MO#${id}`;
-      logger.info(`[WIP Service] Creating new WIP record for MO "${moName}" (ID: ${id})...`);
+      const whName = (mo.warehouse_id && mo.warehouse_id[1]) ? mo.warehouse_id[1].toUpperCase() : '';
+      const isVendorMo = whName.includes('VENDOR') || moName.startsWith('VD');
+
+      if (!isVendorMo) {
+        logger.info(`[WIP Service] MO "${moName}" (#${id}) belongs to non-vendor warehouse "${whName}". Skipping Monitoring WIP Vendor creation.`);
+        return { success: true, skipped: true, reason: `Non-vendor warehouse: ${whName}` };
+      }
+
+      logger.info(`[WIP Service] Creating new WIP record for MO "${moName}" (ID: ${id}, Warehouse: "${whName}")...`);
 
       // Calculate initial cloth requirement from BoM lines
       let consumptionPerPcs = 0.0;
@@ -203,11 +211,32 @@ export class WipVendorService {
       return { success: true, skipped: true, reason: 'No linked MO found' };
     }
 
-    logger.info(`[WIP Service] Transfer ${pickingName} (#${id}) relates to ${moIds.length} MO(s): [${moIds.join(', ')}]`);
+    // Strictly filter for Vendor MOs (exclude internal factories PBMSU, PBSS, and general warehouses WHGB, WHDGP)
+    const vendorMoIds = [];
+    const targetMos = await this.odoo._callObject('mrp.production', 'read', [
+      moIds,
+      ['id', 'name', 'warehouse_id']
+    ]);
+    for (const m of targetMos) {
+      const whName = (m.warehouse_id && m.warehouse_id[1]) ? m.warehouse_id[1].toUpperCase() : '';
+      const name = m.name || '';
+      if (whName.includes('VENDOR') || name.startsWith('VD')) {
+        vendorMoIds.push(m.id);
+      } else {
+        logger.info(`[WIP Service] Skipping MO ${name} (#${m.id}) in non-vendor warehouse "${whName}".`);
+      }
+    }
+
+    if (vendorMoIds.length === 0) {
+      logger.info(`[WIP Service] Transfer ${pickingName} (#${id}) has no vendor MOs associated. Skipping WIP sync.`);
+      return { success: true, skipped: true, reason: 'No vendor MO found' };
+    }
+
+    logger.info(`[WIP Service] Transfer ${pickingName} (#${id}) relates to ${vendorMoIds.length} Vendor MO(s): [${vendorMoIds.join(', ')}]`);
 
     const syncedWips = [];
 
-    for (const moId of moIds) {
+    for (const moId of vendorMoIds) {
       // Find or create WIP record
       let wips = await this.odoo._callObject('x_monitoring_wip_vendo', 'search_read', [
         [['x_studio_manufacturing_order', '=', moId]]
@@ -215,9 +244,11 @@ export class WipVendorService {
 
       let wipId = wips && wips.length > 0 ? wips[0].id : null;
       if (!wipId) {
-        logger.info(`[WIP Service] No WIP record found for MO #${moId}. Creating on-the-fly...`);
+        logger.info(`[WIP Service] No WIP record found for Vendor MO #${moId}. Creating on-the-fly...`);
         const created = await this.onMoConfirmed(moId, { autoSync: false });
-        wipId = created.wipId;
+        if (created && created.wipId) {
+          wipId = created.wipId;
+        }
       }
 
       if (wipId) {
