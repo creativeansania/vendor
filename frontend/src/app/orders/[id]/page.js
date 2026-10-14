@@ -448,7 +448,7 @@ function OrderDetailContent() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                 <span>🏭 Mitra CMT</span>
               </div>
-              <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div style={{ fontSize: '0.96rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.25, wordBreak: 'break-word' }}>
                 {order.vendor_name || 'Vendor CMT'}
               </div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
