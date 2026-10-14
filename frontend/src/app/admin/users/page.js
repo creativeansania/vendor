@@ -11,10 +11,14 @@ import {
   ShieldAlert,
   Building2,
   KeyRound,
-  CheckCircle,
-  XCircle,
+  CheckCircle2,
+  X,
   AlertTriangle,
-  RefreshCw
+  RefreshCw,
+  Search,
+  Lock,
+  Mail,
+  UserCheck
 } from 'lucide-react';
 
 export default function AdminUsersPage() {
@@ -25,6 +29,8 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [feedback, setFeedback] = useState({ text: '', type: '' });
+  const [filterRole, setFilterRole] = useState('all');
+  const [search, setSearch] = useState('');
 
   // Create User Modal
   const [createModal, setCreateModal] = useState(false);
@@ -124,7 +130,7 @@ export default function AdminUsersPage() {
         body: JSON.stringify(payload)
       });
 
-      setFeedback({ text: 'Akun berhasil diperbarui!', type: 'success' });
+      setFeedback({ text: 'Akun pengguna berhasil diperbarui!', type: 'success' });
       setEditModal({ open: false, user: null, newPassword: '', role: '', vendor_id: '', is_active: true });
       loadData();
     } catch (err) {
@@ -139,21 +145,34 @@ export default function AdminUsersPage() {
       case 'master_admin':
         return <span className="badge badge-purple">Master Admin</span>;
       case 'admin':
-        return <span className="badge badge-info">Internal Admin</span>;
+        return <span className="badge badge-sky">Admin Internal</span>;
       case 'master_vendor':
-        return <span className="badge badge-success">Master Vendor (Owner)</span>;
+        return <span className="badge badge-emerald">Master Vendor</span>;
       case 'admin_vendor':
-        return <span className="badge badge-warning">Admin Vendor (Staf)</span>;
+        return <span className="badge badge-amber">Admin Vendor</span>;
       default:
         return <span className="badge">{role}</span>;
     }
   }
 
+  const filteredUsers = users.filter((u) => {
+    if (filterRole !== 'all' && u.role !== filterRole) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      return (
+        u.name?.toLowerCase().includes(q) ||
+        u.email?.toLowerCase().includes(q) ||
+        u.vendor_name?.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
   return (
-    <div style={{ paddingBottom: '60px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', paddingBottom: '60px' }}>
       {/* Top Navbar */}
       <header className="navbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button
             onClick={() => router.push('/')}
             className="btn btn-secondary btn-icon"
@@ -163,10 +182,10 @@ export default function AdminUsersPage() {
           </button>
           <div>
             <h1 style={{ fontSize: '1.05rem', margin: 0, fontWeight: 700 }}>
-              Kelola Pengguna & Vendor
+              Kelola Akses Pengguna & Vendor
             </h1>
-            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Master Admin Access Control
+            <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              Master Admin Control Panel
             </p>
           </div>
         </div>
@@ -174,142 +193,183 @@ export default function AdminUsersPage() {
         <button
           onClick={() => setCreateModal(true)}
           className="btn btn-primary"
-          style={{ fontSize: '0.82rem', padding: '8px 12px' }}
+          style={{ fontSize: '0.82rem', padding: '8px 14px' }}
         >
           <UserPlus size={16} />
-          <span>+ Tambah Akun</span>
+          <span>+ Buat Akun Baru</span>
         </button>
       </header>
 
-      {/* Alerts */}
-      {feedback.text && (
-        <div
-          style={{
-            margin: '12px',
-            padding: '12px 16px',
-            borderRadius: 'var(--radius)',
-            fontSize: '0.88rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            background: feedback.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-            border: feedback.type === 'success' ? '1px solid var(--accent-success)' : '1px solid var(--accent-danger)',
-            color: feedback.type === 'success' ? 'var(--accent-success)' : 'var(--accent-danger)'
-          }}
-        >
-          {feedback.type === 'success' ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
-          <span>{feedback.text}</span>
-        </div>
-      )}
-
-      {/* User List */}
-      <div style={{ padding: '0 12px', marginTop: '14px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-          <h2 style={{ fontSize: '0.92rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Daftar Akun Terdaftar ({users.length})
-          </h2>
-          <button
-            onClick={loadData}
-            className="btn btn-secondary btn-icon"
-            title="Refresh Data"
-            disabled={loading}
+      {/* Main Content */}
+      <main style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {/* Alerts */}
+        {feedback.text && (
+          <div
+            style={{
+              padding: '12px 16px',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: '0.88rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              background: feedback.type === 'success' ? 'var(--status-emerald-bg)' : 'var(--status-rose-bg)',
+              border: `1px solid ${feedback.type === 'success' ? 'var(--status-emerald-border)' : 'var(--status-rose-border)'}`,
+              color: feedback.type === 'success' ? 'var(--status-emerald)' : 'var(--status-rose)'
+            }}
           >
-            <RefreshCw size={14} className={loading ? 'spin' : ''} />
-          </button>
+            {feedback.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+            <span>{feedback.text}</span>
+          </div>
+        )}
+
+        {/* Toolbar: Search & Role Filter */}
+        <div className="card" style={{ padding: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px' }} />
+              <input
+                type="text"
+                placeholder="Cari nama pengguna, email, atau vendor..."
+                className="input-field"
+                style={{ paddingLeft: '38px', height: '40px' }}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            <div className="filter-bar">
+              <button
+                className={`filter-chip ${filterRole === 'all' ? 'active' : ''}`}
+                onClick={() => setFilterRole('all')}
+              >
+                Semua Akun ({users.length})
+              </button>
+              <button
+                className={`filter-chip ${filterRole === 'admin_vendor' ? 'active' : ''}`}
+                onClick={() => setFilterRole('admin_vendor')}
+              >
+                Admin Vendor
+              </button>
+              <button
+                className={`filter-chip ${filterRole === 'master_vendor' ? 'active' : ''}`}
+                onClick={() => setFilterRole('master_vendor')}
+              >
+                Master Vendor
+              </button>
+              <button
+                className={`filter-chip ${filterRole === 'admin' ? 'active' : ''}`}
+                onClick={() => setFilterRole('admin')}
+              >
+                Admin Internal
+              </button>
+              <button
+                className={`filter-chip ${filterRole === 'master_admin' ? 'active' : ''}`}
+                onClick={() => setFilterRole('master_admin')}
+              >
+                Master Admin
+              </button>
+            </div>
+          </div>
         </div>
 
+        {/* Users List Grid */}
         {loading ? (
-          <div className="card" style={{ textAlign: 'center', padding: '40px' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '60px 20px' }}>
             <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
-            <p style={{ color: 'var(--text-muted)' }}>Memuat daftar akun...</p>
+            <p style={{ color: 'var(--text-secondary)' }}>Memuat daftar akun...</p>
           </div>
-        ) : users.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: '40px' }}>
-            <p style={{ color: 'var(--text-muted)' }}>Belum ada akun pengguna.</p>
+        ) : filteredUsers.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: '60px 20px' }}>
+            <p style={{ color: 'var(--text-secondary)' }}>Tidak ada pengguna yang cocok dengan kriteria.</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {users.map((u) => (
+          <div className="orders-grid">
+            {filteredUsers.map((u) => (
               <div
                 key={u.id}
                 className="card"
                 style={{
+                  padding: '18px 20px',
                   display: 'flex',
+                  flexDirection: 'column',
                   justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '14px 16px',
+                  gap: '12px',
                   opacity: u.is_active ? 1 : 0.6
                 }}
               >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: 700, fontSize: '0.96rem', color: 'var(--text-primary)' }}>
-                      {u.name}
-                    </span>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
+                        {u.name}
+                      </span>
+                      {!u.is_active && (
+                        <span className="badge badge-rose" style={{ fontSize: '0.68rem' }}>Nonaktif</span>
+                      )}
+                    </div>
                     {getRoleBadge(u.role)}
-                    {!u.is_active && (
-                      <span className="badge badge-danger" style={{ fontSize: '0.68rem' }}>Nonaktif</span>
-                    )}
                   </div>
 
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                     {u.email}
                   </div>
 
                   {u.vendor_name && (
-                    <div style={{ fontSize: '0.78rem', color: 'var(--accent-info)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Building2 size={13} />
+                    <div style={{ fontSize: '0.8rem', color: 'var(--brand-gold)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Building2 size={14} />
                       <span>{u.vendor_name}</span>
                     </div>
                   )}
                 </div>
 
-                <button
-                  onClick={() =>
-                    setEditModal({
-                      open: true,
-                      user: u,
-                      newPassword: '',
-                      role: u.role,
-                      vendor_id: u.vendor_id || '',
-                      is_active: Boolean(u.is_active)
-                    })
-                  }
-                  className="btn btn-secondary"
-                  style={{ fontSize: '0.78rem', padding: '6px 12px' }}
-                >
-                  Edit / Akses
-                </button>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '6px', borderTop: '1px solid var(--border-subtle)' }}>
+                  <button
+                    onClick={() =>
+                      setEditModal({
+                        open: true,
+                        user: u,
+                        newPassword: '',
+                        role: u.role,
+                        vendor_id: u.vendor_id || '',
+                        is_active: Boolean(u.is_active)
+                      })
+                    }
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.78rem', padding: '6px 14px' }}
+                  >
+                    Edit / Kelola Akses
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </main>
 
       {/* CREATE USER MODAL */}
       {createModal && (
         <div className="modal-backdrop">
-          <div className="modal-content" style={{ maxWidth: '440px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
-                Tambah Akun Pengguna
+          <div className="modal-content">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>
+                Tambah Akun Pengguna Baru
               </h3>
               <button
                 type="button"
                 onClick={() => setCreateModal(false)}
                 className="btn btn-secondary btn-icon"
               >
-                <XCircle size={18} />
+                <X size={16} />
               </button>
             </div>
 
             <form onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label className="form-label">Nama Lengkap</label>
+                <label className="form-label">Nama Lengkap / Identitas</label>
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: Budi Santoso / CV Berkah"
+                  placeholder="Contoh: Budi Santoso / Staf Jahit CV Berkah"
                   value={newUserData.name}
                   onChange={(e) => setNewUserData((d) => ({ ...d, name: e.target.value }))}
                   className="input-field"
@@ -348,9 +408,9 @@ export default function AdminUsersPage() {
                   onChange={(e) => setNewUserData((d) => ({ ...d, role: e.target.value }))}
                   className="select-field"
                 >
-                  <option value="admin_vendor">Admin Vendor (Staf Timbang - Harga Tersembunyi)</option>
-                  <option value="master_vendor">Master Vendor (Owner - Harga Terlihat)</option>
-                  <option value="admin">Internal Admin (Staf Kantor Ansania - View Only)</option>
+                  <option value="admin_vendor">Admin Vendor (Staf Timbang - Harga Tersembunyi 0.00)</option>
+                  <option value="master_vendor">Master Vendor (Pemilik - Harga Terlihat)</option>
+                  <option value="admin">Admin Internal (Staf Kantor Ansania - View Only)</option>
                   <option value="master_admin">Master Admin (Full Hak Akses & Unlock)</option>
                 </select>
               </div>
@@ -374,7 +434,7 @@ export default function AdminUsersPage() {
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
                 <button
                   type="button"
                   onClick={() => setCreateModal(false)}
@@ -400,11 +460,11 @@ export default function AdminUsersPage() {
       {/* EDIT USER MODAL */}
       {editModal.open && editModal.user && (
         <div className="modal-backdrop">
-          <div className="modal-content" style={{ maxWidth: '440px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div className="modal-content">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
-                  Edit Akun: {editModal.user.name}
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>
+                  Edit Akses: {editModal.user.name}
                 </h3>
                 <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                   {editModal.user.email}
@@ -415,7 +475,7 @@ export default function AdminUsersPage() {
                 onClick={() => setEditModal({ open: false, user: null, newPassword: '', role: '', vendor_id: '', is_active: true })}
                 className="btn btn-secondary btn-icon"
               >
-                <XCircle size={18} />
+                <X size={16} />
               </button>
             </div>
 
@@ -427,9 +487,9 @@ export default function AdminUsersPage() {
                   onChange={(e) => setEditModal((m) => ({ ...m, role: e.target.value }))}
                   className="select-field"
                 >
-                  <option value="admin_vendor">Admin Vendor (Staf Timbang - Harga Tersembunyi)</option>
-                  <option value="master_vendor">Master Vendor (Owner - Harga Terlihat)</option>
-                  <option value="admin">Internal Admin (Staf Kantor Ansania - View Only)</option>
+                  <option value="admin_vendor">Admin Vendor (Staf Timbang - Harga Tersembunyi 0.00)</option>
+                  <option value="master_vendor">Master Vendor (Pemilik - Harga Terlihat)</option>
+                  <option value="admin">Admin Internal (Staf Kantor Ansania - View Only)</option>
                   <option value="master_admin">Master Admin (Full Hak Akses & Unlock)</option>
                 </select>
               </div>
@@ -453,10 +513,10 @@ export default function AdminUsersPage() {
               )}
 
               <div>
-                <label className="form-label">Reset Password (Kosongkan jika tidak diganti)</label>
+                <label className="form-label">Reset Password (Kosongkan jika tetap)</label>
                 <input
                   type="password"
-                  placeholder="Masukkan password baru min 6 digit"
+                  placeholder="Password baru min 6 digit"
                   minLength={6}
                   value={editModal.newPassword}
                   onChange={(e) => setEditModal((m) => ({ ...m, newPassword: e.target.value }))}
@@ -471,12 +531,12 @@ export default function AdminUsersPage() {
                   onChange={(e) => setEditModal((m) => ({ ...m, is_active: e.target.value === '1' }))}
                   className="select-field"
                 >
-                  <option value="1">Aktif (Dapat Login)</option>
+                  <option value="1">Aktif (Bisa Login)</option>
                   <option value="0">Nonaktif (Blokir Akses)</option>
                 </select>
               </div>
 
-              <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
                 <button
                   type="button"
                   onClick={() => setEditModal({ open: false, user: null, newPassword: '', role: '', vendor_id: '', is_active: true })}

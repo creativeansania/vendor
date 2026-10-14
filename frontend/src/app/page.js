@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchApi, getCurrentUser, logout } from '@/lib/api';
 import {
@@ -14,8 +14,11 @@ import {
   Users,
   ChevronRight,
   RefreshCw,
-  Sparkles,
-  Lock
+  Building2,
+  Lock,
+  ArrowRight,
+  TrendingUp,
+  AlertCircle
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -59,7 +62,7 @@ export default function DashboardPage() {
     try {
       const queryParams = new URLSearchParams({
         page: String(page),
-        limit: '15'
+        limit: '16'
       });
       if (search.trim()) queryParams.set('search', search.trim());
       if (status !== 'all') queryParams.set('status', status);
@@ -72,7 +75,7 @@ export default function DashboardPage() {
         setTotalCount(res.pagination?.total || 0);
       }
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load orders:', err);
     } finally {
       setLoading(false);
     }
@@ -91,11 +94,11 @@ export default function DashboardPage() {
   const getRoleBadge = (role) => {
     switch (role) {
       case 'master_admin':
-        return <span className="badge badge-rose">Master Admin</span>;
+        return <span className="badge badge-purple">Master Admin</span>;
       case 'admin':
-        return <span className="badge badge-cyan">Admin Internal</span>;
+        return <span className="badge badge-sky">Admin Internal</span>;
       case 'master_vendor':
-        return <span className="badge badge-indigo">Master Vendor</span>;
+        return <span className="badge badge-emerald">Master Vendor</span>;
       case 'admin_vendor':
         return <span className="badge badge-amber">Admin Vendor</span>;
       default:
@@ -103,262 +106,329 @@ export default function DashboardPage() {
     }
   };
 
+  const formatRupiah = (val) => {
+    const num = parseFloat(val);
+    if (!num || isNaN(num)) return null;
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      maximumFractionDigits: 0
+    }).format(num);
+  };
+
   if (!user) return null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', paddingBottom: '32px' }}>
-      {/* Top Header */}
-      <header className="app-header">
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h2 style={{ fontSize: '1.15rem' }}>{user.vendor_name || 'Ansania Internal'}</h2>
-            {getRoleBadge(user.role)}
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', paddingBottom: '48px' }}>
+      {/* Top Navigation */}
+      <header className="navbar">
+        <div className="brand-badge">
+          <div className="brand-icon">AN</div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h1 style={{ fontSize: '1.05rem', margin: 0, fontWeight: 700 }}>
+                {user.vendor_name || 'Ansania Operations'}
+              </h1>
+              {getRoleBadge(user.role)}
+            </div>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              Operator: <strong style={{ color: 'var(--text-primary)' }}>{user.name}</strong>
+            </p>
           </div>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            Halo, <strong>{user.name}</strong>
-          </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {user.role === 'master_admin' && (
             <button
               onClick={() => router.push('/admin/users')}
               className="btn btn-secondary"
-              style={{ padding: '8px 12px', minHeight: '36px', fontSize: '0.8rem' }}
-              title="Kelola Akun"
+              style={{ fontSize: '0.82rem', padding: '8px 14px' }}
             >
               <Users size={16} />
-              <span>Akun</span>
+              <span>Kelola Akun</span>
             </button>
           )}
 
           <button
             onClick={logout}
-            className="btn btn-secondary"
-            style={{ padding: '8px 10px', minHeight: '36px' }}
-            title="Keluar"
+            className="btn btn-secondary btn-icon"
+            title="Keluar dari Akun"
           >
-            <LogOut size={16} color="#fb7185" />
+            <LogOut size={16} color="var(--status-rose)" />
           </button>
         </div>
       </header>
 
-      {/* Main Body */}
-      <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        {/* Search & Vendor Filter */}
-        <div className="glass-card" style={{ padding: '12px 14px' }}>
-          <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '8px', marginBottom: vendors.length > 0 ? '10px' : '0' }}>
-            <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
-              <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px' }} />
-              <input
-                type="text"
-                placeholder="Cari MO / Produk / SO..."
-                className="input-field"
-                style={{ paddingLeft: '36px', height: '38px', minHeight: '38px', fontSize: '0.875rem', width: '100%' }}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              style={{ height: '38px', minHeight: '38px', padding: '0 14px', fontSize: '0.85rem' }}
-            >
-              Cari
-            </button>
-          </form>
+      {/* Main Container */}
+      <main style={{ padding: '20px 20px 0', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {/* KPI Summary Cards */}
+        <div className="metrics-grid">
+          <div className="card metric-card">
+            <span className="metric-label">Total SPK Terdaftar</span>
+            <div className="metric-value mono-num">{totalCount}</div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sinkron Odoo real-time</span>
+          </div>
 
-          {/* Vendor Filter for Internal & Master Admin */}
-          {vendors.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-subtle)' }}>
-              <Filter size={14} color="var(--text-muted)" />
-              <select
-                className="input-field"
-                style={{ height: '34px', minHeight: '34px', padding: '0 10px', fontSize: '0.8rem', flex: 1 }}
-                value={selectedVendor}
-                onChange={(e) => {
-                  setSelectedVendor(e.target.value);
-                  setPage(1);
-                }}
+          <div className="card metric-card">
+            <span className="metric-label">Perlu Timbang Potong</span>
+            <div className="metric-value mono-num" style={{ color: 'var(--status-amber)' }}>
+              {orders.filter(o => !o.cutting_locked_at && !o.is_backorder).length}
+            </div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--status-amber)' }}>Halaman ini</span>
+          </div>
+
+          <div className="card metric-card">
+            <span className="metric-label">Sedang Proses Jahit</span>
+            <div className="metric-value mono-num" style={{ color: 'var(--status-sky)' }}>
+              {orders.filter(o => o.cutting_locked_at && !o.result_locked_at).length}
+            </div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--status-sky)' }}>Halaman ini</span>
+          </div>
+
+          <div className="card metric-card">
+            <span className="metric-label">Selesai / Terkunci</span>
+            <div className="metric-value mono-num" style={{ color: 'var(--status-emerald)' }}>
+              {orders.filter(o => o.result_locked_at).length}
+            </div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--status-emerald)' }}>Halaman ini</span>
+          </div>
+        </div>
+
+        {/* Toolbar: Search, Vendor Filter, Status Filter */}
+        <div className="card" style={{ padding: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              {/* Search Bar */}
+              <form onSubmit={handleSearchSubmit} style={{ flex: 1, minWidth: '260px', display: 'flex', gap: '8px' }}>
+                <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
+                  <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px' }} />
+                  <input
+                    type="text"
+                    placeholder="Cari nomor SPK (MO), nama produk, atau nomor SO..."
+                    className="input-field"
+                    style={{ paddingLeft: '38px', height: '40px' }}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+                <button type="submit" className="btn btn-primary" style={{ height: '40px', padding: '0 18px' }}>
+                  Cari
+                </button>
+              </form>
+
+              {/* Vendor Selector for internal staff */}
+              {vendors.length > 0 && (
+                <div style={{ minWidth: '220px', display: 'flex', alignItems: 'center' }}>
+                  <select
+                    className="select-field"
+                    style={{ height: '40px' }}
+                    value={selectedVendor}
+                    onChange={(e) => {
+                      setSelectedVendor(e.target.value);
+                      setPage(1);
+                    }}
+                  >
+                    <option value="">Semua Vendor ({vendors.length})</option>
+                    {vendors.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name} ({v.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Status Filter Chips */}
+            <div className="filter-bar">
+              <button
+                className={`filter-chip ${status === 'all' ? 'active' : ''}`}
+                onClick={() => { setStatus('all'); setPage(1); }}
               >
-                <option value="">Semua Vendor ({vendors.length})</option>
-                {vendors.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name}
-                  </option>
-                ))}
-              </select>
+                Semua SPK ({totalCount})
+              </button>
+              <button
+                className={`filter-chip ${status === 'cutting_pending' ? 'active' : ''}`}
+                onClick={() => { setStatus('cutting_pending'); setPage(1); }}
+              >
+                ✂️ Belum Timbang Potong
+              </button>
+              <button
+                className={`filter-chip ${status === 'cutting_locked' ? 'active' : ''}`}
+                onClick={() => { setStatus('cutting_locked'); setPage(1); }}
+              >
+                🔒 Sedang Jahit (Potong Terkunci)
+              </button>
+              <button
+                className={`filter-chip ${status === 'result_locked' ? 'active' : ''}`}
+                onClick={() => { setStatus('result_locked'); setPage(1); }}
+              >
+                ✅ Selesai (Hasil Jahit Terkunci)
+              </button>
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Status Filter Tabs */}
-        <div className="tabs-scroll">
-          <button
-            className={`tab-pill ${status === 'all' ? 'active' : ''}`}
-            onClick={() => { setStatus('all'); setPage(1); }}
-          >
-            Semua ({totalCount})
-          </button>
-          <button
-            className={`tab-pill ${status === 'cutting_pending' ? 'active' : ''}`}
-            onClick={() => { setStatus('cutting_pending'); setPage(1); }}
-          >
-            ✂️ Perlu Timbang
-          </button>
-          <button
-            className={`tab-pill ${status === 'cutting_locked' ? 'active' : ''}`}
-            onClick={() => { setStatus('cutting_locked'); setPage(1); }}
-          >
-            🔒 Potong Terkunci
-          </button>
-          <button
-            className={`tab-pill ${status === 'result_locked' ? 'active' : ''}`}
-            onClick={() => { setStatus('result_locked'); setPage(1); }}
-          >
-            ✅ Hasil Terkunci
-          </button>
-        </div>
-
-        {/* Orders List */}
+        {/* Orders Grid */}
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
-            <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 10px auto' }} />
-            <p style={{ fontSize: '0.85rem' }}>Memuat data SPK...</p>
+          <div className="card" style={{ textAlign: 'center', padding: '60px 20px' }}>
+            <div className="spinner" style={{ margin: '0 auto 16px auto' }}></div>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Memuat data SPK dari cache database...</p>
           </div>
         ) : orders.length === 0 ? (
-          <div className="glass-card" style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
-            <Layers size={36} style={{ margin: '0 auto 12px auto', opacity: 0.4 }} />
-            <h4 style={{ color: 'var(--text-primary)', marginBottom: '4px' }}>Tidak Ada SPK Ditemukan</h4>
-            <p style={{ fontSize: '0.825rem' }}>Coba ubah kata kunci pencarian atau filter status.</p>
+          <div className="card" style={{ textAlign: 'center', padding: '60px 20px' }}>
+            <Layers size={42} style={{ margin: '0 auto 12px auto', color: 'var(--text-muted)' }} />
+            <h3 style={{ fontSize: '1.1rem', marginBottom: '6px' }}>Tidak Ada SPK Ditemukan</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              Coba sesuaikan kata kunci pencarian atau ubah filter status di atas.
+            </p>
           </div>
         ) : (
-          orders.map((o) => {
-            const isBahanCukup = o.status_kebutuhan_kain === 'Cukup';
-            const isCuttingLocked = Boolean(o.cutting_locked_at) || Boolean(o.is_backorder);
-            const isResultLocked = Boolean(o.result_locked_at);
+          <div className="orders-grid">
+            {orders.map((o) => {
+              const isBackorder = Boolean(o.is_backorder);
+              const isCuttingLocked = Boolean(o.cutting_locked_at) || isBackorder;
+              const isResultLocked = Boolean(o.result_locked_at);
+              const price = formatRupiah(o.harga_vendor);
 
-            return (
-              <div
-                key={o.id}
-                onClick={() => router.push(`/orders/${o.id}`)}
-                className="glass-card glass-card-interactive"
-                style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '10px' }}
-              >
-                {/* Header: MO Name & Badges */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+              return (
+                <div
+                  key={o.id}
+                  onClick={() => router.push(`/orders/${o.id}`)}
+                  className="card card-interactive"
+                  style={{
+                    padding: '18px 20px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: '14px'
+                  }}
+                >
+                  {/* Top Bar: Reference + Badges */}
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-                      <h3 style={{ fontSize: '1.05rem', color: '#ffffff' }}>{o.mo_name}</h3>
-                      {o.is_backorder ? (
-                        <span className="badge badge-indigo" style={{ fontSize: '0.65rem' }}>Backorder</span>
-                      ) : null}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span className="mono-num" style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                          {o.mo_name}
+                        </span>
+                        {isBackorder && (
+                          <span className="badge badge-purple" style={{ fontSize: '0.7rem' }}>
+                            Backorder
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Status Badges */}
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {isResultLocked ? (
+                          <span className="badge badge-emerald">
+                            <CheckCircle2 size={13} /> Selesai
+                          </span>
+                        ) : isCuttingLocked ? (
+                          <span className="badge badge-sky">
+                            <Lock size={13} /> Sedang Jahit
+                          </span>
+                        ) : (
+                          <span className="badge badge-amber">
+                            <Scissors size={13} /> Perlu Timbang
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    {['master_admin', 'admin'].includes(user.role) && (
-                      <p style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)' }}>{o.vendor_name}</p>
-                    )}
-                  </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                    <span className={`badge ${isBahanCukup ? 'badge-emerald' : 'badge-amber'}`}>
-                      {isBahanCukup ? 'Bahan Cukup' : 'Bahan Kurang'}
-                    </span>
-                    {isResultLocked ? (
-                      <span className="badge badge-emerald" style={{ fontSize: '0.65rem' }}>
-                        <Lock size={10} /> Hasil Jahit Selesai
-                      </span>
-                    ) : isCuttingLocked ? (
-                      <span className="badge badge-cyan" style={{ fontSize: '0.65rem' }}>
-                        <Lock size={10} /> Potong Terkunci
-                      </span>
-                    ) : (
-                      <span className="badge badge-amber" style={{ fontSize: '0.65rem' }}>
-                        <Scissors size={10} /> Siap Timbang
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Product Name */}
-                <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.3 }}>
-                  {o.product_name || 'Produk tanpa nama'}
-                </p>
-
-                {/* Key Metrics Row */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
-                  gap: '8px',
-                  background: 'rgba(0, 0, 0, 0.25)',
-                  padding: '8px 10px',
-                  borderRadius: 'var(--radius-md)'
-                }}>
-                  <div>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Target SPK</span>
-                    <p style={{ fontSize: '0.9rem', fontWeight: 700 }}>{Number(o.qty_spk).toLocaleString('id-ID')} pcs</p>
-                  </div>
-                  <div>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Kain Gudang</span>
-                    <p style={{ fontSize: '0.9rem', fontWeight: 700 }}>{Number(o.kain_dari_gudang).toLocaleString('id-ID')} {o.unit_kain || 'yd'}</p>
-                  </div>
-                  <div>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Hasil Potong</span>
-                    <p style={{ fontSize: '0.9rem', fontWeight: 700, color: o.actual_cutting > 0 ? '#34d399' : 'var(--text-muted)' }}>
-                      {o.actual_cutting > 0 ? `${Number(o.actual_cutting).toLocaleString('id-ID')} kg` : '-'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Bottom Row: Price & Tap cue */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '2px' }}>
-                  {user.role !== 'admin_vendor' && Number(o.harga_vendor) > 0 ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tarif:</span>
-                      <strong style={{ fontSize: '0.85rem', color: '#38bdf8' }}>
-                        Rp {Number(o.harga_vendor).toLocaleString('id-ID')} / pcs
-                      </strong>
+                    {/* Product Name */}
+                    <div style={{ fontSize: '0.98rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                      {o.product_name}
                     </div>
-                  ) : (
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      SO: {o.sales_order || '-'}
-                    </span>
-                  )}
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '2px', color: 'var(--accent-cyan)', fontSize: '0.8rem', fontWeight: 600 }}>
-                    <span>Detail SPK</span>
-                    <ChevronRight size={16} />
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                      SO: <span className="mono-num">{o.source_document || '-'}</span>
+                    </div>
+                  </div>
+
+                  {/* Middle Metrics Row */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: '8px',
+                      padding: '10px 12px',
+                      background: 'var(--bg-card-elevated)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--border-subtle)'
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Target SPK</div>
+                      <div className="mono-num" style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        {Number(o.qty_target).toLocaleString('id-ID')} <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>pcs</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Hasil Jahit</div>
+                      <div className="mono-num" style={{ fontSize: '0.95rem', fontWeight: 700, color: isResultLocked ? 'var(--status-emerald)' : 'var(--text-secondary)' }}>
+                        {isResultLocked ? Number(o.qty_grade_a || 0).toLocaleString('id-ID') : '-'}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Status Kain</div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: o.status_kebutuhan_kain === 'Cukup' ? 'var(--status-emerald)' : 'var(--status-amber)' }}>
+                        {o.status_kebutuhan_kain || 'Cukup'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bottom Footer: Vendor & Price */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                      <Building2 size={14} color="var(--brand-gold)" />
+                      <span>{o.vendor_name}</span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      {price && (
+                        <div className="mono-num" style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--brand-gold)' }}>
+                          {price}
+                        </div>
+                      )}
+                      <div style={{ color: 'var(--text-muted)' }}>
+                        <ChevronRight size={18} />
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })
+              );
+            })}
+          </div>
         )}
 
-        {/* Pagination controls */}
+        {/* Pagination Controls */}
         {totalPages > 1 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', marginTop: '10px' }}>
             <button
-              className="btn btn-secondary"
-              disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              style={{ fontSize: '0.8rem', padding: '6px 14px', minHeight: '36px' }}
+              disabled={page <= 1}
+              className="btn btn-secondary"
+              style={{ padding: '8px 16px' }}
             >
               Sebelumnya
             </button>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              Halaman {page} dari {totalPages}
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+              Halaman <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>{page}</strong> dari <strong className="mono-num">{totalPages}</strong>
             </span>
             <button
-              className="btn btn-secondary"
-              disabled={page >= totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              style={{ fontSize: '0.8rem', padding: '6px 14px', minHeight: '36px' }}
+              disabled={page >= totalPages}
+              className="btn btn-secondary"
+              style={{ padding: '8px 16px' }}
             >
               Selanjutnya
             </button>
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }
