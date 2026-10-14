@@ -143,15 +143,15 @@ export default function AdminUsersPage() {
   function getRoleBadge(role) {
     switch (role) {
       case 'master_admin':
-        return <span className="badge badge-purple">Master Admin</span>;
+        return <span className="badge badge-purple" style={{ fontSize: '0.68rem' }}>Master Admin</span>;
       case 'admin':
-        return <span className="badge badge-sky">Admin Internal</span>;
+        return <span className="badge badge-sky" style={{ fontSize: '0.68rem' }}>Admin Internal</span>;
       case 'master_vendor':
-        return <span className="badge badge-emerald">Master Vendor</span>;
+        return <span className="badge badge-emerald" style={{ fontSize: '0.68rem' }}>Master Vendor</span>;
       case 'admin_vendor':
-        return <span className="badge badge-amber">Admin Vendor</span>;
+        return <span className="badge badge-amber" style={{ fontSize: '0.68rem' }}>Admin Vendor</span>;
       default:
-        return <span className="badge">{role}</span>;
+        return <span className="badge" style={{ fontSize: '0.68rem' }}>{role}</span>;
     }
   }
 
@@ -169,23 +169,24 @@ export default function AdminUsersPage() {
   });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', paddingBottom: '60px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', overflowX: 'hidden' }}>
       {/* Top Navbar */}
       <header className="navbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
           <button
             onClick={() => router.push('/')}
             className="btn btn-secondary btn-icon"
+            style={{ flexShrink: 0 }}
             title="Kembali ke Dashboard"
           >
             <ArrowLeft size={18} />
           </button>
-          <div>
-            <h1 style={{ fontSize: '1.05rem', margin: 0, fontWeight: 700 }}>
-              Kelola Akses Pengguna & Vendor
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ fontSize: '0.98rem', margin: 0, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              Kelola Pengguna
             </h1>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-              Master Admin Control Panel
+            <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+              Master Admin Control
             </p>
           </div>
         </div>
@@ -193,22 +194,22 @@ export default function AdminUsersPage() {
         <button
           onClick={() => setCreateModal(true)}
           className="btn btn-primary"
-          style={{ fontSize: '0.82rem', padding: '8px 14px' }}
+          style={{ fontSize: '0.8rem', padding: '7px 12px', flexShrink: 0 }}
         >
-          <UserPlus size={16} />
-          <span>+ Buat Akun Baru</span>
+          <UserPlus size={15} />
+          <span>+ Tambah</span>
         </button>
       </header>
 
       {/* Main Content */}
-      <main style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <main className="main-content">
         {/* Alerts */}
         {feedback.text && (
           <div
             style={{
-              padding: '12px 16px',
+              padding: '12px 14px',
               borderRadius: 'var(--radius-sm)',
-              fontSize: '0.88rem',
+              fontSize: '0.85rem',
               display: 'flex',
               alignItems: 'center',
               gap: '10px',
@@ -217,21 +218,21 @@ export default function AdminUsersPage() {
               color: feedback.type === 'success' ? 'var(--status-emerald)' : 'var(--status-rose)'
             }}
           >
-            {feedback.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+            {feedback.type === 'success' ? <CheckCircle2 size={18} style={{ flexShrink: 0 }} /> : <AlertTriangle size={18} style={{ flexShrink: 0 }} />}
             <span>{feedback.text}</span>
           </div>
         )}
 
         {/* Toolbar: Search & Role Filter */}
-        <div className="card" style={{ padding: '16px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px' }} />
+        <div className="card" style={{ padding: '14px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
+              <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '10px' }} />
               <input
                 type="text"
-                placeholder="Cari nama pengguna, email, atau vendor..."
+                placeholder="Cari nama, email, vendor..."
                 className="input-field"
-                style={{ paddingLeft: '38px', height: '40px' }}
+                style={{ paddingLeft: '34px', height: '38px', fontSize: '0.84rem' }}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -242,7 +243,7 @@ export default function AdminUsersPage() {
                 className={`filter-chip ${filterRole === 'all' ? 'active' : ''}`}
                 onClick={() => setFilterRole('all')}
               >
-                Semua Akun ({users.length})
+                Semua ({users.length})
               </button>
               <button
                 className={`filter-chip ${filterRole === 'admin_vendor' ? 'active' : ''}`}
@@ -274,13 +275,13 @@ export default function AdminUsersPage() {
 
         {/* Users List Grid */}
         {loading ? (
-          <div className="card" style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
-            <p style={{ color: 'var(--text-secondary)' }}>Memuat daftar akun...</p>
+          <div className="card" style={{ textAlign: 'center', padding: '50px 20px' }}>
+            <div className="spinner" style={{ margin: '0 auto 14px' }}></div>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Memuat daftar akun...</p>
           </div>
         ) : filteredUsers.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <p style={{ color: 'var(--text-secondary)' }}>Tidak ada pengguna yang cocok dengan kriteria.</p>
+          <div className="card" style={{ textAlign: 'center', padding: '50px 20px' }}>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Tidak ada akun yang sesuai kriteria.</p>
           </div>
         ) : (
           <div className="orders-grid">
@@ -289,7 +290,7 @@ export default function AdminUsersPage() {
                 key={u.id}
                 className="card"
                 style={{
-                  padding: '18px 20px',
+                  padding: '16px',
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
@@ -299,25 +300,27 @@ export default function AdminUsersPage() {
               >
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '6px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0 }}>
+                      <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {u.name}
                       </span>
                       {!u.is_active && (
-                        <span className="badge badge-rose" style={{ fontSize: '0.68rem' }}>Nonaktif</span>
+                        <span className="badge badge-rose" style={{ fontSize: '0.65rem' }}>Nonaktif</span>
                       )}
                     </div>
-                    {getRoleBadge(u.role)}
+                    <div style={{ flexShrink: 0 }}>
+                      {getRoleBadge(u.role)}
+                    </div>
                   </div>
 
-                  <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {u.email}
                   </div>
 
                   {u.vendor_name && (
-                    <div style={{ fontSize: '0.8rem', color: 'var(--brand-gold)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      <Building2 size={14} />
-                      <span>{u.vendor_name}</span>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--brand-gold)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Building2 size={13} style={{ flexShrink: 0 }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.vendor_name}</span>
                     </div>
                   )}
                 </div>
@@ -335,7 +338,7 @@ export default function AdminUsersPage() {
                       })
                     }
                     className="btn btn-secondary"
-                    style={{ fontSize: '0.78rem', padding: '6px 14px' }}
+                    style={{ fontSize: '0.76rem', padding: '6px 12px' }}
                   >
                     Edit / Kelola Akses
                   </button>
@@ -350,9 +353,9 @@ export default function AdminUsersPage() {
       {createModal && (
         <div className="modal-backdrop">
           <div className="modal-content">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>
-                Tambah Akun Pengguna Baru
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
+                Tambah Akun Pengguna
               </h3>
               <button
                 type="button"
@@ -365,11 +368,11 @@ export default function AdminUsersPage() {
 
             <form onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label className="form-label">Nama Lengkap / Identitas</label>
+                <label className="form-label">Nama Lengkap</label>
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: Budi Santoso / Staf Jahit CV Berkah"
+                  placeholder="Contoh: Budi Santoso"
                   value={newUserData.name}
                   onChange={(e) => setNewUserData((d) => ({ ...d, name: e.target.value }))}
                   className="input-field"
@@ -408,9 +411,9 @@ export default function AdminUsersPage() {
                   onChange={(e) => setNewUserData((d) => ({ ...d, role: e.target.value }))}
                   className="select-field"
                 >
-                  <option value="admin_vendor">Admin Vendor (Staf Timbang - Harga Tersembunyi 0.00)</option>
-                  <option value="master_vendor">Master Vendor (Pemilik - Harga Terlihat)</option>
-                  <option value="admin">Admin Internal (Staf Kantor Ansania - View Only)</option>
+                  <option value="admin_vendor">Admin Vendor (Staf - Harga 0.00)</option>
+                  <option value="master_vendor">Master Vendor (Owner - Harga Muncul)</option>
+                  <option value="admin">Admin Internal (Staf Kantor - View Only)</option>
                   <option value="master_admin">Master Admin (Full Hak Akses & Unlock)</option>
                 </select>
               </div>
@@ -434,7 +437,7 @@ export default function AdminUsersPage() {
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
                 <button
                   type="button"
                   onClick={() => setCreateModal(false)}
@@ -461,12 +464,12 @@ export default function AdminUsersPage() {
       {editModal.open && editModal.user && (
         <div className="modal-backdrop">
           <div className="modal-content">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>
-                  Edit Akses: {editModal.user.name}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ minWidth: 0 }}>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  Edit: {editModal.user.name}
                 </h3>
-                <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--text-muted)' }}>
                   {editModal.user.email}
                 </p>
               </div>
@@ -474,6 +477,7 @@ export default function AdminUsersPage() {
                 type="button"
                 onClick={() => setEditModal({ open: false, user: null, newPassword: '', role: '', vendor_id: '', is_active: true })}
                 className="btn btn-secondary btn-icon"
+                style={{ flexShrink: 0 }}
               >
                 <X size={16} />
               </button>
@@ -487,9 +491,9 @@ export default function AdminUsersPage() {
                   onChange={(e) => setEditModal((m) => ({ ...m, role: e.target.value }))}
                   className="select-field"
                 >
-                  <option value="admin_vendor">Admin Vendor (Staf Timbang - Harga Tersembunyi 0.00)</option>
-                  <option value="master_vendor">Master Vendor (Pemilik - Harga Terlihat)</option>
-                  <option value="admin">Admin Internal (Staf Kantor Ansania - View Only)</option>
+                  <option value="admin_vendor">Admin Vendor (Staf - Harga 0.00)</option>
+                  <option value="master_vendor">Master Vendor (Owner - Harga Muncul)</option>
+                  <option value="admin">Admin Internal (Staf Kantor - View Only)</option>
                   <option value="master_admin">Master Admin (Full Hak Akses & Unlock)</option>
                 </select>
               </div>
@@ -536,7 +540,7 @@ export default function AdminUsersPage() {
                 </select>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
                 <button
                   type="button"
                   onClick={() => setEditModal({ open: false, user: null, newPassword: '', role: '', vendor_id: '', is_active: true })}
@@ -551,7 +555,7 @@ export default function AdminUsersPage() {
                   className="btn btn-primary"
                   style={{ flex: 1 }}
                 >
-                  {actionLoading ? 'Menyimpan...' : 'Simpan Perubahan'}
+                  {actionLoading ? 'Menyimpan...' : 'Simpan'}
                 </button>
               </div>
             </form>

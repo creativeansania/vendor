@@ -94,13 +94,13 @@ export default function DashboardPage() {
   const getRoleBadge = (role) => {
     switch (role) {
       case 'master_admin':
-        return <span className="badge badge-purple">Master Admin</span>;
+        return <span className="badge badge-purple" style={{ fontSize: '0.68rem' }}>Master Admin</span>;
       case 'admin':
-        return <span className="badge badge-sky">Admin Internal</span>;
+        return <span className="badge badge-sky" style={{ fontSize: '0.68rem' }}>Admin Internal</span>;
       case 'master_vendor':
-        return <span className="badge badge-emerald">Master Vendor</span>;
+        return <span className="badge badge-emerald" style={{ fontSize: '0.68rem' }}>Master Vendor</span>;
       case 'admin_vendor':
-        return <span className="badge badge-amber">Admin Vendor</span>;
+        return <span className="badge badge-amber" style={{ fontSize: '0.68rem' }}>Admin Vendor</span>;
       default:
         return null;
     }
@@ -119,109 +119,111 @@ export default function DashboardPage() {
   if (!user) return null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', paddingBottom: '48px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', overflowX: 'hidden' }}>
       {/* Top Navigation */}
       <header className="navbar">
-        <div className="brand-badge">
-          <div className="brand-icon">AN</div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <h1 style={{ fontSize: '1.05rem', margin: 0, fontWeight: 700 }}>
+        <div className="brand-badge" style={{ minWidth: 0, flex: 1 }}>
+          <div className="brand-icon" style={{ width: '34px', height: '34px', fontSize: '0.95rem' }}>AN</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <h1 style={{ fontSize: '0.96rem', margin: 0, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {user.vendor_name || 'Ansania Operations'}
               </h1>
               {getRoleBadge(user.role)}
             </div>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-              Operator: <strong style={{ color: 'var(--text-primary)' }}>{user.name}</strong>
+            <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {user.name}
             </p>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
           {user.role === 'master_admin' && (
             <button
               onClick={() => router.push('/admin/users')}
               className="btn btn-secondary"
-              style={{ fontSize: '0.82rem', padding: '8px 14px' }}
+              style={{ fontSize: '0.78rem', padding: '7px 12px' }}
+              title="Kelola Pengguna"
             >
-              <Users size={16} />
-              <span>Kelola Akun</span>
+              <Users size={15} />
+              <span className="hide-on-mobile">Akun</span>
             </button>
           )}
 
           <button
             onClick={logout}
             className="btn btn-secondary btn-icon"
-            title="Keluar dari Akun"
+            style={{ width: '34px', height: '34px' }}
+            title="Keluar"
           >
-            <LogOut size={16} color="var(--status-rose)" />
+            <LogOut size={15} color="var(--status-rose)" />
           </button>
         </div>
       </header>
 
       {/* Main Container */}
-      <main style={{ padding: '20px 20px 0', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <main className="main-content">
         {/* KPI Summary Cards */}
         <div className="metrics-grid">
           <div className="card metric-card">
-            <span className="metric-label">Total SPK Terdaftar</span>
-            <div className="metric-value mono-num">{totalCount}</div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sinkron Odoo real-time</span>
+            <span className="metric-label" style={{ fontSize: '0.68rem' }}>Total SPK</span>
+            <div className="metric-value mono-num" style={{ fontSize: '1.4rem' }}>{totalCount}</div>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Sinkron Odoo</span>
           </div>
 
           <div className="card metric-card">
-            <span className="metric-label">Perlu Timbang Potong</span>
-            <div className="metric-value mono-num" style={{ color: 'var(--status-amber)' }}>
+            <span className="metric-label" style={{ fontSize: '0.68rem' }}>Perlu Timbang</span>
+            <div className="metric-value mono-num" style={{ fontSize: '1.4rem', color: 'var(--status-amber)' }}>
               {orders.filter(o => !o.cutting_locked_at && !o.is_backorder).length}
             </div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--status-amber)' }}>Halaman ini</span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--status-amber)' }}>Halaman ini</span>
           </div>
 
           <div className="card metric-card">
-            <span className="metric-label">Sedang Proses Jahit</span>
-            <div className="metric-value mono-num" style={{ color: 'var(--status-sky)' }}>
+            <span className="metric-label" style={{ fontSize: '0.68rem' }}>Sedang Jahit</span>
+            <div className="metric-value mono-num" style={{ fontSize: '1.4rem', color: 'var(--status-sky)' }}>
               {orders.filter(o => o.cutting_locked_at && !o.result_locked_at).length}
             </div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--status-sky)' }}>Halaman ini</span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--status-sky)' }}>Halaman ini</span>
           </div>
 
           <div className="card metric-card">
-            <span className="metric-label">Selesai / Terkunci</span>
-            <div className="metric-value mono-num" style={{ color: 'var(--status-emerald)' }}>
+            <span className="metric-label" style={{ fontSize: '0.68rem' }}>Selesai</span>
+            <div className="metric-value mono-num" style={{ fontSize: '1.4rem', color: 'var(--status-emerald)' }}>
               {orders.filter(o => o.result_locked_at).length}
             </div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--status-emerald)' }}>Halaman ini</span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--status-emerald)' }}>Halaman ini</span>
           </div>
         </div>
 
         {/* Toolbar: Search, Vendor Filter, Status Filter */}
-        <div className="card" style={{ padding: '16px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <div className="card" style={{ padding: '14px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', width: '100%' }}>
               {/* Search Bar */}
-              <form onSubmit={handleSearchSubmit} style={{ flex: 1, minWidth: '260px', display: 'flex', gap: '8px' }}>
-                <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
-                  <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px' }} />
+              <form onSubmit={handleSearchSubmit} style={{ flex: 1, minWidth: 0, display: 'flex', gap: '6px', width: '100%' }}>
+                <div style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex', alignItems: 'center' }}>
+                  <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '10px' }} />
                   <input
                     type="text"
-                    placeholder="Cari nomor SPK (MO), nama produk, atau nomor SO..."
+                    placeholder="Cari MO, produk, SO..."
                     className="input-field"
-                    style={{ paddingLeft: '38px', height: '40px' }}
+                    style={{ paddingLeft: '34px', height: '38px', fontSize: '0.84rem' }}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </div>
-                <button type="submit" className="btn btn-primary" style={{ height: '40px', padding: '0 18px' }}>
+                <button type="submit" className="btn btn-primary" style={{ height: '38px', padding: '0 14px', fontSize: '0.82rem', flexShrink: 0 }}>
                   Cari
                 </button>
               </form>
 
               {/* Vendor Selector for internal staff */}
               {vendors.length > 0 && (
-                <div style={{ minWidth: '220px', display: 'flex', alignItems: 'center' }}>
+                <div style={{ width: '100%', minWidth: 0 }}>
                   <select
                     className="select-field"
-                    style={{ height: '40px' }}
+                    style={{ height: '38px', fontSize: '0.82rem' }}
                     value={selectedVendor}
                     onChange={(e) => {
                       setSelectedVendor(e.target.value);
@@ -239,31 +241,31 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Status Filter Chips */}
+            {/* Status Filter Chips (Fluid Touch Scroll) */}
             <div className="filter-bar">
               <button
                 className={`filter-chip ${status === 'all' ? 'active' : ''}`}
                 onClick={() => { setStatus('all'); setPage(1); }}
               >
-                Semua SPK ({totalCount})
+                Semua ({totalCount})
               </button>
               <button
                 className={`filter-chip ${status === 'cutting_pending' ? 'active' : ''}`}
                 onClick={() => { setStatus('cutting_pending'); setPage(1); }}
               >
-                ✂️ Belum Timbang Potong
+                ✂️ Belum Timbang
               </button>
               <button
                 className={`filter-chip ${status === 'cutting_locked' ? 'active' : ''}`}
                 onClick={() => { setStatus('cutting_locked'); setPage(1); }}
               >
-                🔒 Sedang Jahit (Potong Terkunci)
+                🔒 Sedang Jahit
               </button>
               <button
                 className={`filter-chip ${status === 'result_locked' ? 'active' : ''}`}
                 onClick={() => { setStatus('result_locked'); setPage(1); }}
               >
-                ✅ Selesai (Hasil Jahit Terkunci)
+                ✅ Selesai
               </button>
             </div>
           </div>
@@ -271,15 +273,15 @@ export default function DashboardPage() {
 
         {/* Orders Grid */}
         {loading ? (
-          <div className="card" style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <div className="spinner" style={{ margin: '0 auto 16px auto' }}></div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Memuat data SPK dari cache database...</p>
+          <div className="card" style={{ textAlign: 'center', padding: '50px 20px' }}>
+            <div className="spinner" style={{ margin: '0 auto 14px auto' }}></div>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Memuat data SPK...</p>
           </div>
         ) : orders.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <Layers size={42} style={{ margin: '0 auto 12px auto', color: 'var(--text-muted)' }} />
-            <h3 style={{ fontSize: '1.1rem', marginBottom: '6px' }}>Tidak Ada SPK Ditemukan</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '50px 20px' }}>
+            <Layers size={36} style={{ margin: '0 auto 10px auto', color: 'var(--text-muted)' }} />
+            <h3 style={{ fontSize: '1rem', marginBottom: '4px' }}>Tidak Ada SPK Ditemukan</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
               Coba sesuaikan kata kunci pencarian atau ubah filter status di atas.
             </p>
           </div>
@@ -297,51 +299,51 @@ export default function DashboardPage() {
                   onClick={() => router.push(`/orders/${o.id}`)}
                   className="card card-interactive"
                   style={{
-                    padding: '18px 20px',
+                    padding: '16px',
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
-                    gap: '14px'
+                    gap: '12px'
                   }}
                 >
                   {/* Top Bar: Reference + Badges */}
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <span className="mono-num" style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0 }}>
+                        <span className="mono-num" style={{ fontSize: '0.98rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
                           {o.mo_name}
                         </span>
                         {isBackorder && (
-                          <span className="badge badge-purple" style={{ fontSize: '0.7rem' }}>
+                          <span className="badge badge-purple" style={{ fontSize: '0.65rem' }}>
                             Backorder
                           </span>
                         )}
                       </div>
 
                       {/* Status Badges */}
-                      <div style={{ display: 'flex', gap: '6px' }}>
+                      <div style={{ flexShrink: 0 }}>
                         {isResultLocked ? (
-                          <span className="badge badge-emerald">
-                            <CheckCircle2 size={13} /> Selesai
+                          <span className="badge badge-emerald" style={{ fontSize: '0.68rem' }}>
+                            <CheckCircle2 size={12} /> Selesai
                           </span>
                         ) : isCuttingLocked ? (
-                          <span className="badge badge-sky">
-                            <Lock size={13} /> Sedang Jahit
+                          <span className="badge badge-sky" style={{ fontSize: '0.68rem' }}>
+                            <Lock size={12} /> Jahit
                           </span>
                         ) : (
-                          <span className="badge badge-amber">
-                            <Scissors size={13} /> Perlu Timbang
+                          <span className="badge badge-amber" style={{ fontSize: '0.68rem' }}>
+                            <Scissors size={12} /> Timbang
                           </span>
                         )}
                       </div>
                     </div>
 
                     {/* Product Name */}
-                    <div style={{ fontSize: '0.98rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                    <div style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '3px' }}>
                       {o.product_name}
                     </div>
 
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
                       SO: <span className="mono-num">{o.source_document || '-'}</span>
                     </div>
                   </div>
@@ -351,50 +353,51 @@ export default function DashboardPage() {
                     style={{
                       display: 'grid',
                       gridTemplateColumns: 'repeat(3, 1fr)',
-                      gap: '8px',
-                      padding: '10px 12px',
+                      gap: '6px',
+                      padding: '8px 10px',
                       background: 'var(--bg-card-elevated)',
                       borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--border-subtle)'
+                      border: '1px solid var(--border-subtle)',
+                      textAlign: 'center'
                     }}
                   >
-                    <div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Target SPK</div>
-                      <div className="mono-num" style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        {Number(o.qty_target).toLocaleString('id-ID')} <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>pcs</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Target SPK</div>
+                      <div className="mono-num" style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {Number(o.qty_target).toLocaleString('id-ID')} <span style={{ fontSize: '0.7rem', fontWeight: 400 }}>pcs</span>
                       </div>
                     </div>
 
-                    <div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Hasil Jahit</div>
-                      <div className="mono-num" style={{ fontSize: '0.95rem', fontWeight: 700, color: isResultLocked ? 'var(--status-emerald)' : 'var(--text-secondary)' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Hasil Jahit</div>
+                      <div className="mono-num" style={{ fontSize: '0.88rem', fontWeight: 700, color: isResultLocked ? 'var(--status-emerald)' : 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {isResultLocked ? Number(o.qty_grade_a || 0).toLocaleString('id-ID') : '-'}
                       </div>
                     </div>
 
-                    <div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Status Kain</div>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: o.status_kebutuhan_kain === 'Cukup' ? 'var(--status-emerald)' : 'var(--status-amber)' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Kain</div>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 600, color: o.status_kebutuhan_kain === 'Cukup' ? 'var(--status-emerald)' : 'var(--status-amber)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {o.status_kebutuhan_kain || 'Cukup'}
                       </div>
                     </div>
                   </div>
 
                   {/* Bottom Footer: Vendor & Price */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                      <Building2 size={14} color="var(--brand-gold)" />
-                      <span>{o.vendor_name}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '2px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.78rem', color: 'var(--text-secondary)', minWidth: 0 }}>
+                      <Building2 size={13} color="var(--brand-gold)" style={{ flexShrink: 0 }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.vendor_name}</span>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                       {price && (
-                        <div className="mono-num" style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--brand-gold)' }}>
+                        <div className="mono-num" style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--brand-gold)' }}>
                           {price}
                         </div>
                       )}
                       <div style={{ color: 'var(--text-muted)' }}>
-                        <ChevronRight size={18} />
+                        <ChevronRight size={16} />
                       </div>
                     </div>
                   </div>
@@ -406,25 +409,25 @@ export default function DashboardPage() {
 
         {/* Pagination Controls */}
         {totalPages > 1 && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', marginTop: '10px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', marginTop: '6px' }}>
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
               className="btn btn-secondary"
-              style={{ padding: '8px 16px' }}
+              style={{ padding: '7px 14px', fontSize: '0.8rem' }}
             >
-              Sebelumnya
+              Prev
             </button>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              Halaman <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>{page}</strong> dari <strong className="mono-num">{totalPages}</strong>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>{page}</strong> / <strong className="mono-num">{totalPages}</strong>
             </span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
               className="btn btn-secondary"
-              style={{ padding: '8px 16px' }}
+              style={{ padding: '7px 14px', fontSize: '0.8rem' }}
             >
-              Selanjutnya
+              Next
             </button>
           </div>
         )}
