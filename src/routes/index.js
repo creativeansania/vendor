@@ -5,6 +5,9 @@ import landedCostRoutes from '../modules/landed-cost/landedCost.routes.js';
 import transferRoutes from '../modules/transfer/transfer.routes.js';
 import wablasRoutes, { reportRouter } from '../modules/notification-wa/wablas.routes.js';
 import wipRoutes from '../modules/wip-vendor/wip.routes.js';
+import authRoutes from '../modules/auth/auth.routes.js';
+import pwaRoutes from '../modules/pwa/pwa.routes.js';
+import adminRoutes from '../modules/admin/admin.routes.js';
 
 const router = express.Router();
 
@@ -25,7 +28,12 @@ router.use('/odoo/transfer', transferRoutes);
 // 4. Reports & Documents Streaming Routes
 router.use('/reports', reportRouter);
 
-// 5. WIP Vendor API Routes (For Future Vendor PWA)
+// 5. WIP Vendor Webhook & API Routes
 router.use('/wip', wipRoutes);
+
+// 6. Vendor PWA (Auth, Vendor SPK, Admin)
+router.use('/auth', authRoutes);
+router.use('/pwa', pwaRoutes);
+router.use('/admin', adminRoutes);
 
 export default router;

@@ -5,6 +5,7 @@ import { logger } from './utils/logger.js';
 import { verifyJubelioSignature } from './middleware/jubelioSignature.js';
 import { handleJubelioInvoiceWebhook } from './modules/jubelio/jubelio.controller.js';
 import { defaultOdooClient } from './core/odoo/odooClient.js';
+import { outboxWorker } from './modules/pwa/outbox.worker.js';
 import apiRouter from './routes/index.js';
 
 const app = express();
@@ -85,4 +86,7 @@ app.listen(config.port, () => {
   logger.info(`Odoo Transfer:   POST http://localhost:${config.port}/api/webhooks/odoo/transfer-mo-reference`);
   logger.info(`WIP Vendor:      POST http://localhost:${config.port}/api/webhooks/odoo/wip/mo-confirmed`);
   logger.info(`=======================================================`);
+
+  // Start background outbox worker for PWA
+  outboxWorker.start(10000);
 });
