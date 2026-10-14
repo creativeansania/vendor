@@ -539,7 +539,7 @@ function OrderDetailContent() {
                           paddingRight: '50px',
                           textAlign: 'right',
                           borderColor: actualCutting ? 'var(--brand-gold)' : 'var(--border-default)',
-                          color: 'var(--brand-gold)'
+                          color: '#0f172a'
                         }}
                       />
                       <span

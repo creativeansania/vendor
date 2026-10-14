@@ -344,7 +344,7 @@ export default function DashboardPage() {
                     </div>
 
                     <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                      SO: <span className="mono-num">{o.source_document || '-'}</span>
+                      SO: <span className="mono-num">{o.source_document || o.sales_order || '-'}</span>
                     </div>
                   </div>
 
@@ -364,7 +364,7 @@ export default function DashboardPage() {
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Target SPK</div>
                       <div className="mono-num" style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {Number(o.qty_target).toLocaleString('id-ID')} <span style={{ fontSize: '0.7rem', fontWeight: 400 }}>pcs</span>
+                        {Number(o.qty_target || o.qty_spk || 0).toLocaleString('id-ID')} <span style={{ fontSize: '0.7rem', fontWeight: 400 }}>pcs</span>
                       </div>
                     </div>
 
