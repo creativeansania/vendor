@@ -58,7 +58,9 @@ export class PwaService {
       SELECT
         w.id, w.odoo_wip_id, w.odoo_mo_id, w.vendor_id, v.name AS vendor_name,
         w.parent_wip_order_id, (w.parent_wip_order_id IS NOT NULL) AS is_backorder,
-        w.mo_name, w.mo_state, w.sales_order, w.product_name,
+        w.mo_name, w.mo_state,
+        COALESCE(NULLIF(w.sales_order, ''), parent.sales_order) AS sales_order,
+        w.product_name,
         w.qty_spk, w.start_spk, w.deadline_spk,
         w.qty_kebutuhan_kain, w.kain_dari_gudang, w.unit_kain,
         w.accessories_dari_gudang, w.estimasi_dari_spb, w.status_kebutuhan_kain,
@@ -71,6 +73,7 @@ export class PwaService {
         w.updated_at
       FROM wip_orders w
       JOIN vendors v ON v.id = w.vendor_id
+      LEFT JOIN wip_orders parent ON parent.id = w.parent_wip_order_id
       ${whereClause}
       ORDER BY w.id DESC
       LIMIT ? OFFSET ?
@@ -102,7 +105,9 @@ export class PwaService {
       `SELECT
         w.id, w.odoo_wip_id, w.odoo_mo_id, w.vendor_id, v.name AS vendor_name,
         w.parent_wip_order_id, (w.parent_wip_order_id IS NOT NULL) AS is_backorder,
-        w.mo_name, w.mo_state, w.sales_order, w.product_name,
+        w.mo_name, w.mo_state,
+        COALESCE(NULLIF(w.sales_order, ''), parent.sales_order) AS sales_order,
+        w.product_name,
         w.qty_spk, w.start_spk, w.deadline_spk,
         w.qty_kebutuhan_kain, w.kain_dari_gudang, w.unit_kain,
         w.accessories_dari_gudang, w.estimasi_dari_spb, w.status_kebutuhan_kain,
@@ -115,6 +120,7 @@ export class PwaService {
         w.updated_at
        FROM wip_orders w
        JOIN vendors v ON v.id = w.vendor_id
+       LEFT JOIN wip_orders parent ON parent.id = w.parent_wip_order_id
        WHERE w.id = ?`,
       [orderId]
     );
