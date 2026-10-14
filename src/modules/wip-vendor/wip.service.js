@@ -1,5 +1,7 @@
 import { adminOdooClient } from '../../core/odoo/odooClient.js';
 import { logger } from '../../utils/logger.js';
+import { wipMysqlRepo } from './wip.mysql.repo.js';
+import { db } from '../../core/database/mysql.js';
 
 export class WipVendorService {
   constructor(odooClient = adminOdooClient) {
@@ -136,6 +138,34 @@ export class WipVendorService {
           await this._syncWipFromPickings(newWipId, id);
         } catch (syncErr) {
           logger.warn(`[WIP Service] Post-creation sync warning for WIP #${newWipId}: ${syncErr.message}`);
+        }
+      } else {
+        // Initial MySQL sync even if no pickings yet
+        try {
+          const whId = mo.warehouse_id ? mo.warehouse_id[0] : null;
+          const whName = mo.warehouse_id ? mo.warehouse_id[1] : '';
+          let parentMoName = null;
+          if (moName.includes('-')) {
+            const parts = moName.split('-');
+            if (/^\d+$/.test(parts[parts.length - 1])) {
+              parentMoName = moName.substring(0, moName.lastIndexOf('-'));
+            }
+          }
+          await wipMysqlRepo.upsertWipOrder({
+            odoo_wip_id: newWipId,
+            odoo_mo_id: id,
+            odoo_warehouse_id: whId,
+            vendor_name: whName,
+            parent_mo_name: parentMoName,
+            mo_name: moName,
+            mo_state: 'confirmed',
+            product_name: mo.product_id ? mo.product_id[1] : null,
+            qty_spk: parseFloat(mo.product_qty || 0),
+            qty_kebutuhan_kain: qtyKebutuhanKain,
+            status_produksi: 'Proses'
+          });
+        } catch (mErr) {
+          logger.warn(`[WIP Service] Initial MySQL sync warning for WIP #${newWipId}: ${mErr.message}`);
         }
       }
 
@@ -579,6 +609,62 @@ export class WipVendorService {
     });
 
     logger.info(`[WIP Service] ✅ Successfully synchronized WIP #${wipId} in 1 single transaction!`);
+
+    // Live MySQL synchronization
+    try {
+      const whId = mo.warehouse_id ? mo.warehouse_id[0] : (wip.x_studio_warehouse ? wip.x_studio_warehouse[0] : null);
+      const whName = mo.warehouse_id ? mo.warehouse_id[1] : (wip.x_studio_warehouse ? wip.x_studio_warehouse[1] : '');
+      let parentMoName = null;
+      if (moName.includes('-')) {
+        const parts = moName.split('-');
+        if (/^\d+$/.test(parts[parts.length - 1])) {
+          parentMoName = moName.substring(0, moName.lastIndexOf('-'));
+        }
+      }
+
+      const mysqlWipId = await wipMysqlRepo.upsertWipOrder({
+        odoo_wip_id: wipId,
+        odoo_mo_id: moId,
+        odoo_warehouse_id: whId,
+        vendor_name: whName,
+        parent_mo_name: parentMoName,
+        mo_name: moName,
+        mo_state: mo.state || 'confirmed',
+        sales_order: mo.x_studio_sales_order ? mo.x_studio_sales_order[1] : (wip.x_studio_sales_order ? wip.x_studio_sales_order[1] : null),
+        product_name: mo.product_id ? mo.product_id[1] : (wip.x_studio_product ? wip.x_studio_product[1] : null),
+        qty_spk: parseFloat(mo.product_qty || wip.x_studio_qty_spk || 0),
+        start_spk: mo.date_start || wip.x_studio_start_spk || null,
+        deadline_spk: mo.date_deadline || wip.x_studio_deadline_spk || null,
+        qty_kebutuhan_kain: parseFloat(wip.x_studio_qty_kebutuhan_kain || 0),
+        kain_dari_gudang: kainQty,
+        unit_kain: unitKain,
+        accessories_dari_gudang: accsQty,
+        estimasi_dari_spb: estimasiDariSpb,
+        status_kebutuhan_kain: statusKebutuhanKain,
+        actual_cutting: actualCutting,
+        selisih_hasil_cutting: selisihCutting,
+        qty_grade_a: parseFloat(wip.x_studio_qty_kirim_a_grade || 0),
+        qty_grade_b: parseFloat(wip.x_studio_qty_kirim_b_grade || 0),
+        sisa_makloon_kg: parseFloat(wip.x_studio_sisa_makloon_kg || 0),
+        no_surat_jalan_sfp: sfpVals.x_studio_no_surat_jalan_sfp || null,
+        tanggal_sfp: sfpVals.x_studio_tanggal_sfp || null,
+        qty_masuk_sfp: sfpVals.x_studio_qty_masuk_sfp || 0,
+        harga_vendor: hargaVendor,
+        total_harga: totalHarga,
+        status_produksi: wip.x_studio_status_produksi || 'Proses',
+        is_active: 1,
+        odoo_write_date: new Date().toISOString().slice(0, 19).replace('T', ' ')
+      });
+
+      if (allLinesToSum.length > 0) {
+        await wipMysqlRepo.upsertRollLines(mysqlWipId, allLinesToSum);
+      }
+
+      // Propagate roll weights to child backorders if any
+      await wipMysqlRepo.propagateRollWeightsToBackorders(mysqlWipId);
+    } catch (mysqlErr) {
+      logger.warn(`[WIP Service] Live MySQL sync warning for WIP #${wipId}: ${mysqlErr.message}`);
+    }
     return {
       wipId,
       moId,
@@ -841,6 +927,19 @@ export class WipVendorService {
     await this.odoo._callObject('x_monitoring_wip_vendo', 'write', [[id], updatedWipVals], {
       context: { tracking_disable: true, no_automation: true }
     });
+
+    // Update MySQL WIP Order production results and lock result
+    try {
+      await db.query(
+        `UPDATE wip_orders 
+         SET qty_grade_a = ?, qty_grade_b = ?, sisa_makloon_kg = ?, 
+             result_locked_at = COALESCE(result_locked_at, NOW()) 
+         WHERE odoo_wip_id = ?`,
+        [aGrade, bGrade, sisaKg, id]
+      );
+    } catch (mErr) {
+      logger.warn(`[WIP Service] MySQL production result update warning for WIP #${id}: ${mErr.message}`);
+    }
 
     return {
       success: true,
