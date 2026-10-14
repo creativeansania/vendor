@@ -13,6 +13,9 @@ import {
   Layers,
   Users,
   ChevronRight,
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
   RefreshCw,
   Building2,
   Lock,
@@ -90,6 +93,51 @@ export default function DashboardPage() {
     setPage(1);
     loadOrders();
   };
+
+  const handlePageChange = (newPage) => {
+    if (newPage < 1 || newPage > totalPages || newPage === page) return;
+    setPage(newPage);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 1) return [];
+
+    const delta = 1; // Number of pages around current page
+    const range = [];
+    const rangeWithDots = [];
+    let prev;
+
+    for (let i = 1; i <= totalPages; i++) {
+      if (
+        i === 1 ||
+        i === totalPages ||
+        (i >= page - delta && i <= page + delta) ||
+        (page <= 3 && i <= 5) ||
+        (page >= totalPages - 2 && i >= totalPages - 4)
+      ) {
+        range.push(i);
+      }
+    }
+
+    const uniqueRange = Array.from(new Set(range)).sort((a, b) => a - b);
+
+    for (let i of uniqueRange) {
+      if (prev) {
+        if (i - prev === 2) {
+          rangeWithDots.push(prev + 1);
+        } else if (i - prev !== 1) {
+          rangeWithDots.push('...');
+        }
+      }
+      rangeWithDots.push(i);
+      prev = i;
+    }
+
+    return rangeWithDots;
+  }, [page, totalPages]);
 
   const getRoleBadge = (role) => {
     switch (role) {
@@ -444,28 +492,87 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Pagination Controls */}
+        {/* Numbered Pagination Controls */}
         {totalPages > 1 && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="btn btn-secondary"
-              style={{ padding: '8px 16px', fontSize: '0.82rem', borderRadius: '10px' }}
-            >
-              Prev
-            </button>
-            <span style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-              <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>{page}</strong> / <strong className="mono-num">{totalPages}</strong>
-            </span>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className="btn btn-secondary"
-              style={{ padding: '8px 16px', fontSize: '0.82rem', borderRadius: '10px' }}
-            >
-              Next
-            </button>
+          <div className="pagination-wrapper">
+            <div className="pagination-list">
+              {/* Prev Button */}
+              <button
+                onClick={() => handlePageChange(page - 1)}
+                disabled={page <= 1}
+                className="pagination-item pagination-item-nav"
+                title="Halaman Sebelumnya"
+              >
+                <ChevronLeft size={16} />
+                <span className="hide-on-mobile">Prev</span>
+              </button>
+
+              {/* Numbered Page Buttons */}
+              {pageNumbers.map((pItem, idx) => {
+                if (pItem === '...') {
+                  return (
+                    <span key={`dots-${idx}`} className="pagination-ellipsis">
+                      •••
+                    </span>
+                  );
+                }
+                const isCurrent = pItem === page;
+                return (
+                  <button
+                    key={pItem}
+                    onClick={() => handlePageChange(pItem)}
+                    className={`pagination-item ${isCurrent ? 'active' : ''}`}
+                    aria-current={isCurrent ? 'page' : undefined}
+                    title={`Halaman ${pItem}`}
+                  >
+                    {pItem}
+                  </button>
+                );
+              })}
+
+              {/* Next Button */}
+              <button
+                onClick={() => handlePageChange(page + 1)}
+                disabled={page >= totalPages}
+                className="pagination-item pagination-item-nav"
+                title="Halaman Selanjutnya"
+              >
+                <span className="hide-on-mobile">Next</span>
+                <ChevronRight size={16} />
+              </button>
+            </div>
+
+            {/* Pagination Info & Quick Jump */}
+            <div className="pagination-info" style={{ flexWrap: 'wrap', justifyContent: 'center' }}>
+              <span>
+                Halaman <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>{page}</strong> dari <strong className="mono-num">{totalPages}</strong> ({totalCount} total SPK)
+              </span>
+
+              {totalPages > 5 && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Lompat ke:</span>
+                  <select
+                    value={page}
+                    onChange={(e) => handlePageChange(Number(e.target.value))}
+                    className="select-field"
+                    style={{
+                      height: '32px',
+                      padding: '2px 8px',
+                      fontSize: '0.82rem',
+                      borderRadius: '8px',
+                      width: 'auto',
+                      fontWeight: 700
+                    }}
+                  >
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((pNum) => (
+                      <option key={pNum} value={pNum}>
+                        Hal {pNum}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </main>
