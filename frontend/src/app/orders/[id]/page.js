@@ -324,7 +324,7 @@ function OrderDetailContent() {
               )}
             </div>
             <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              SO: {order.source_document || '-'} • {order.vendor_name}
+              SO: {order.source_document || order.sales_order || '-'} • {order.vendor_name}
             </p>
           </div>
         </div>
@@ -379,7 +379,7 @@ function OrderDetailContent() {
           >
             <Info size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
             <div>
-              <strong>Backorder Turunan:</strong> Data timbangan roll diwarisi otomatis dari MO induk. Anda bisa langsung menginput hasil jahit.
+              <strong>Backorder Turunan:</strong> Data hasil potong/bahan diwarisi otomatis dari MO induk. Anda bisa langsung menginput hasil jahit.
             </div>
           </div>
         )}
@@ -397,7 +397,7 @@ function OrderDetailContent() {
             <div>
               <span className="form-label">Target SPK</span>
               <div className="mono-num" style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--brand-gold)' }}>
-                {Number(order.qty_target).toLocaleString('id-ID')} <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>pcs</span>
+                {Number(order.qty_target || order.qty_spk || 0).toLocaleString('id-ID')} <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>pcs</span>
               </div>
             </div>
 
@@ -846,7 +846,7 @@ function OrderDetailContent() {
                 <div>
                   <div className="metric-label" style={{ fontSize: '0.68rem' }}>Target SPK</div>
                   <div className="mono-num" style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    {Number(order.qty_target).toLocaleString('id-ID')} <span style={{ fontSize: '0.75rem' }}>pcs</span>
+                    {Number(order.qty_target || order.qty_spk || 0).toLocaleString('id-ID')} <span style={{ fontSize: '0.75rem' }}>pcs</span>
                   </div>
                 </div>
                 <div>
