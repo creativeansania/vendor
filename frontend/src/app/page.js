@@ -543,25 +543,27 @@ export default function DashboardPage() {
             </div>
 
             {/* Pagination Info & Quick Jump */}
-            <div className="pagination-info" style={{ flexWrap: 'wrap', justifyContent: 'center' }}>
-              <span>
+            <div className="pagination-info" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              <span style={{ fontSize: '0.84rem' }}>
                 Halaman <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>{page}</strong> dari <strong className="mono-num">{totalPages}</strong> ({totalCount} total SPK)
               </span>
 
               {totalPages > 5 && (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Lompat ke:</span>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ color: 'var(--border-strong)' }}>•</span>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Lompat ke:</span>
                   <select
                     value={page}
                     onChange={(e) => handlePageChange(Number(e.target.value))}
                     className="select-field"
                     style={{
-                      height: '32px',
-                      padding: '2px 8px',
+                      height: '34px',
+                      padding: '2px 10px',
                       fontSize: '0.82rem',
                       borderRadius: '8px',
                       width: 'auto',
-                      fontWeight: 700
+                      fontWeight: 700,
+                      cursor: 'pointer'
                     }}
                   >
                     {Array.from({ length: totalPages }, (_, i) => i + 1).map((pNum) => (
