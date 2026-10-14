@@ -147,83 +147,98 @@ export class PwaService {
   }
 
   /**
-   * Submit physical roll cutting weights (locks cutting stage)
+   * Submit physical cutting results and/or roll weights (locks cutting stage)
    */
-  async submitCuttingRolls({ user, orderId, rollUpdates }) {
+  async submitCuttingRolls({ user, orderId, rollUpdates = [], actualCutting }) {
     const { order, rollLines } = await this.getOrderDetails({ user, orderId });
 
     if (order.is_backorder) {
-      throw new Error('MO Backorder tidak perlu ditimbang ulang (berat mengikuti MO induk)');
+      throw new Error('MO Backorder tidak perlu diinput ulang (mengikuti MO induk)');
     }
 
     if (order.cutting_locked_at) {
-      throw new Error('Tahap timbang potong sudah terkunci. Hubungi Master Admin untuk unlock.');
+      throw new Error('Tahap hasil potong sudah terkunci. Hubungi Master Admin untuk unlock.');
     }
 
-    if (!Array.isArray(rollUpdates) || rollUpdates.length === 0) {
-      throw new Error('Data timbangan roll tidak boleh kosong');
+    const beforeData = {
+      actual_cutting: order.actual_cutting,
+      lines: rollLines.map(r => ({ id: r.id, kode_lot: r.kode_lot, qty_berat_kg: r.qty_berat_kg }))
+    };
+
+    // 1. Update physical quantities in MySQL roll lines if provided
+    if (Array.isArray(rollUpdates) && rollUpdates.length > 0) {
+      for (const u of rollUpdates) {
+        const lineId = Number(u.id || u.line_id);
+        const berat = Math.max(0, parseFloat(u.qty_berat_kg || 0));
+        await db.query(
+          'UPDATE wip_roll_lines SET qty_berat_kg = ? WHERE id = ? AND wip_order_id = ?',
+          [berat, lineId, orderId]
+        );
+      }
     }
 
-    const beforeData = rollLines.map(r => ({ id: r.id, kode_lot: r.kode_lot, qty_berat_kg: r.qty_berat_kg }));
-
-    // 1. Update roll weights in MySQL
-    let actualCutting = 0.0;
-    for (const u of rollUpdates) {
-      const lineId = Number(u.id);
-      const berat = Math.max(0, parseFloat(u.qty_berat_kg || 0));
-      await db.query(
-        'UPDATE wip_roll_lines SET qty_berat_kg = ? WHERE id = ? AND wip_order_id = ?',
-        [berat, lineId, orderId]
+    // 2. Determine actual cutting output
+    let finalActualCutting = 0.0;
+    if (actualCutting !== undefined && actualCutting !== null && actualCutting !== '') {
+      finalActualCutting = Math.max(0, parseFloat(actualCutting) || 0);
+    } else {
+      // If not explicitly provided, calculate sum of fabric lines ('kain')
+      const [updatedLines] = await db.query(
+        'SELECT qty_berat_kg FROM wip_roll_lines WHERE wip_order_id = ? AND line_type = "kain"',
+        [orderId]
       );
+      const sumKain = updatedLines.reduce((sum, l) => sum + (parseFloat(l.qty_berat_kg) || 0), 0);
+      if (sumKain > 0) {
+        finalActualCutting = sumKain;
+      } else {
+        finalActualCutting = parseFloat(order.actual_cutting) || 0.0;
+      }
     }
 
-    // Recompute actual cutting in MySQL
-    const [updatedLines] = await db.query(
-      'SELECT qty_berat_kg FROM wip_roll_lines WHERE wip_order_id = ? AND line_type = "kain"',
-      [orderId]
-    );
-    actualCutting = updatedLines.reduce((sum, l) => sum + (parseFloat(l.qty_berat_kg) || 0), 0);
-    const selisihCutting = actualCutting - Number(order.estimasi_dari_spb || 0);
+    const selisihCutting = finalActualCutting - Number(order.estimasi_dari_spb || 0);
 
-    // 2. Lock cutting stage in wip_orders
+    // 3. Lock cutting stage in wip_orders
     await db.query(
       `UPDATE wip_orders 
        SET actual_cutting = ?, selisih_hasil_cutting = ?, 
            cutting_locked_at = NOW(), cutting_locked_by = ? 
        WHERE id = ?`,
-      [actualCutting, selisihCutting, user.id, orderId]
+      [finalActualCutting, selisihCutting, user.id, orderId]
     );
 
-    // 3. Enqueue to sync_outbox
+    // 4. Enqueue to sync_outbox with both actualCutting and rollUpdates
+    const formattedRollUpdates = (rollUpdates || []).map(u => ({
+      id: u.odoo_line_id || u.id || u.line_id,
+      qty_berat_kg: u.qty_berat_kg
+    }));
+
     await db.query(
       `INSERT INTO sync_outbox (wip_order_id, action, payload, created_by)
        VALUES (?, 'cutting_rolls', ?, ?)`,
       [
         orderId,
         JSON.stringify({
-          rollUpdates: rollUpdates.map(u => ({
-            id: u.odoo_line_id || u.id,
-            qty_berat_kg: u.qty_berat_kg
-          }))
+          actualCutting: finalActualCutting,
+          rollUpdates: formattedRollUpdates
         }),
         user.id
       ]
     );
 
-    // 4. Record audit log
+    // 5. Record audit log
     await db.query(
       `INSERT INTO audit_logs (user_id, wip_order_id, action, before_data, after_data)
        VALUES (?, ?, 'submit_cutting', ?, ?)`,
-      [user.id, orderId, JSON.stringify(beforeData), JSON.stringify(rollUpdates)]
+      [user.id, orderId, JSON.stringify(beforeData), JSON.stringify({ actualCutting: finalActualCutting, rollUpdates })]
     );
 
-    // 5. Trigger outbox worker asynchronously
+    // 6. Trigger outbox worker asynchronously
     outboxWorker.processOutbox().catch(() => {});
 
     return {
       success: true,
-      message: 'Timbangan potong berhasil disimpan dan terkunci.',
-      actualCutting,
+      message: 'Hasil potong berhasil disimpan dan terkunci.',
+      actualCutting: finalActualCutting,
       selisihCutting
     };
   }

@@ -953,24 +953,28 @@ export class WipVendorService {
   }
 
   /**
-   * 4. Updates physical roll cutting weights (Callable from Vendor PWA)
+   * 4. Updates physical roll cutting weights and/or actual cutting (Callable from Vendor PWA)
    */
-  async updateCuttingRolls({ wipId, rollUpdates }) {
+  async updateCuttingRolls({ wipId, rollUpdates = [], actualCutting }) {
     await this._ensureAuth();
     const id = Number(wipId);
     if (!id || isNaN(id)) {
       throw new Error(`Invalid WIP ID: ${wipId}`);
     }
 
-    if (!Array.isArray(rollUpdates) || rollUpdates.length === 0) {
-      throw new Error('rollUpdates must be a non-empty array of { lineId, qtyBeratKg }');
-    }
+    const updates = Array.isArray(rollUpdates) ? rollUpdates : [];
 
-    logger.info(`[WIP Service] Updating ${rollUpdates.length} cutting roll lines for WIP #${id}...`);
+    logger.info(`[WIP Service] Updating cutting for WIP #${id} (rolls: ${updates.length}, actualCutting: ${actualCutting})...`);
 
-    for (const update of rollUpdates) {
+    for (const update of updates) {
       const lineId = Number(update.lineId || update.id);
-      const qtyBeratKg = parseFloat(update.qtyBeratKg !== undefined ? update.qtyBeratKg : update.x_studio_qty_berat_kg) || 0.0;
+      const qtyBeratKg = parseFloat(
+        update.qtyBeratKg !== undefined
+          ? update.qtyBeratKg
+          : update.qty_berat_kg !== undefined
+          ? update.qty_berat_kg
+          : update.x_studio_qty_berat_kg
+      ) || 0.0;
 
       if (lineId) {
         await this.odoo._callObject('x_monitoring_wip_vendo_line_4c93a', 'write', [
@@ -978,6 +982,28 @@ export class WipVendorService {
           { x_studio_qty_berat_kg: qtyBeratKg }
         ]);
       }
+    }
+
+    // If explicit actualCutting is provided, write to Odoo WIP record
+    if (actualCutting !== undefined && actualCutting !== null && actualCutting !== '') {
+      const parsedActual = Math.max(0, parseFloat(actualCutting) || 0);
+      const wips = await this.odoo._callObject('x_monitoring_wip_vendo', 'read', [[id]], {
+        fields: ['x_studio_manufacturing_order', 'x_studio_estimasi_dari_spb']
+      });
+      const wip = wips && wips[0] ? wips[0] : null;
+      const estimasi = wip ? (parseFloat(wip.x_studio_estimasi_dari_spb) || 0) : 0;
+      const selisih = parsedActual - estimasi;
+
+      await this.odoo._callObject('x_monitoring_wip_vendo', 'write', [[id], {
+        x_studio_actual_cutting: parsedActual,
+        x_studio_selisih_hasil_cutting: selisih
+      }]);
+
+      if (wip && wip.x_studio_manufacturing_order) {
+        const moId = wip.x_studio_manufacturing_order[0];
+        return this._syncWipFromPickings(id, moId);
+      }
+      return { success: true, wipId: id, actualCutting: parsedActual };
     }
 
     // Re-trigger sync compute to recalculate actual cutting and variance

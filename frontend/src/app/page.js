@@ -172,7 +172,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="card metric-card">
-            <span className="metric-label" style={{ fontSize: '0.68rem' }}>Perlu Timbang</span>
+            <span className="metric-label" style={{ fontSize: '0.68rem' }}>Perlu Potong</span>
             <div className="metric-value mono-num" style={{ fontSize: '1.4rem', color: 'var(--status-amber)' }}>
               {orders.filter(o => !o.cutting_locked_at && !o.is_backorder).length}
             </div>
@@ -253,7 +253,7 @@ export default function DashboardPage() {
                 className={`filter-chip ${status === 'cutting_pending' ? 'active' : ''}`}
                 onClick={() => { setStatus('cutting_pending'); setPage(1); }}
               >
-                ✂️ Belum Timbang
+                ✂️ Belum Potong
               </button>
               <button
                 className={`filter-chip ${status === 'cutting_locked' ? 'active' : ''}`}
@@ -332,7 +332,7 @@ export default function DashboardPage() {
                           </span>
                         ) : (
                           <span className="badge badge-amber" style={{ fontSize: '0.68rem' }}>
-                            <Scissors size={12} /> Timbang
+                            <Scissors size={12} /> Potong
                           </span>
                         )}
                       </div>

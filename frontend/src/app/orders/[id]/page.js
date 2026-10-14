@@ -36,7 +36,8 @@ function OrderDetailContent() {
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState({ text: '', type: '' });
 
-  // Cutting roll weights state { [lineId]: weight }
+  // Cutting stage state: actual cutting output & roll/material weights
+  const [actualCutting, setActualCutting] = useState('');
   const [rollWeights, setRollWeights] = useState({});
 
   // Production results form state
@@ -65,6 +66,13 @@ function OrderDetailContent() {
       if (res.success && res.order) {
         setOrder(res.order);
         setRollLines(res.rollLines || []);
+
+        // Prepopulate cutting actual
+        setActualCutting(
+          res.order.actual_cutting !== null && res.order.actual_cutting !== undefined
+            ? res.order.actual_cutting
+            : ''
+        );
 
         // Prepopulate cutting roll weights
         const weights = {};
@@ -102,9 +110,21 @@ function OrderDetailContent() {
     }));
   };
 
-  // Submit Cutting Rolls
+  // Submit Cutting Stage
   const handleSubmitCutting = async () => {
-    if (!confirm('Apakah Anda yakin ingin MENGUNCI dan mengirim timbangan hasil potong ini? Setelah dikunci, data tidak dapat diubah.')) {
+    const inputActual = actualCutting !== '' ? parseFloat(actualCutting) : null;
+    const rolls = Object.entries(rollWeights).map(([lineId, weight]) => ({
+      id: Number(lineId),
+      line_id: Number(lineId),
+      qty_berat_kg: parseFloat(weight) || 0
+    }));
+
+    if (inputActual === null && rolls.length === 0) {
+      alert('Harap isi hasil potong aktual atau rincian bahan fisik.');
+      return;
+    }
+
+    if (!confirm('Apakah Anda yakin ingin MENGUNCI dan menyimpan hasil potong ini? Setelah dikunci, data tidak dapat diubah.')) {
       return;
     }
 
@@ -112,21 +132,19 @@ function OrderDetailContent() {
     setFeedback({ text: '', type: '' });
 
     try {
-      const rolls = Object.entries(rollWeights).map(([lineId, weight]) => ({
-        line_id: Number(lineId),
-        qty_berat_kg: parseFloat(weight) || 0
-      }));
-
       const res = await fetchApi(`/pwa/orders/${orderId}/cutting-rolls`, {
         method: 'POST',
-        body: JSON.stringify({ rolls })
+        body: JSON.stringify({
+          actual_cutting: inputActual,
+          rollUpdates: rolls
+        })
       });
 
       if (res.success) {
-        setFeedback({ text: 'Timbangan potong berhasil dikunci dan dikirim ke Odoo!', type: 'success' });
+        setFeedback({ text: 'Tahap hasil potong berhasil dikunci dan disinkronkan ke Odoo!', type: 'success' });
         loadData();
       } else {
-        setFeedback({ text: res.message || 'Gagal menyimpan timbangan.', type: 'error' });
+        setFeedback({ text: res.message || 'Gagal menyimpan hasil potong.', type: 'error' });
       }
     } catch (err) {
       setFeedback({ text: err.message, type: 'error' });
@@ -204,18 +222,62 @@ function OrderDetailContent() {
     }
   };
 
-  // Calculations for Scale Summary
-  const totalPhysicalWeight = useMemo(() => {
-    return Object.values(rollWeights).reduce((sum, w) => sum + (parseFloat(w) || 0), 0);
-  }, [rollWeights]);
+  // Material lines segmentation: Kain (Fabric) vs Aksesoris/Pelengkap
+  const fabricLines = useMemo(() => {
+    return rollLines.filter((l) => l.line_type === 'kain' || (!l.line_type && (l.nama_item || '').toLowerCase().includes('kain')));
+  }, [rollLines]);
+
+  const accessoryLines = useMemo(() => {
+    return rollLines.filter((l) => !fabricLines.includes(l));
+  }, [rollLines, fabricLines]);
+
+  const orderUnit = (order?.unit_kain || 'pcs').toLowerCase();
+
+  const getLineUom = (line) => (line.uom || order?.unit_kain || 'pcs').toUpperCase();
+
+  const getLineLabel = (line) => {
+    const uom = (line.uom || order?.unit_kain || '').toLowerCase();
+    if (uom === 'kg') return 'BERAT TIMBANG:';
+    if (uom === 'yard' || uom === 'yd') return 'PANJANG FISIK:';
+    if (uom === 'meter' || uom === 'm') return 'PANJANG FISIK:';
+    return 'JUMLAH FISIK:';
+  };
+
+  // Calculations for Fabric & Cutting
+  const totalPhysicalFabric = useMemo(() => {
+    return fabricLines.reduce((sum, l) => {
+      const val = rollWeights[l.id] !== undefined ? rollWeights[l.id] : (l.qty_berat_kg || 0);
+      return sum + (parseFloat(val) || 0);
+    }, 0);
+  }, [fabricLines, rollWeights]);
+
+  const estimasiSpb = parseFloat(order?.estimasi_dari_spb || 0);
+
+  const currentActualCutting = useMemo(() => {
+    if (actualCutting !== '' && actualCutting !== null && actualCutting !== undefined) {
+      return parseFloat(actualCutting) || 0;
+    }
+    if (order?.actual_cutting !== null && order?.actual_cutting !== undefined && order.actual_cutting > 0) {
+      return parseFloat(order.actual_cutting);
+    }
+    if (totalPhysicalFabric > 0) {
+      return totalPhysicalFabric;
+    }
+    return 0;
+  }, [actualCutting, order, totalPhysicalFabric]);
+
+  const selisihCutting = useMemo(() => {
+    return currentActualCutting - estimasiSpb;
+  }, [currentActualCutting, estimasiSpb]);
 
   const totalYieldPcs = useMemo(() => {
     return (parseFloat(gradeA) || 0) + (parseFloat(gradeB) || 0);
   }, [gradeA, gradeB]);
 
   const yieldPercentage = useMemo(() => {
-    if (!order || !order.qty_target || order.qty_target <= 0) return 0;
-    return ((totalYieldPcs / order.qty_target) * 100).toFixed(1);
+    const target = order?.qty_target || order?.qty_spk || 0;
+    if (!target || target <= 0) return 0;
+    return ((totalYieldPcs / target) * 100).toFixed(1);
   }, [order, totalYieldPcs]);
 
   if (loading || !order) {
@@ -258,7 +320,7 @@ function OrderDetailContent() {
               ) : isCuttingLocked ? (
                 <span className="badge badge-sky" style={{ fontSize: '0.68rem' }}><Lock size={12} /> Sedang Jahit</span>
               ) : (
-                <span className="badge badge-amber" style={{ fontSize: '0.68rem' }}><Scissors size={12} /> Belum Timbang</span>
+                <span className="badge badge-amber" style={{ fontSize: '0.68rem' }}><Scissors size={12} /> Belum Potong</span>
               )}
             </div>
             <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -362,7 +424,7 @@ function OrderDetailContent() {
             className={`tab-btn ${activeTab === 'timbang' ? 'btn-primary' : 'btn-secondary'}`}
           >
             <Scissors size={14} />
-            <span>Timbang Potong ({rollLines.length})</span>
+            <span>1. Hasil Potong {rollLines.length > 0 ? `(${rollLines.length})` : ''}</span>
           </button>
 
           <button
@@ -370,7 +432,7 @@ function OrderDetailContent() {
             className={`tab-btn ${activeTab === 'hasil' ? 'btn-primary' : 'btn-secondary'}`}
           >
             <Package size={14} />
-            <span>Hasil Jahit</span>
+            <span>2. Hasil Jahit</span>
           </button>
 
           <button
@@ -378,11 +440,11 @@ function OrderDetailContent() {
             className={`tab-btn ${activeTab === 'bahan' ? 'btn-primary' : 'btn-secondary'}`}
           >
             <Layers size={14} />
-            <span>Bahan BOM</span>
+            <span>3. Bahan BOM</span>
           </button>
         </div>
 
-        {/* TAB 1: TIMBANGAN POTONG ROLL */}
+        {/* TAB 1: HASIL POTONG & BAHAN BAKU */}
         {activeTab === 'timbang' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {/* Stage Status Card */}
@@ -403,16 +465,16 @@ function OrderDetailContent() {
                 {isCuttingLocked ? (
                   <Lock size={20} color="var(--status-emerald)" style={{ flexShrink: 0 }} />
                 ) : (
-                  <Scale size={20} color="var(--status-amber)" style={{ flexShrink: 0 }} />
+                  <Scissors size={20} color="var(--status-amber)" style={{ flexShrink: 0 }} />
                 )}
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}>
-                    {isCuttingLocked ? 'Timbangan Potong Terkunci' : 'Timbang Fisik Roll Kain Potong'}
+                    {isCuttingLocked ? 'Tahap Hasil Potong Terkunci' : 'Hasil Potong & Verifikasi Bahan'}
                   </div>
                   <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
                     {isCuttingLocked
                       ? `Terkunci: ${order.cutting_locked_at ? new Date(order.cutting_locked_at).toLocaleString('id-ID') : 'Otomatis'}`
-                      : 'Input berat timbangan fisik per roll sebelum memulai proses jahit.'}
+                      : 'Input hasil potong aktual dan verifikasi fisik bahan baku sebelum proses jahit.'}
                   </div>
                 </div>
               </div>
@@ -430,109 +492,278 @@ function OrderDetailContent() {
               )}
             </div>
 
-            {/* Scale Summary KPI Row */}
-            <div className="card" style={{ padding: '14px 16px' }}>
-              <div className="scale-summary-grid">
-                <div>
-                  <div className="metric-label" style={{ fontSize: '0.68rem' }}>Total Roll</div>
+            {/* HERO CARD: HASIL CUTTING (POTONG) AKTUAL */}
+            <div className="card" style={{ padding: '16px', background: 'var(--bg-card)', border: '1px solid var(--border-default)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Scissors size={18} color="var(--brand-gold)" />
+                  <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                    Hasil Cutting (Potong) Aktual
+                  </span>
+                </div>
+                <span className="badge badge-primary mono-num" style={{ textTransform: 'uppercase', fontSize: '0.72rem' }}>
+                  Satuan: {order.unit_kain || 'PCS'}
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
+                {/* 1. Estimasi SPB */}
+                <div style={{ background: 'var(--bg-card-hover)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-default)' }}>
+                  <div className="metric-label" style={{ fontSize: '0.68rem', marginBottom: '4px' }}>Estimasi dari SPB</div>
                   <div className="mono-num" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                    {rollLines.length}
+                    {estimasiSpb.toLocaleString('id-ID')} <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{order.unit_kain || 'pcs'}</span>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    Target dari SPB
                   </div>
                 </div>
-                <div>
-                  <div className="metric-label" style={{ fontSize: '0.68rem' }}>Total Berat</div>
-                  <div className="mono-num" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--brand-gold)' }}>
-                    {totalPhysicalWeight.toFixed(2)} <span style={{ fontSize: '0.75rem' }}>kg</span>
+
+                {/* 2. Hasil Cutting Aktual Input */}
+                <div style={{ background: 'var(--bg-card-hover)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-default)' }}>
+                  <div className="metric-label" style={{ fontSize: '0.68rem', marginBottom: '4px' }}>Hasil Potong Aktual</div>
+                  {canEditCutting ? (
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        disabled={saving}
+                        placeholder={estimasiSpb > 0 ? String(estimasiSpb) : '0'}
+                        value={actualCutting}
+                        onChange={(e) => setActualCutting(e.target.value)}
+                        className="input-field mono-num"
+                        style={{
+                          height: '40px',
+                          fontSize: '1.15rem',
+                          fontWeight: 800,
+                          paddingRight: '50px',
+                          textAlign: 'right',
+                          borderColor: actualCutting ? 'var(--brand-gold)' : 'var(--border-default)',
+                          color: 'var(--brand-gold)'
+                        }}
+                      />
+                      <span
+                        style={{
+                          position: 'absolute',
+                          right: '10px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          color: 'var(--text-muted)',
+                          textTransform: 'uppercase'
+                        }}
+                      >
+                        {order.unit_kain || 'PCS'}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="mono-num" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--brand-gold)' }}>
+                      {(parseFloat(order.actual_cutting) || currentActualCutting).toLocaleString('id-ID')}{' '}
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{order.unit_kain || 'pcs'}</span>
+                    </div>
+                  )}
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    Fisik hasil cutting
                   </div>
                 </div>
-                <div>
-                  <div className="metric-label" style={{ fontSize: '0.68rem' }}>Rata-rata/Roll</div>
-                  <div className="mono-num" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-secondary)' }}>
-                    {rollLines.length > 0 ? (totalPhysicalWeight / rollLines.length).toFixed(2) : '0.00'} <span style={{ fontSize: '0.75rem' }}>kg</span>
+
+                {/* 3. Selisih Hasil Potong */}
+                <div style={{ background: 'var(--bg-card-hover)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-default)' }}>
+                  <div className="metric-label" style={{ fontSize: '0.68rem', marginBottom: '4px' }}>Selisih Cutting</div>
+                  <div className="mono-num" style={{
+                    fontSize: '1.25rem',
+                    fontWeight: 800,
+                    color: selisihCutting > 0 ? 'var(--status-emerald)' : selisihCutting < 0 ? 'var(--status-rose)' : 'var(--text-primary)'
+                  }}>
+                    {selisihCutting > 0 ? `+${selisihCutting.toFixed(2)}` : selisihCutting.toFixed(2)}{' '}
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{order.unit_kain || 'pcs'}</span>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', marginTop: '2px', fontWeight: 600, color: selisihCutting > 0 ? 'var(--status-emerald)' : selisihCutting < 0 ? 'var(--status-rose)' : 'var(--text-secondary)' }}>
+                    {selisihCutting === 0 ? '✓ Sesuai SPB' : selisihCutting > 0 ? '▲ Hasil Lebih' : '▼ Hasil Kurang'}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Roll Lines List */}
-            {rollLines.length === 0 ? (
-              <div className="card" style={{ padding: '36px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                Belum ada rincian baris roll kain untuk SPK ini.
-              </div>
-            ) : (
+            {/* SECTION 1: BAHAN KAIN (FABRIC ROLLS) IF PRESENT */}
+            {fabricLines.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {rollLines.map((line, idx) => (
-                  <div key={line.id} className="card roll-card">
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
-                        <span className="badge badge-muted mono-num" style={{ fontSize: '0.68rem' }}>#{idx + 1}</span>
-                        <span className="mono-num" style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
-                          Lot: {line.kode_lot || 'N/A'}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                        {line.nama_item}
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        Estimasi Standar: <span className="mono-num">{line.qty || 0} {line.uom || 'kg'}</span>
-                      </div>
-                    </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    🧵 Rincian Bahan Kain ({fabricLines.length} baris)
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Total: <strong className="mono-num" style={{ color: 'var(--brand-gold)' }}>{totalPhysicalFabric.toFixed(2)} {getLineUom(fabricLines[0])}</strong>
+                  </span>
+                </div>
 
-                    <div className="roll-input-row">
-                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                        BERAT TIMBANG:
-                      </label>
-                      <div style={{ position: 'relative', width: '120px' }}>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          disabled={!canEditCutting || saving}
-                          placeholder="0.00"
-                          value={rollWeights[line.id] !== undefined ? rollWeights[line.id] : ''}
-                          onChange={(e) => handleWeightChange(line.id, e.target.value)}
-                          className="input-field mono-num"
-                          style={{
-                            height: '40px',
-                            fontSize: '1rem',
-                            fontWeight: 700,
-                            paddingRight: '34px',
-                            textAlign: 'right',
-                            borderColor: rollWeights[line.id] ? 'var(--brand-gold)' : 'var(--border-default)'
-                          }}
-                        />
-                        <span
-                          style={{
-                            position: 'absolute',
-                            right: '10px',
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            color: 'var(--text-muted)'
-                          }}
-                        >
-                          KG
-                        </span>
+                {fabricLines.map((line, idx) => {
+                  const lineUom = getLineUom(line);
+                  const lineLabel = getLineLabel(line);
+
+                  return (
+                    <div key={line.id} className="card roll-card">
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                          <span className="badge badge-muted mono-num" style={{ fontSize: '0.68rem' }}>#{idx + 1}</span>
+                          <span className="mono-num" style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
+                            Lot: {line.kode_lot || 'N/A'}
+                          </span>
+                          <span className="badge badge-primary mono-num" style={{ fontSize: '0.65rem' }}>{lineUom}</span>
+                        </div>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                          {line.nama_item}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          Estimasi Standar: <span className="mono-num">{line.qty || 0} {lineUom}</span>
+                        </div>
+                      </div>
+
+                      <div className="roll-input-row">
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                          {lineLabel}
+                        </label>
+                        <div style={{ position: 'relative', width: '130px' }}>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            disabled={!canEditCutting || saving}
+                            placeholder="0.00"
+                            value={rollWeights[line.id] !== undefined ? rollWeights[line.id] : ''}
+                            onChange={(e) => handleWeightChange(line.id, e.target.value)}
+                            className="input-field mono-num"
+                            style={{
+                              height: '40px',
+                              fontSize: '1rem',
+                              fontWeight: 700,
+                              paddingRight: lineUom.length > 3 ? '48px' : '38px',
+                              textAlign: 'right',
+                              borderColor: rollWeights[line.id] ? 'var(--brand-gold)' : 'var(--border-default)'
+                            }}
+                          />
+                          <span
+                            style={{
+                              position: 'absolute',
+                              right: '10px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              color: 'var(--text-muted)'
+                            }}
+                          >
+                            {lineUom}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
+              </div>
+            )}
+
+            {/* SECTION 2: AKSESORIS & PELENGKAP (ACCESSORIES) IF PRESENT */}
+            {accessoryLines.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: fabricLines.length > 0 ? '6px' : '0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    🏷️ Aksesoris & Bahan Pelengkap ({accessoryLines.length} item)
+                  </span>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                    Verifikasi fisik & pemakaian
+                  </span>
+                </div>
+
+                {accessoryLines.map((line, idx) => {
+                  const lineUom = getLineUom(line);
+
+                  return (
+                    <div key={line.id} className="card roll-card">
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                          <span className="badge badge-muted mono-num" style={{ fontSize: '0.68rem' }}>#{idx + 1}</span>
+                          <span className="badge badge-sky mono-num" style={{ fontSize: '0.65rem' }}>{lineUom}</span>
+                          {line.kode_lot && (
+                            <span className="mono-num" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                              Lot: {line.kode_lot}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {line.nama_item}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          Estimasi SPK: <span className="mono-num">{line.qty || 0} {lineUom}</span>
+                        </div>
+                      </div>
+
+                      <div className="roll-input-row">
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                          JUMLAH FISIK:
+                        </label>
+                        <div style={{ position: 'relative', width: '130px' }}>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            disabled={!canEditCutting || saving}
+                            placeholder={line.qty ? String(line.qty) : '0'}
+                            value={rollWeights[line.id] !== undefined ? rollWeights[line.id] : ''}
+                            onChange={(e) => handleWeightChange(line.id, e.target.value)}
+                            className="input-field mono-num"
+                            style={{
+                              height: '40px',
+                              fontSize: '1rem',
+                              fontWeight: 700,
+                              paddingRight: lineUom.length > 3 ? '48px' : '38px',
+                              textAlign: 'right',
+                              borderColor: rollWeights[line.id] ? 'var(--brand-gold)' : 'var(--border-default)'
+                            }}
+                          />
+                          <span
+                            style={{
+                              position: 'absolute',
+                              right: '10px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              color: 'var(--text-muted)'
+                            }}
+                          >
+                            {lineUom}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* EMPTY STATE IF NO LINES AT ALL */}
+            {fabricLines.length === 0 && accessoryLines.length === 0 && (
+              <div className="card" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                SPK ini tidak memiliki baris rincian bahan atau aksesoris terpisah di Odoo.
+                <br />
+                Silakan langsung isi <strong>Hasil Cutting (Potong) Aktual</strong> pada kartu di atas.
               </div>
             )}
 
             {/* Submit Cutting Button */}
-            {canEditCutting && rollLines.length > 0 && (
-              <div style={{ marginTop: '6px' }}>
+            {canEditCutting && (
+              <div style={{ marginTop: '8px' }}>
                 <button
                   type="button"
-                  disabled={saving || totalPhysicalWeight <= 0}
+                  disabled={saving || (actualCutting === '' && totalPhysicalFabric <= 0 && Object.keys(rollWeights).length === 0)}
                   onClick={handleSubmitCutting}
                   className="btn btn-primary"
                   style={{ width: '100%', padding: '13px', fontSize: '0.95rem' }}
                 >
                   <Lock size={16} />
-                  <span>{saving ? 'Mengunci...' : 'Kunci & Simpan Timbangan Potong'}</span>
+                  <span>{saving ? 'Mengunci...' : 'Kunci & Simpan Hasil Potong'}</span>
                 </button>
               </div>
             )}
@@ -559,7 +790,7 @@ function OrderDetailContent() {
               >
                 <AlertCircle size={18} style={{ flexShrink: 0 }} />
                 <span>
-                  <strong>Perhatian:</strong> Kunci tahap timbangan potong terlebih dahulu sebelum mengunci hasil jahit.
+                  <strong>Perhatian:</strong> Kunci tahap hasil potong terlebih dahulu sebelum mengunci hasil jahit.
                 </span>
               </div>
             )}

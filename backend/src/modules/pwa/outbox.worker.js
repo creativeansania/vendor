@@ -59,7 +59,8 @@ export class OutboxWorker {
           if (item.action === 'cutting_rolls') {
             await wipVendorService.updateCuttingRolls({
               wipId: item.odoo_wip_id,
-              rollUpdates: payload.rollUpdates || []
+              rollUpdates: payload.rollUpdates || [],
+              actualCutting: payload.actualCutting
             });
           } else if (item.action === 'production_result') {
             await wipVendorService.submitProductionResult({

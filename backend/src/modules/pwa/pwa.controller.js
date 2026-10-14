@@ -33,11 +33,15 @@ export const handleGetOrderDetails = async (req, res) => {
 export const handleSubmitCuttingRolls = async (req, res) => {
   try {
     const { id } = req.params;
-    const { rollUpdates } = req.body || {};
+    const { rollUpdates, rolls, actualCutting, actual_cutting } = req.body || {};
+    const updates = Array.isArray(rollUpdates) ? rollUpdates : (Array.isArray(rolls) ? rolls : []);
+    const inputActual = actualCutting !== undefined ? actualCutting : actual_cutting;
+
     const result = await pwaService.submitCuttingRolls({
       user: req.user,
       orderId: Number(id),
-      rollUpdates
+      rollUpdates: updates,
+      actualCutting: inputActual
     });
     return res.status(200).json(result);
   } catch (err) {
