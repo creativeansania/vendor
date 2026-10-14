@@ -23,9 +23,8 @@ Aplikasi Webhook berbasis **Express.js** untuk mengintegrasikan acara faktur (*I
 
 ```
 d:\webhook jubelio odoo\
-├── package.json                 # Monorepo root workspace orchestration
-├── app.js                       # Universal forwarder ke backend/app.js (cPanel lsnode)
-├── README.md
+├── README.md                    # Dokumentasi Monorepo
+├── .gitignore                   # Git ignore root
 │
 ├── backend/                     # 🚀 REST API Express.js (Deploy di cPanel: api.kantiss.com)
 │   ├── app.js                   # Entry point Phusion Passenger / cPanel Node.js
