@@ -19,56 +19,43 @@ Aplikasi Webhook berbasis **Express.js** untuk mengintegrasikan acara faktur (*I
 
 ---
 
-## 📁 Struktur Direktori (Modular Architecture)
+## 📁 Struktur Monorepo (`backend/` & `frontend/`)
 
 ```
 d:\webhook jubelio odoo\
-├── package.json
-├── .env.example
-├── .env
-├── .gitignore
-├── app.js                       # Universal launcher untuk cPanel / lsnode
+├── package.json                 # Monorepo root workspace orchestration
+├── app.js                       # Universal forwarder ke backend/app.js (cPanel lsnode)
 ├── README.md
-├── src/
-│   ├── index.js                 # Entry point Express server
-│   ├── routes/
-│   │   └── index.js             # Main router aggregator
-│   ├── core/                    # Core Infrastructure (DRY & Shared)
-│   │   └── odoo/
-│   │       └── odooClient.js    # Pure XML-RPC Client, Auth, Multi-company, PDF
-│   ├── modules/                 # Domain Modules (Isolated & Maintainable)
-│   │   ├── jubelio/             # Integrasi Jubelio -> Sales Order
-│   │   │   ├── jubelio.service.js
-│   │   │   ├── jubelio.controller.js
-│   │   │   └── jubelio.routes.js
-│   │   ├── so-bypass/           # Auto Confirm & Delivery/Invoice Bypass
-│   │   │   ├── soBypass.service.js
-│   │   │   ├── soBypass.controller.js
-│   │   │   └── soBypass.routes.js
-│   │   ├── transfer/            # Resolusi Transfer MO/SO & Auto-Split
-│   │   │   ├── transfer.service.js
-│   │   │   ├── transfer.controller.js
-│   │   │   └── transfer.routes.js
-│   │   ├── landed-cost/         # Duplikasi Landed Cost dengan MO
-│   │   │   ├── landedCost.service.js
-│   │   │   ├── landedCost.controller.js
-│   │   │   └── landedCost.routes.js
-│   │   ├── notification-wa/     # Wablas WhatsApp & PDF Streaming
-│   │   │   ├── wablas.service.js
-│   │   │   ├── wablas.controller.js
-│   │   │   └── wablas.routes.js
-│   │   └── wip-vendor/          # Monitoring WIP Vendor Makloon (NEW)
-│   │       ├── wip.service.js
-│   │       ├── wip.controller.js
-│   │       └── wip.routes.js
-│   ├── config/
-│   │   └── env.js               # Environment variables configuration
-│   ├── middleware/
-│   │   └── jubelioSignature.js  # HMAC signature verification
-│   └── utils/
-│       ├── channelHelper.js     # Marketplace channel detection & mapping
-│       └── logger.js            # Logging utility
-└── scripts/                     # Helper test & migration scripts
+│
+├── backend/                     # 🚀 REST API Express.js (Deploy di cPanel: api.kantiss.com)
+│   ├── app.js                   # Entry point Phusion Passenger / cPanel Node.js
+│   ├── package.json
+│   ├── .env.example
+│   ├── src/
+│   │   ├── index.js             # Express server setup & background outbox worker
+│   │   ├── core/                # MySQL connection pool & Odoo XML-RPC client
+│   │   ├── middlewares/         # JWT Auth, Token Invalidation, Role Guard
+│   │   ├── modules/
+│   │   │   ├── auth/            # Login JWT & session verify
+│   │   │   ├── pwa/             # SPK listing, timbang roll, hasil jahit, outbox worker
+│   │   │   ├── admin/           # Manajemen user & vendor role
+│   │   │   ├── jubelio/         # Webhook Jubelio invoice -> Odoo SO
+│   │   │   ├── so-bypass/       # Bypass SO auto-confirm & delivery
+│   │   │   └── landed-cost/     # Landed Cost helper
+│   │   └── utils/               # Channel helper & logger
+│   └── scripts/                 # Migrasi MySQL, backfill WIP, seed Master Admin
+│
+└── frontend/                    # 📱 PWA Next.js 16 (Deploy di Vercel: vendor.kantiss.com)
+    ├── package.json
+    ├── next.config.mjs
+    ├── public/                  # manifest.json, icon.svg (PWA mobile installable)
+    └── src/
+        ├── lib/api.js           # API client with token injector & 401 interceptor
+        └── app/
+            ├── page.js          # Dashboard SPK list, status filter & search
+            ├── login/page.js    # Halaman login multi-role
+            ├── orders/[id]/     # Timbang roll potong, hasil jahit, stage locks
+            └── admin/users/     # Manajemen akun vendor & staf (Master Admin)
 ```
 
 ---
