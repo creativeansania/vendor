@@ -123,26 +123,28 @@ export default function DashboardPage() {
       {/* Top Navigation */}
       <header className="navbar">
         <div className="brand-badge" style={{ minWidth: 0, flex: 1 }}>
-          <div className="brand-icon" style={{ width: '34px', height: '34px', fontSize: '0.95rem' }}>AN</div>
+          <div className="brand-icon" style={{ width: '36px', height: '36px', fontSize: '1rem', borderRadius: '10px' }}>
+            AN
+          </div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-              <h1 style={{ fontSize: '0.96rem', margin: 0, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h1 style={{ fontSize: '0.98rem', margin: 0, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {user.vendor_name || 'Ansania Operations'}
               </h1>
               {getRoleBadge(user.role)}
             </div>
-            <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <p style={{ margin: '1px 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {user.name}
             </p>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
           {user.role === 'master_admin' && (
             <button
               onClick={() => router.push('/admin/users')}
               className="btn btn-secondary"
-              style={{ fontSize: '0.78rem', padding: '7px 12px' }}
+              style={{ fontSize: '0.78rem', padding: '7px 12px', borderRadius: '10px' }}
               title="Kelola Pengguna"
             >
               <Users size={15} />
@@ -153,10 +155,10 @@ export default function DashboardPage() {
           <button
             onClick={logout}
             className="btn btn-secondary btn-icon"
-            style={{ width: '34px', height: '34px' }}
+            style={{ width: '36px', height: '36px', borderRadius: '10px' }}
             title="Keluar"
           >
-            <LogOut size={15} color="var(--status-rose)" />
+            <LogOut size={16} color="var(--status-rose)" />
           </button>
         </div>
       </header>
@@ -165,55 +167,79 @@ export default function DashboardPage() {
       <main className="main-content">
         {/* KPI Summary Cards */}
         <div className="metrics-grid">
+          {/* Card 1: Total SPK */}
           <div className="card metric-card">
-            <span className="metric-label" style={{ fontSize: '0.68rem' }}>Total SPK</span>
-            <div className="metric-value mono-num" style={{ fontSize: '1.4rem' }}>{totalCount}</div>
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Sinkron Odoo</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="metric-label" style={{ fontSize: '0.68rem' }}>Total SPK</span>
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Layers size={14} />
+              </div>
+            </div>
+            <div className="metric-value mono-num" style={{ fontSize: '1.5rem' }}>{totalCount}</div>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Sinkron Odoo</span>
           </div>
 
+          {/* Card 2: Perlu Potong */}
           <div className="card metric-card">
-            <span className="metric-label" style={{ fontSize: '0.68rem' }}>Perlu Potong</span>
-            <div className="metric-value mono-num" style={{ fontSize: '1.4rem', color: 'var(--status-amber)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="metric-label" style={{ fontSize: '0.68rem', color: 'var(--brand-gold)' }}>Perlu Potong</span>
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#fffbeb', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Scissors size={14} />
+              </div>
+            </div>
+            <div className="metric-value mono-num" style={{ fontSize: '1.5rem', color: 'var(--brand-gold)' }}>
               {orders.filter(o => !o.cutting_locked_at && !o.is_backorder).length}
             </div>
-            <span style={{ fontSize: '0.7rem', color: 'var(--status-amber)' }}>Halaman ini</span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--brand-gold)' }}>Halaman ini</span>
           </div>
 
+          {/* Card 3: Sedang Jahit */}
           <div className="card metric-card">
-            <span className="metric-label" style={{ fontSize: '0.68rem' }}>Sedang Jahit</span>
-            <div className="metric-value mono-num" style={{ fontSize: '1.4rem', color: 'var(--status-sky)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="metric-label" style={{ fontSize: '0.68rem', color: 'var(--status-sky)' }}>Sedang Jahit</span>
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#f0f9ff', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Lock size={14} />
+              </div>
+            </div>
+            <div className="metric-value mono-num" style={{ fontSize: '1.5rem', color: 'var(--status-sky)' }}>
               {orders.filter(o => o.cutting_locked_at && !o.result_locked_at).length}
             </div>
-            <span style={{ fontSize: '0.7rem', color: 'var(--status-sky)' }}>Halaman ini</span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--status-sky)' }}>Halaman ini</span>
           </div>
 
+          {/* Card 4: Selesai */}
           <div className="card metric-card">
-            <span className="metric-label" style={{ fontSize: '0.68rem' }}>Selesai</span>
-            <div className="metric-value mono-num" style={{ fontSize: '1.4rem', color: 'var(--status-emerald)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="metric-label" style={{ fontSize: '0.68rem', color: 'var(--status-emerald)' }}>Selesai</span>
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CheckCircle2 size={14} />
+              </div>
+            </div>
+            <div className="metric-value mono-num" style={{ fontSize: '1.5rem', color: 'var(--status-emerald)' }}>
               {orders.filter(o => o.result_locked_at).length}
             </div>
-            <span style={{ fontSize: '0.7rem', color: 'var(--status-emerald)' }}>Halaman ini</span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--status-emerald)' }}>Halaman ini</span>
           </div>
         </div>
 
         {/* Toolbar: Search, Vendor Filter, Status Filter */}
-        <div className="card" style={{ padding: '14px' }}>
+        <div className="card" style={{ padding: '16px', borderRadius: '16px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', width: '100%' }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', width: '100%' }}>
               {/* Search Bar */}
-              <form onSubmit={handleSearchSubmit} style={{ flex: 1, minWidth: 0, display: 'flex', gap: '6px', width: '100%' }}>
+              <form onSubmit={handleSearchSubmit} style={{ flex: 1, minWidth: 0, display: 'flex', gap: '8px', width: '100%' }}>
                 <div style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex', alignItems: 'center' }}>
-                  <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '10px' }} />
+                  <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px' }} />
                   <input
                     type="text"
                     placeholder="Cari MO, produk, SO..."
                     className="input-field"
-                    style={{ paddingLeft: '34px', height: '38px', fontSize: '0.84rem' }}
+                    style={{ paddingLeft: '38px', height: '40px', fontSize: '0.88rem', borderRadius: '10px' }}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </div>
-                <button type="submit" className="btn btn-primary" style={{ height: '38px', padding: '0 14px', fontSize: '0.82rem', flexShrink: 0 }}>
+                <button type="submit" className="btn btn-primary" style={{ height: '40px', padding: '0 18px', fontSize: '0.85rem', flexShrink: 0, borderRadius: '10px' }}>
                   Cari
                 </button>
               </form>
@@ -223,7 +249,7 @@ export default function DashboardPage() {
                 <div style={{ width: '100%', minWidth: 0 }}>
                   <select
                     className="select-field"
-                    style={{ height: '38px', fontSize: '0.82rem' }}
+                    style={{ height: '40px', fontSize: '0.85rem', borderRadius: '10px' }}
                     value={selectedVendor}
                     onChange={(e) => {
                       setSelectedVendor(e.target.value);
@@ -273,15 +299,15 @@ export default function DashboardPage() {
 
         {/* Orders Grid */}
         {loading ? (
-          <div className="card" style={{ textAlign: 'center', padding: '50px 20px' }}>
-            <div className="spinner" style={{ margin: '0 auto 14px auto' }}></div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Memuat data SPK...</p>
+          <div className="card" style={{ textAlign: 'center', padding: '60px 20px', borderRadius: '16px' }}>
+            <div className="spinner" style={{ margin: '0 auto 16px auto' }}></div>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', fontWeight: 600 }}>Memuat data SPK...</p>
           </div>
         ) : orders.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: '50px 20px' }}>
-            <Layers size={36} style={{ margin: '0 auto 10px auto', color: 'var(--text-muted)' }} />
-            <h3 style={{ fontSize: '1rem', marginBottom: '4px' }}>Tidak Ada SPK Ditemukan</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+          <div className="card" style={{ textAlign: 'center', padding: '60px 20px', borderRadius: '16px' }}>
+            <Layers size={40} style={{ margin: '0 auto 12px auto', color: 'var(--text-muted)' }} />
+            <h3 style={{ fontSize: '1.05rem', marginBottom: '6px', fontWeight: 800 }}>Tidak Ada SPK Ditemukan</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem' }}>
               Coba sesuaikan kata kunci pencarian atau ubah filter status di atas.
             </p>
           </div>
@@ -293,24 +319,30 @@ export default function DashboardPage() {
               const isResultLocked = Boolean(o.result_locked_at);
               const price = formatRupiah(o.harga_vendor);
 
+              // Parse SKU prefix
+              const skuMatch = o.product_name?.match(/^\[(.*?)\]\s*(.*)$/);
+              const skuCode = skuMatch ? skuMatch[1] : null;
+              const cleanProductName = skuMatch ? skuMatch[2] : o.product_name;
+
               return (
                 <div
                   key={o.id}
                   onClick={() => router.push(`/orders/${o.id}`)}
                   className="card card-interactive"
                   style={{
-                    padding: '16px',
+                    padding: '18px',
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
-                    gap: '12px'
+                    gap: '12px',
+                    borderRadius: '16px'
                   }}
                 >
                   {/* Top Bar: Reference + Badges */}
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '6px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0 }}>
-                        <span className="mono-num" style={{ fontSize: '0.98rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                        <span className="mono-num" style={{ fontSize: '1.02rem', fontWeight: 800, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
                           {o.mo_name}
                         </span>
                         {isBackorder && (
@@ -323,28 +355,33 @@ export default function DashboardPage() {
                       {/* Status Badges */}
                       <div style={{ flexShrink: 0 }}>
                         {isResultLocked ? (
-                          <span className="badge badge-emerald" style={{ fontSize: '0.68rem' }}>
+                          <span className="badge badge-emerald" style={{ fontSize: '0.7rem' }}>
                             <CheckCircle2 size={12} /> Selesai
                           </span>
                         ) : isCuttingLocked ? (
-                          <span className="badge badge-sky" style={{ fontSize: '0.68rem' }}>
+                          <span className="badge badge-sky" style={{ fontSize: '0.7rem' }}>
                             <Lock size={12} /> Jahit
                           </span>
                         ) : (
-                          <span className="badge badge-amber" style={{ fontSize: '0.68rem' }}>
+                          <span className="badge badge-amber" style={{ fontSize: '0.7rem' }}>
                             <Scissors size={12} /> Potong
                           </span>
                         )}
                       </div>
                     </div>
 
-                    {/* Product Name */}
-                    <div style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '3px' }}>
-                      {o.product_name}
+                    {/* SKU & Product Name */}
+                    {skuCode && (
+                      <span className="badge badge-slate mono-num" style={{ fontSize: '0.7rem', padding: '2px 8px', marginBottom: '4px' }}>
+                        {skuCode}
+                      </span>
+                    )}
+                    <div style={{ fontSize: '0.94rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.35, marginBottom: '4px' }}>
+                      {cleanProductName}
                     </div>
 
                     <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                      SO: <span className="mono-num">{o.source_document || o.sales_order || '-'}</span>
+                      SO: <span className="mono-num" style={{ fontWeight: 600 }}>{o.source_document || o.sales_order || '-'}</span>
                     </div>
                   </div>
 
@@ -353,31 +390,31 @@ export default function DashboardPage() {
                     style={{
                       display: 'grid',
                       gridTemplateColumns: 'repeat(3, 1fr)',
-                      gap: '6px',
-                      padding: '8px 10px',
-                      background: 'var(--bg-card-elevated)',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--border-subtle)',
+                      gap: '8px',
+                      padding: '10px 12px',
+                      background: 'var(--bg-card-subtle)',
+                      borderRadius: '12px',
+                      border: '1px solid var(--border-default)',
                       textAlign: 'center'
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Target SPK</div>
-                      <div className="mono-num" style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Target SPK</div>
+                      <div className="mono-num" style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {Number(o.qty_target || o.qty_spk || 0).toLocaleString('id-ID')} <span style={{ fontSize: '0.7rem', fontWeight: 400 }}>pcs</span>
                       </div>
                     </div>
 
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Hasil Jahit</div>
-                      <div className="mono-num" style={{ fontSize: '0.88rem', fontWeight: 700, color: isResultLocked ? 'var(--status-emerald)' : 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Hasil Jahit</div>
+                      <div className="mono-num" style={{ fontSize: '0.92rem', fontWeight: 800, color: isResultLocked ? 'var(--status-emerald)' : 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {isResultLocked ? Number(o.qty_grade_a || 0).toLocaleString('id-ID') : '-'}
                       </div>
                     </div>
 
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Kain</div>
-                      <div style={{ fontSize: '0.78rem', fontWeight: 600, color: o.status_kebutuhan_kain === 'Cukup' ? 'var(--status-emerald)' : 'var(--status-amber)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Kain</div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: o.status_kebutuhan_kain === 'Cukup' ? 'var(--status-emerald)' : 'var(--status-amber)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {o.status_kebutuhan_kain || 'Cukup'}
                       </div>
                     </div>
@@ -385,19 +422,19 @@ export default function DashboardPage() {
 
                   {/* Bottom Footer: Vendor & Price */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '2px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.78rem', color: 'var(--text-secondary)', minWidth: 0 }}>
-                      <Building2 size={13} color="var(--brand-gold)" style={{ flexShrink: 0 }} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.vendor_name}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--text-secondary)', minWidth: 0 }}>
+                      <Building2 size={14} color="var(--brand-gold)" style={{ flexShrink: 0 }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{o.vendor_name}</span>
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                       {price && (
-                        <div className="mono-num" style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--brand-gold)' }}>
+                        <div className="mono-num" style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--brand-gold)' }}>
                           {price}
                         </div>
                       )}
                       <div style={{ color: 'var(--text-muted)' }}>
-                        <ChevronRight size={16} />
+                        <ChevronRight size={17} />
                       </div>
                     </div>
                   </div>
@@ -409,23 +446,23 @@ export default function DashboardPage() {
 
         {/* Pagination Controls */}
         {totalPages > 1 && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', marginTop: '6px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
               className="btn btn-secondary"
-              style={{ padding: '7px 14px', fontSize: '0.8rem' }}
+              style={{ padding: '8px 16px', fontSize: '0.82rem', borderRadius: '10px' }}
             >
               Prev
             </button>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+            <span style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
               <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>{page}</strong> / <strong className="mono-num">{totalPages}</strong>
             </span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
               className="btn btn-secondary"
-              style={{ padding: '7px 14px', fontSize: '0.8rem' }}
+              style={{ padding: '8px 16px', fontSize: '0.82rem', borderRadius: '10px' }}
             >
               Next
             </button>
