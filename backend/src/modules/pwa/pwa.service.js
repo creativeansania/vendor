@@ -20,11 +20,20 @@ export class PwaService {
       params.push(Number(vendorId));
     }
 
-    // 2. Search
+    // 2. Search (Forgiving 3-4 digit search, ID with #, MO, product name, SO)
     if (search && search.trim()) {
-      const q = `%${search.trim()}%`;
-      conditions.push('(w.mo_name LIKE ? OR w.product_name LIKE ? OR w.sales_order LIKE ?)');
-      params.push(q, q, q);
+      const rawTerm = search.trim();
+      const q = `%${rawTerm}%`;
+      const numOnly = rawTerm.replace(/[^0-9]/g, '');
+
+      if (numOnly) {
+        const qNum = `%${numOnly}%`;
+        conditions.push('(w.id = ? OR w.mo_name LIKE ? OR w.mo_name LIKE ? OR w.product_name LIKE ? OR w.sales_order LIKE ?)');
+        params.push(Number(numOnly), q, qNum, q, q);
+      } else {
+        conditions.push('(w.mo_name LIKE ? OR w.product_name LIKE ? OR w.sales_order LIKE ?)');
+        params.push(q, q, q);
+      }
     }
 
     // 3. Status filter

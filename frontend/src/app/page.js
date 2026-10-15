@@ -21,7 +21,8 @@ import {
   Lock,
   ArrowRight,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  X
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -92,6 +93,11 @@ export default function DashboardPage() {
     e.preventDefault();
     setPage(1);
     loadOrders();
+  };
+
+  const handleClearSearch = () => {
+    setSearch('');
+    setPage(1);
   };
 
   const handlePageChange = (newPage) => {
@@ -277,17 +283,52 @@ export default function DashboardPage() {
               {/* Search Bar */}
               <form onSubmit={handleSearchSubmit} style={{ flex: 1, minWidth: 0, display: 'flex', gap: '8px', width: '100%' }}>
                 <div style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex', alignItems: 'center' }}>
-                  <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px' }} />
+                  <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '14px', pointerEvents: 'none' }} />
                   <input
                     type="text"
-                    placeholder="Cari MO, produk, SO..."
+                    placeholder="Ketik 4 angka nomor SPK (misal: 1495) atau nama produk..."
                     className="input-field"
-                    style={{ paddingLeft: '38px', height: '40px', fontSize: '0.88rem', borderRadius: '10px' }}
+                    style={{
+                      paddingLeft: '40px',
+                      paddingRight: search ? '40px' : '14px',
+                      height: '44px',
+                      fontSize: '0.92rem',
+                      borderRadius: '12px',
+                      fontWeight: 500
+                    }}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
+                  {search && (
+                    <button
+                      type="button"
+                      onClick={handleClearSearch}
+                      style={{
+                        position: 'absolute',
+                        right: '10px',
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '50%',
+                        background: '#f1f5f9',
+                        border: '1px solid #cbd5e1',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        color: '#475569',
+                        transition: 'all 0.15s ease'
+                      }}
+                      title="Hapus ketikan pencarian"
+                    >
+                      <X size={15} />
+                    </button>
+                  )}
                 </div>
-                <button type="submit" className="btn btn-primary" style={{ height: '40px', padding: '0 18px', fontSize: '0.85rem', flexShrink: 0, borderRadius: '10px' }}>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  style={{ height: '44px', padding: '0 20px', fontSize: '0.9rem', flexShrink: 0, borderRadius: '12px', fontWeight: 700 }}
+                >
                   Cari
                 </button>
               </form>
@@ -297,7 +338,7 @@ export default function DashboardPage() {
                 <div style={{ width: '100%', minWidth: 0 }}>
                   <select
                     className="select-field"
-                    style={{ height: '40px', fontSize: '0.85rem', borderRadius: '10px' }}
+                    style={{ height: '44px', fontSize: '0.88rem', borderRadius: '12px' }}
                     value={selectedVendor}
                     onChange={(e) => {
                       setSelectedVendor(e.target.value);
@@ -314,6 +355,48 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+
+            {/* Active Search Filter Banner */}
+            {search.trim() && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 14px',
+                  background: '#fffbeb',
+                  border: '1px solid #fde68a',
+                  borderRadius: '10px',
+                  fontSize: '0.84rem',
+                  flexWrap: 'wrap',
+                  gap: '8px'
+                }}
+              >
+                <div style={{ color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>Hasil pencarian:</span>
+                  <strong className="mono-num" style={{ background: '#ffffff', padding: '2px 8px', borderRadius: '6px', border: '1px solid #fde68a' }}>
+                    "{search.trim()}"
+                  </strong>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>({totalCount} SPK ditemukan)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  className="quick-action-pill"
+                  style={{
+                    fontSize: '0.74rem',
+                    background: '#ffffff',
+                    borderColor: '#f59e0b',
+                    color: '#b45309',
+                    height: '28px'
+                  }}
+                  title="Kembali ke semua SPK"
+                >
+                  <X size={13} />
+                  <span>Bersihkan & Lihat Semua</span>
+                </button>
+              </div>
+            )}
 
             {/* Status Filter Chips (Fluid Touch Scroll) */}
             <div className="filter-bar">
@@ -355,9 +438,22 @@ export default function DashboardPage() {
           <div className="card" style={{ textAlign: 'center', padding: '60px 20px', borderRadius: '16px' }}>
             <Layers size={40} style={{ margin: '0 auto 12px auto', color: 'var(--text-muted)' }} />
             <h3 style={{ fontSize: '1.05rem', marginBottom: '6px', fontWeight: 800 }}>Tidak Ada SPK Ditemukan</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem' }}>
-              Coba sesuaikan kata kunci pencarian atau ubah filter status di atas.
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', maxWidth: '440px', margin: '0 auto' }}>
+              {search.trim()
+                ? `Tidak ditemukan SPK yang cocok dengan "${search.trim()}". Cukup ketik 4 angka belakang nomor SPK (contoh: 1495) atau tekan tombol di bawah.`
+                : 'Coba sesuaikan kata kunci pencarian atau ubah filter status di atas.'}
             </p>
+            {search.trim() && (
+              <button
+                type="button"
+                onClick={handleClearSearch}
+                className="btn btn-secondary"
+                style={{ marginTop: '16px', borderRadius: '12px', fontSize: '0.88rem', fontWeight: 700 }}
+              >
+                <X size={15} />
+                <span>Bersihkan Pencarian & Lihat Semua SPK</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="orders-grid">
