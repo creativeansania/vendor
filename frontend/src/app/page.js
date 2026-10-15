@@ -112,6 +112,29 @@ export default function DashboardPage() {
     }
   };
 
+  // Local count of orders with kain kurang on loaded list (for immediate UI response)
+  const localKainKurangCount = useMemo(() => {
+    return orders.filter(
+      (o) =>
+        o.status_kebutuhan_kain === 'Kurang' ||
+        (o.status_kebutuhan_kain && o.status_kebutuhan_kain.toLowerCase().includes('kurang'))
+    ).length;
+  }, [orders]);
+
+  const activeKainKurangBadge = kainKurangCount > 0 ? kainKurangCount : localKainKurangCount;
+
+  // Filtered orders with resilient fallback for kain_kurang
+  const displayedOrders = useMemo(() => {
+    if (status === 'kain_kurang') {
+      return orders.filter(
+        (o) =>
+          o.status_kebutuhan_kain === 'Kurang' ||
+          (o.status_kebutuhan_kain && o.status_kebutuhan_kain.toLowerCase().includes('kurang'))
+      );
+    }
+    return orders;
+  }, [orders, status]);
+
   const pageNumbers = useMemo(() => {
     if (totalPages <= 1) return [];
 
@@ -448,7 +471,7 @@ export default function DashboardPage() {
                         fontWeight: 800,
                         boxShadow: '0 2px 8px rgba(239, 68, 68, 0.2)'
                       }
-                    : kainKurangCount > 0
+                    : activeKainKurangBadge > 0
                     ? {
                         borderColor: '#fca5a5',
                         color: '#b91c1c',
@@ -458,7 +481,7 @@ export default function DashboardPage() {
                     : {}
                 }
               >
-                ⚠️ Kain Kurang {kainKurangCount > 0 ? `(${kainKurangCount})` : ''}
+                ⚠️ Kain Kurang {activeKainKurangBadge > 0 ? `(${activeKainKurangBadge})` : ''}
               </button>
               <button
                 className={`filter-chip ${status === 'result_locked' ? 'active' : ''}`}
@@ -491,7 +514,7 @@ export default function DashboardPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <AlertCircle size={18} color="#dc2626" />
               <span>
-                Menampilkan <strong>{totalCount} SPK</strong> dengan status <strong>Kain Kurang</strong>. Harap pastikan fisik kain sebelum memotong.
+                Menampilkan <strong>{displayedOrders.length} SPK</strong> dengan status <strong>Kain Kurang</strong>. Harap pastikan fisik kain sebelum memotong.
               </span>
             </div>
             <button
@@ -511,16 +534,29 @@ export default function DashboardPage() {
             <div className="spinner" style={{ margin: '0 auto 16px auto' }}></div>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', fontWeight: 600 }}>Memuat data SPK...</p>
           </div>
-        ) : orders.length === 0 ? (
+        ) : displayedOrders.length === 0 ? (
           <div className="card" style={{ textAlign: 'center', padding: '60px 20px', borderRadius: '16px' }}>
             <Layers size={40} style={{ margin: '0 auto 12px auto', color: 'var(--text-muted)' }} />
-            <h3 style={{ fontSize: '1.05rem', marginBottom: '6px', fontWeight: 800 }}>Tidak Ada SPK Ditemukan</h3>
+            <h3 style={{ fontSize: '1.05rem', marginBottom: '6px', fontWeight: 800 }}>
+              {status === 'kain_kurang' ? 'Tidak Ada SPK Kain Kurang di Halaman Ini' : 'Tidak Ada SPK Ditemukan'}
+            </h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', maxWidth: '440px', margin: '0 auto' }}>
-              {search.trim()
+              {status === 'kain_kurang'
+                ? 'Semua SPK pada halaman ini memiliki kain yang cukup. Silakan cek halaman lain atau kembali ke Semua SPK.'
+                : search.trim()
                 ? `Tidak ditemukan SPK yang cocok dengan "${search.trim()}". Cukup ketik 4 angka belakang nomor SPK (contoh: 1495) atau tekan tombol di bawah.`
                 : 'Coba sesuaikan kata kunci pencarian atau ubah filter status di atas.'}
             </p>
-            {search.trim() && (
+            {status === 'kain_kurang' ? (
+              <button
+                type="button"
+                onClick={() => { setStatus('all'); setPage(1); }}
+                className="btn btn-secondary"
+                style={{ marginTop: '16px', borderRadius: '12px', fontSize: '0.88rem', fontWeight: 700 }}
+              >
+                <span>Lihat Semua SPK</span>
+              </button>
+            ) : search.trim() && (
               <button
                 type="button"
                 onClick={handleClearSearch}
@@ -534,7 +570,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="orders-grid">
-            {orders.map((o) => {
+            {displayedOrders.map((o) => {
               const isBackorder = Boolean(o.is_backorder);
               const isCuttingLocked = Boolean(o.cutting_locked_at) || isBackorder;
               const isResultLocked = Boolean(o.result_locked_at);
