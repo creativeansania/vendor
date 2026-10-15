@@ -27,7 +27,12 @@ import {
   Check,
   Tag,
   Zap,
-  MessageCircle
+  MessageCircle,
+  Truck,
+  Calculator,
+  Copy,
+  Percent,
+  ExternalLink
 } from 'lucide-react';
 
 function OrderDetailContent() {
@@ -39,9 +44,14 @@ function OrderDetailContent() {
   const [order, setOrder] = useState(null);
   const [rollLines, setRollLines] = useState([]);
   const [rawMoves, setRawMoves] = useState([]);
-  const [activeTab, setActiveTab] = useState('timbang'); // 'timbang', 'hasil', 'bahan'
+  const [transfers, setTransfers] = useState([]);
+  const [activeTab, setActiveTab] = useState('timbang'); // 'timbang', 'hasil', 'bahan', 'transfer'
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [syncingOdoo, setSyncingOdoo] = useState(false);
+  const [copiedTransferId, setCopiedTransferId] = useState(null);
+  const [calcInputYards, setCalcInputYards] = useState('');
+  const [transferFilter, setTransferFilter] = useState('all');
   const [feedback, setFeedback] = useState({ text: '', type: '' });
 
   // Cutting stage state: actual cutting output & roll/material weights
@@ -89,6 +99,7 @@ function OrderDetailContent() {
         setOrder(res.order);
         setRollLines(res.rollLines || []);
         setRawMoves(res.rawMoves || res.order?.raw_moves || []);
+        setTransfers(res.transfers || res.order?.transfers || []);
 
         // Prepopulate cutting actual
         setActualCutting(
@@ -124,6 +135,53 @@ function OrderDetailContent() {
       loadData();
     }
   }, [user, orderId]);
+
+  // Live Force-Sync directly from Odoo ERP
+  const handleForceSyncOdoo = async () => {
+    if (syncingOdoo) return;
+    setSyncingOdoo(true);
+    setFeedback({ text: '', type: '' });
+    try {
+      const res = await fetchApi(`/pwa/orders/${orderId}/sync-odoo`, {
+        method: 'POST'
+      });
+      if (res.success && res.order) {
+        setOrder(res.order);
+        setRollLines(res.rollLines || []);
+        setRawMoves(res.rawMoves || res.order?.raw_moves || []);
+        setTransfers(res.transfers || res.order?.transfers || []);
+
+        // Update actual cutting if fresh
+        if (res.order.actual_cutting !== null && res.order.actual_cutting !== undefined) {
+          setActualCutting(res.order.actual_cutting);
+        }
+
+        setFeedback({
+          text: 'Data SPK, BOM material, dan dokumen transfer berhasil disinkronkan langsung dari Odoo ERP!',
+          type: 'success'
+        });
+      } else {
+        throw new Error(res.message || 'Gagal menyinkronkan data dari Odoo');
+      }
+    } catch (err) {
+      setFeedback({
+        text: 'Gagal sinkronisasi Odoo: ' + err.message,
+        type: 'error'
+      });
+    } finally {
+      setSyncingOdoo(false);
+    }
+  };
+
+  // Copy transfer document number to clipboard
+  const handleCopyTransferName = (transferName, transferId) => {
+    if (!transferName) return;
+    navigator.clipboard?.writeText(transferName);
+    setCopiedTransferId(transferId);
+    setTimeout(() => {
+      setCopiedTransferId(null);
+    }, 2000);
+  };
 
   // Share SPK context to WhatsApp Group / Chat
   const handleShareToWa = (customIssue = '') => {
@@ -425,6 +483,61 @@ function OrderDetailContent() {
     return Math.round((currentActualCutting / estimasiSpb) * 100);
   }, [currentActualCutting, estimasiSpb]);
 
+  // Standard Pattern Consumption & Fabric Yield Calculations (Feature 4)
+  const consumptionValue = useMemo(() => {
+    return parseFloat(order?.consumption_per_pcs) || 0;
+  }, [order?.consumption_per_pcs]);
+
+  const consumptionUom = useMemo(() => {
+    return order?.consumption_uom || order?.unit_kain || 'yard';
+  }, [order?.consumption_uom, order?.unit_kain]);
+
+  const totalFabricAvailable = useMemo(() => {
+    if (totalPhysicalFabric > 0) return totalPhysicalFabric;
+    if (order?.kain_dari_gudang) return parseFloat(order.kain_dari_gudang);
+    if (order?.qty_kebutuhan_kain) return parseFloat(order.qty_kebutuhan_kain);
+    return 0;
+  }, [totalPhysicalFabric, order?.kain_dari_gudang, order?.qty_kebutuhan_kain]);
+
+  const theoreticalMaxGarments = useMemo(() => {
+    if (consumptionValue <= 0 || totalFabricAvailable <= 0) return 0;
+    return Math.floor(totalFabricAvailable / consumptionValue);
+  }, [consumptionValue, totalFabricAvailable]);
+
+  const patternEfficiencyRatio = useMemo(() => {
+    if (theoreticalMaxGarments <= 0 || currentActualCutting <= 0) return null;
+    return Math.round((currentActualCutting / theoreticalMaxGarments) * 100);
+  }, [theoreticalMaxGarments, currentActualCutting]);
+
+  // Pre-fill interactive calculator with available fabric when loaded
+  useEffect(() => {
+    if (totalFabricAvailable > 0 && calcInputYards === '') {
+      setCalcInputYards(String(totalFabricAvailable));
+    }
+  }, [totalFabricAvailable]);
+
+  const calculatedGarments = useMemo(() => {
+    const inputVal = parseFloat(calcInputYards) || 0;
+    if (consumptionValue <= 0 || inputVal <= 0) return 0;
+    return Math.floor(inputVal / consumptionValue);
+  }, [calcInputYards, consumptionValue]);
+
+  // Filtered transfers for Tab 4 (Feature 3)
+  const filteredTransfers = useMemo(() => {
+    if (!transfers || transfers.length === 0) return [];
+    if (transferFilter === 'all') return transfers;
+    if (transferFilter === 'retur') return transfers.filter((t) => t.category === 'retur' || t.category === 'lainnya');
+    return transfers.filter((t) => t.category === transferFilter);
+  }, [transfers, transferFilter]);
+
+  const transferCounts = useMemo(() => {
+    const all = transfers.length;
+    const komponen = transfers.filter((t) => t.category === 'komponen').length;
+    const produkJadi = transfers.filter((t) => t.category === 'produk_jadi').length;
+    const retur = transfers.filter((t) => t.category === 'retur' || t.category === 'lainnya').length;
+    return { all, komponen, produkJadi, retur };
+  }, [transfers]);
+
   const totalYieldPcs = useMemo(() => {
     return (parseFloat(gradeA) || 0) + (parseFloat(gradeB) || 0);
   }, [gradeA, gradeB]);
@@ -518,6 +631,32 @@ function OrderDetailContent() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={handleForceSyncOdoo}
+            disabled={syncingOdoo || loading}
+            className="btn"
+            style={{
+              background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+              color: '#ffffff',
+              border: '1px solid #334155',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              padding: '7px 12px',
+              borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: 'var(--shadow-subtle)',
+              cursor: syncingOdoo ? 'not-allowed' : 'pointer',
+              opacity: syncingOdoo ? 0.75 : 1
+            }}
+            title="Tarik & sinkronkan data terbaru langsung dari Odoo ERP"
+          >
+            <RefreshCw size={14} className={syncingOdoo ? 'spinner' : ''} style={{ color: '#38bdf8' }} />
+            <span className="hide-on-mobile">{syncingOdoo ? 'Menyinkronkan...' : 'Tarik Data Odoo'}</span>
+          </button>
+
           <button
             type="button"
             onClick={() => handleShareToWa()}
@@ -699,6 +838,17 @@ function OrderDetailContent() {
             <Layers size={15} className="tab-icon" />
             <span>
               3. Bahan BOM {(rawMoves.length > 0 || (order?.raw_moves && order.raw_moves.length > 0)) ? `(${rawMoves.length || order?.raw_moves?.length})` : ''}
+            </span>
+          </button>
+
+          <button
+            id="tab-btn-transfer"
+            onClick={() => setActiveTab('transfer')}
+            className={`segmented-tab-btn ${activeTab === 'transfer' ? 'active' : ''}`}
+          >
+            <Truck size={15} className="tab-icon" />
+            <span>
+              4. Dokumen Transfer {transfers.length > 0 ? `(${transfers.length})` : ''}
             </span>
           </button>
         </div>
@@ -964,6 +1114,196 @@ function OrderDetailContent() {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* FEATURE 4: STANDAR KONSUMSI KAIN & KALKULATOR MEJA POTONG */}
+            <div className="card" style={{ padding: '18px 20px', borderRadius: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '8px',
+                      background: 'rgba(99, 102, 241, 0.12)',
+                      color: '#6366f1',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <Calculator size={18} />
+                  </div>
+                  <div>
+                    <span style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)' }}>
+                      Standar Konsumsi Kain & Kapasitas Meja Potong
+                    </span>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                      BOM Master Odoo & Kalkulasi Efisiensi Pemotongan Pola
+                    </div>
+                  </div>
+                </div>
+                {consumptionValue > 0 ? (
+                  <span className="badge badge-purple mono-num" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
+                    Standar: {consumptionValue} {consumptionUom}/pcs
+                  </span>
+                ) : (
+                  <span className="badge badge-slate" style={{ fontSize: '0.74rem' }}>
+                    Standar Belum Diisi di Odoo
+                  </span>
+                )}
+              </div>
+
+              {/* 3 Metrics: Standar Konsumsi, Kapasitas Teoretis, Efisiensi Rendemen */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '14px' }}>
+                {/* Metric 1: Standar Konsumsi per Pcs */}
+                <div className="hero-tile">
+                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>📐 Konsumsi per Pcs</div>
+                  <div className="mono-num" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.2 }}>
+                    {consumptionValue > 0 ? consumptionValue : '-'}{' '}
+                    <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>{consumptionUom}</span>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    Standar pola garmen Odoo
+                  </div>
+                </div>
+
+                {/* Metric 2: Kapasitas Potong Teoretis */}
+                <div className="hero-tile">
+                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>👗 Kapasitas Teoretis</div>
+                  <div className="mono-num" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#6366f1', lineHeight: 1.2 }}>
+                    {theoreticalMaxGarments > 0 ? theoreticalMaxGarments.toLocaleString('id-ID') : '-'}{' '}
+                    <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>pcs</span>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    Dari {totalFabricAvailable.toLocaleString('id-ID')} {consumptionUom} kain
+                  </div>
+                </div>
+
+                {/* Metric 3: Rendemen Efisiensi Potong */}
+                <div className="hero-tile" style={{
+                  background: patternEfficiencyRatio && patternEfficiencyRatio >= 100
+                    ? 'var(--status-emerald-bg)'
+                    : patternEfficiencyRatio && patternEfficiencyRatio >= 95
+                    ? 'var(--status-amber-bg)'
+                    : '#fffdf7'
+                }}>
+                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>📊 Rendemen Pola Riil</div>
+                  <div className="mono-num" style={{
+                    fontSize: '1.35rem',
+                    fontWeight: 800,
+                    lineHeight: 1.2,
+                    color: patternEfficiencyRatio && patternEfficiencyRatio >= 100
+                      ? 'var(--status-emerald)'
+                      : patternEfficiencyRatio && patternEfficiencyRatio >= 95
+                      ? 'var(--brand-gold)'
+                      : patternEfficiencyRatio
+                      ? 'var(--status-rose)'
+                      : 'var(--text-primary)'
+                  }}>
+                    {patternEfficiencyRatio !== null ? `${patternEfficiencyRatio}%` : '-'}
+                  </div>
+                  <div style={{ marginTop: '2px' }}>
+                    {patternEfficiencyRatio !== null ? (
+                      patternEfficiencyRatio >= 100 ? (
+                        <span className="badge badge-emerald" style={{ fontSize: '0.66rem', padding: '1px 6px' }}>✓ Hemat Kain</span>
+                      ) : patternEfficiencyRatio >= 95 ? (
+                        <span className="badge badge-gold" style={{ fontSize: '0.66rem', padding: '1px 6px' }}>Normal (Toleransi)</span>
+                      ) : (
+                        <span className="badge badge-rose" style={{ fontSize: '0.66rem', padding: '1px 6px' }}>Boros Bahan</span>
+                      )
+                    ) : (
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Isi hasil potong fisik</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Interactive Meja Potong Output Calculator */}
+              <div style={{
+                padding: '14px 16px',
+                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%)',
+                borderRadius: '12px',
+                border: '1px solid rgba(99, 102, 241, 0.2)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 700, color: '#4338ca' }}>
+                    <Sparkles size={14} />
+                    <span>Kalkulator Meja Potong Interaktif</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {totalFabricAvailable > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setCalcInputYards(String(totalFabricAvailable))}
+                        className="quick-action-pill"
+                        style={{ fontSize: '0.68rem', padding: '2px 8px', background: '#ffffff' }}
+                      >
+                        Total Kain ({totalFabricAvailable} {consumptionUom})
+                      </button>
+                    )}
+                    {order?.qty_kebutuhan_kain && (
+                      <button
+                        type="button"
+                        onClick={() => setCalcInputYards(String(order.qty_kebutuhan_kain))}
+                        className="quick-action-pill"
+                        style={{ fontSize: '0.68rem', padding: '2px 8px', background: '#ffffff' }}
+                      >
+                        Kebutuhan SPK ({order.qty_kebutuhan_kain})
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 200px', minWidth: '160px' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Berapa {consumptionUom} kain yang digelar di meja potong?
+                    </div>
+                    <div className="input-addon-group" style={{ height: '38px', background: '#ffffff' }}>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={calcInputYards}
+                        onChange={(e) => setCalcInputYards(e.target.value)}
+                        className="input-addon-field"
+                        style={{ fontSize: '1rem', fontWeight: 800 }}
+                      />
+                      <span className="input-addon-label" style={{ fontSize: '0.72rem' }}>
+                        {consumptionUom.toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{
+                    flex: '1 1 200px',
+                    padding: '8px 12px',
+                    background: '#ffffff',
+                    borderRadius: '10px',
+                    border: '1px solid #e2e8f0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Estimasi Potongan Garmen:</div>
+                      <div className="mono-num" style={{ fontSize: '1.25rem', fontWeight: 800, color: '#4338ca', lineHeight: 1.1 }}>
+                        {calculatedGarments.toLocaleString('id-ID')} <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>pcs</span>
+                      </div>
+                    </div>
+                    {targetSpkQty > 0 && calculatedGarments > 0 && (
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Target SPK:</div>
+                        <span className={`badge ${calculatedGarments >= targetSpkQty ? 'badge-emerald' : 'badge-amber'}`} style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
+                          {calculatedGarments >= targetSpkQty ? '✓ Cukup SPK' : `Kurang ${(targetSpkQty - calculatedGarments).toLocaleString('id-ID')} pcs`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* SECTION 1: BAHAN KAIN (FABRIC ROLLS) IF PRESENT */}
@@ -1695,6 +2035,321 @@ function OrderDetailContent() {
                         </div>
                       </div>
                     </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ==================================================================
+            TAB 4: DOKUMEN TRANSFER ODOO TERTAUT (FEATURE 3)
+            ================================================================== */}
+        {activeTab === 'transfer' && (() => {
+          const getCategoryBadge = (category) => {
+            switch (category) {
+              case 'komponen':
+                return {
+                  label: 'Pengiriman Kain & Bahan',
+                  icon: <Package size={14} />,
+                  bg: 'rgba(59, 130, 246, 0.1)',
+                  border: 'rgba(59, 130, 246, 0.25)',
+                  color: 'var(--status-sky)'
+                };
+              case 'produk_jadi':
+                return {
+                  label: 'Penerimaan Hasil Jahit',
+                  icon: <Scissors size={14} />,
+                  bg: 'rgba(34, 197, 94, 0.1)',
+                  border: 'rgba(34, 197, 94, 0.25)',
+                  color: 'var(--status-emerald)'
+                };
+              case 'retur':
+                return {
+                  label: 'Retur Bahan / Makloon',
+                  icon: <RefreshCw size={14} />,
+                  bg: 'rgba(245, 158, 11, 0.1)',
+                  border: 'rgba(245, 158, 11, 0.25)',
+                  color: 'var(--status-amber)'
+                };
+              default:
+                return {
+                  label: 'Transfer Internal',
+                  icon: <FileText size={14} />,
+                  bg: 'rgba(148, 163, 184, 0.1)',
+                  border: 'rgba(148, 163, 184, 0.25)',
+                  color: 'var(--text-muted)'
+                };
+            }
+          };
+
+          const getStateBadge = (state) => {
+            switch (state) {
+              case 'done':
+                return { label: 'Selesai', bg: 'var(--status-emerald-bg)', border: 'var(--status-emerald-border)', color: 'var(--status-emerald)' };
+              case 'assigned':
+                return { label: 'Siap Kirim / Proses', bg: 'var(--status-sky-bg)', border: 'var(--status-sky-border)', color: 'var(--status-sky)' };
+              case 'confirmed':
+                return { label: 'Menunggu Bahan', bg: 'var(--status-amber-bg)', border: 'var(--status-amber-border)', color: 'var(--status-amber)' };
+              case 'draft':
+                return { label: 'Draft', bg: 'var(--bg-card-subtle)', border: 'var(--border-default)', color: 'var(--text-muted)' };
+              default:
+                return { label: state || 'Tercatat', bg: 'var(--bg-card-subtle)', border: 'var(--border-default)', color: 'var(--text-muted)' };
+            }
+          };
+
+          const formatDateIndo = (dateStr) => {
+            if (!dateStr) return '-';
+            try {
+              const d = new Date(dateStr);
+              if (isNaN(d.getTime())) return String(dateStr);
+              return d.toLocaleString('id-ID', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              }) + ' WIB';
+            } catch (e) {
+              return String(dateStr);
+            }
+          };
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div className="card" style={{ padding: '18px 20px', borderRadius: '16px' }}>
+                {/* Header Bar */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '10px',
+                      background: 'rgba(59, 130, 246, 0.12)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--status-sky)',
+                      flexShrink: 0
+                    }}>
+                      <Truck size={20} />
+                    </div>
+                    <div>
+                      <h3 style={{ fontSize: '1.02rem', margin: 0, fontWeight: 800, color: 'var(--text-primary)' }}>
+                        Dokumen Transfer Odoo ERP
+                      </h3>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        Daftar transfer resmi gudang & surat jalan tertaut MO #{order?.mo_name || order?.id}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={handleForceSyncOdoo}
+                      disabled={syncingOdoo}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.76rem', padding: '6px 12px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      title="Perbarui status dokumen transfer langsung dari Odoo"
+                    >
+                      <RefreshCw size={13} className={syncingOdoo ? 'spinner' : ''} />
+                      <span>{syncingOdoo ? 'Sinkron Odoo...' : 'Tarik Transfer Odoo'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filter Pills */}
+                {transfers.length > 0 && (
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => setTransferFilter('all')}
+                      className={`filter-pill ${transferFilter === 'all' ? 'active' : ''}`}
+                      style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                    >
+                      Semua ({transferCounts.all})
+                    </button>
+                    {transferCounts.komponen > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setTransferFilter('komponen')}
+                        className={`filter-pill ${transferFilter === 'komponen' ? 'active' : ''}`}
+                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                      >
+                        📦 Kain & Bahan ({transferCounts.komponen})
+                      </button>
+                    )}
+                    {transferCounts.produkJadi > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setTransferFilter('produk_jadi')}
+                        className={`filter-pill ${transferFilter === 'produk_jadi' ? 'active' : ''}`}
+                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                      >
+                        👗 Penerimaan Jahit ({transferCounts.produkJadi})
+                      </button>
+                    )}
+                    {transferCounts.retur > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setTransferFilter('retur')}
+                        className={`filter-pill ${transferFilter === 'retur' ? 'active' : ''}`}
+                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                      >
+                        🔁 Retur / Lainnya ({transferCounts.retur})
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Transfer Documents Cards List */}
+                {filteredTransfers.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {filteredTransfers.map((t, idx) => {
+                      const cat = getCategoryBadge(t.category);
+                      const st = getStateBadge(t.state);
+                      const isCopied = copiedTransferId === (t.id || t.name);
+
+                      return (
+                        <div
+                          key={t.id || idx}
+                          style={{
+                            padding: '14px 16px',
+                            background: 'var(--bg-card-subtle)',
+                            borderRadius: '12px',
+                            border: '1px solid var(--border-default)',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          {/* Row 1: Category badge, Transfer Number, Status Badge */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              <span style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                background: cat.bg,
+                                border: `1px solid ${cat.border}`,
+                                color: cat.color,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px'
+                              }}>
+                                {cat.icon}
+                                <span>{cat.label}</span>
+                              </span>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span className="mono-num" style={{ fontSize: '0.96rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                                  {t.name}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyTransferName(t.name, t.id || t.name)}
+                                  className="btn btn-secondary btn-icon"
+                                  style={{ width: '26px', height: '26px', borderRadius: '6px', padding: 0 }}
+                                  title="Salin nomor transfer"
+                                >
+                                  {isCopied ? <Check size={12} color="var(--status-emerald)" /> : <Copy size={12} />}
+                                </button>
+                                {isCopied && (
+                                  <span style={{ fontSize: '0.68rem', color: 'var(--status-emerald)', fontWeight: 700 }}>
+                                    Tersalin!
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <span style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              background: st.bg,
+                              border: `1px solid ${st.border}`,
+                              color: st.color
+                            }}>
+                              {st.label}
+                            </span>
+                          </div>
+
+                          {/* Row 2: Origin, Picking Type, Date */}
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                            gap: '8px',
+                            fontSize: '0.78rem',
+                            marginTop: '8px',
+                            paddingTop: '8px',
+                            borderTop: '1px dashed var(--border-default)'
+                          }}>
+                            <div>
+                              <span style={{ color: 'var(--text-muted)' }}>Dokumen Rujukan:</span>{' '}
+                              <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>
+                                {t.origin || '-'}
+                              </strong>
+                            </div>
+
+                            <div>
+                              <span style={{ color: 'var(--text-muted)' }}>Tipe Operasi:</span>{' '}
+                              <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                {t.pickingType || '-'}
+                              </span>
+                            </div>
+
+                            <div>
+                              <span style={{ color: 'var(--text-muted)' }}>
+                                {t.state === 'done' ? 'Tanggal Selesai:' : 'Jadwal Transfer:'}
+                              </span>{' '}
+                              <strong style={{ color: 'var(--text-primary)' }}>
+                                {formatDateIndo(t.dateDone || t.scheduledDate)}
+                              </strong>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* Empty state for transfers */
+                  <div style={{
+                    padding: '32px 20px',
+                    textAlign: 'center',
+                    background: 'var(--bg-card-subtle)',
+                    borderRadius: '12px',
+                    border: '1px dashed var(--border-default)'
+                  }}>
+                    <div style={{
+                      width: '48px',
+                      height: '48px',
+                      borderRadius: '12px',
+                      background: 'rgba(59, 130, 246, 0.1)',
+                      color: 'var(--status-sky)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      margin: '0 auto 12px'
+                    }}>
+                      <Truck size={24} />
+                    </div>
+                    <div style={{ fontSize: '0.94rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                      Tidak Ada Dokumen Transfer Odoo
+                    </div>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', maxWidth: '420px', margin: '0 auto 14px', lineHeight: 1.5 }}>
+                      SPK ini belum memiliki catatan transfer resmi stock.picking di Odoo ERP, atau dokumen transfer belum selesai dibuat di Gudang Pusat.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleForceSyncOdoo}
+                      disabled={syncingOdoo}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.8rem', padding: '8px 16px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <RefreshCw size={14} className={syncingOdoo ? 'spinner' : ''} />
+                      <span>{syncingOdoo ? 'Memeriksa Odoo...' : 'Tarik Ulang dari Odoo'}</span>
+                    </button>
                   </div>
                 )}
               </div>

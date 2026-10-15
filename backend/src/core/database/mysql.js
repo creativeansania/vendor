@@ -21,11 +21,13 @@ export const db = mysql.createPool({
   user: process.env.MYSQL_USER,
   password: process.env.MYSQL_PASSWORD,
   waitForConnections: true,
-  connectionLimit: Number(process.env.MYSQL_POOL_SIZE || 5),
+  connectionLimit: Number(process.env.MYSQL_POOL_SIZE || 10),
   queueLimit: 0,
   timezone: 'Z',
   dateStrings: false,
-  connectTimeout: 15000
+  connectTimeout: 30000,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 10000
 });
 
 export async function pingDb() {

@@ -5,7 +5,8 @@ import {
   handleSubmitCuttingRolls,
   handleSubmitProductionResult,
   handleUnlockOrder,
-  handleGetVendors
+  handleGetVendors,
+  handleSyncOrderFromOdoo
 } from './pwa.controller.js';
 import { authenticateJwt, requireRoles } from '../../middlewares/auth.middleware.js';
 
@@ -27,5 +28,8 @@ router.post('/orders/:id/production-result', requireRoles('master_admin', 'maste
 
 // 4. Unlock locked stages (Master Admin only!)
 router.post('/orders/:id/unlock', requireRoles('master_admin'), handleUnlockOrder);
+
+// 5. Live Force-Sync with Odoo ERP (accessible by master_admin, master_vendor, admin_vendor)
+router.post('/orders/:id/sync-odoo', requireRoles('master_admin', 'master_vendor', 'admin_vendor'), handleSyncOrderFromOdoo);
 
 export default router;

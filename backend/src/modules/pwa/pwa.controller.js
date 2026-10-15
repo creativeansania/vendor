@@ -94,3 +94,17 @@ export const handleGetVendors = async (req, res) => {
     return res.status(400).json({ success: false, message: err.message });
   }
 };
+
+export const handleSyncOrderFromOdoo = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pwaService.syncOrderFromOdoo({
+      user: req.user,
+      orderId: Number(id)
+    });
+    return res.status(200).json(result);
+  } catch (err) {
+    return res.status(400).json({ success: false, message: err.message });
+  }
+};
+
