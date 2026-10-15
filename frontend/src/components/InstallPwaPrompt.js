@@ -53,9 +53,15 @@ export default function InstallPwaPrompt() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
     window.addEventListener('appinstalled', handleAppInstalled);
 
+    const handleCustomOpen = () => {
+      setShowGuideModal(true);
+    };
+    window.addEventListener('open-pwa-install', handleCustomOpen);
+
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
       window.removeEventListener('appinstalled', handleAppInstalled);
+      window.removeEventListener('open-pwa-install', handleCustomOpen);
     };
   }, []);
 
@@ -134,7 +140,7 @@ export default function InstallPwaPrompt() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, flexWrap: 'wrap' }}>
             <button
               type="button"
               onClick={handleInstallClick}
@@ -143,6 +149,15 @@ export default function InstallPwaPrompt() {
             >
               <Download size={15} />
               <span>Pasang Sekarang</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowGuideModal(true)}
+              className="quick-action-pill"
+              style={{ height: '36px', fontSize: '0.78rem', background: '#ffffff', borderColor: '#cbd5e1' }}
+              title="Lihat petunjuk langkah demi langkah"
+            >
+              <span>Cara Pasang</span>
             </button>
             <button
               type="button"

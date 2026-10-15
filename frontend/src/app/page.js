@@ -23,7 +23,8 @@ import {
   ArrowRight,
   TrendingUp,
   AlertCircle,
-  X
+  X,
+  Smartphone
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -206,6 +207,17 @@ export default function DashboardPage() {
               <span className="hide-on-mobile">Akun</span>
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('open-pwa-install'))}
+            className="btn btn-secondary"
+            style={{ fontSize: '0.78rem', padding: '7px 12px', borderRadius: '10px' }}
+            title="Pasang di Layar Utama HP"
+          >
+            <Smartphone size={15} color="var(--brand-gold)" />
+            <span className="hide-on-mobile">Pasang di HP</span>
+          </button>
 
           <button
             onClick={logout}
