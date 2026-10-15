@@ -215,7 +215,8 @@ function OrderDetailContent() {
     }
 
     const effectiveActual = inputActual !== null ? inputActual : totalPhysicalFabric;
-    const targetRef = estimasiSpb;
+    const targetRef = estimasiSpb > 0 ? estimasiSpb : targetSpkQty;
+    const targetLabel = estimasiSpb > 0 ? 'target SPB' : 'target SPK';
     let isExtreme = false;
     let devPct = 0;
 
@@ -236,7 +237,7 @@ function OrderDetailContent() {
         ? `${effectiveActual - targetRef > 0 ? '+' : ''}${(effectiveActual - targetRef).toFixed(2)} ${order?.unit_kain || 'pcs'}`
         : '0',
       warningMessage: isExtreme
-        ? `Angka hasil potong yang Anda masukkan (${effectiveActual.toLocaleString('id-ID')}) berselisih ${devPct.toFixed(0)}% dari target SPB (${targetRef.toLocaleString('id-ID')}). Mohon periksa kembali apakah ada kesalahan ketik (contoh: kelebihan angka 0 atau salah kolom). Setelah dikunci, data ini langsung terkirim ke Odoo dan tidak dapat diubah oleh vendor.`
+        ? `Angka hasil potong yang Anda masukkan (${effectiveActual.toLocaleString('id-ID')}) berselisih ${devPct.toFixed(0)}% dari ${targetLabel} (${targetRef.toLocaleString('id-ID')}). Mohon periksa kembali apakah ada kesalahan ketik (contoh: kelebihan angka 0 atau salah kolom). Setelah dikunci, data ini langsung terkirim ke Odoo dan tidak dapat diubah oleh vendor.`
         : 'Pastikan seluruh input fisik sudah dicek. Setelah dikunci, data hasil potong akan tersimpan permanen di Odoo dan tahap jahit dapat dimulai.',
       onConfirm: () => executeSubmitCutting(inputActual, rolls)
     });
