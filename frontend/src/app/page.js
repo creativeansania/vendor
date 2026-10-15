@@ -428,8 +428,28 @@ export default function DashboardPage() {
                       {cleanProductName}
                     </div>
 
-                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                      SO: <span className="mono-num" style={{ fontWeight: 600 }}>{o.source_document || o.sales_order || '-'}</span>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span>SO:</span>
+                      {o.source_document || o.sales_order ? (
+                        <span className="mono-num" style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                          {o.source_document || o.sales_order}
+                        </span>
+                      ) : (
+                        <span
+                          className="badge badge-slate"
+                          style={{
+                            fontSize: '0.68rem',
+                            padding: '2px 7px',
+                            fontWeight: 600,
+                            background: '#f1f5f9',
+                            color: '#475569',
+                            border: '1px solid #cbd5e1'
+                          }}
+                          title="Make-to-Stock (Pemenuhan Stok Gudang)"
+                        >
+                          Stok Gudang (Non-SO)
+                        </span>
+                      )}
                     </div>
                   </div>
 

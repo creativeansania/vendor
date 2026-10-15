@@ -25,7 +25,8 @@ import {
   TrendingUp,
   ChevronRight,
   Check,
-  Tag
+  Tag,
+  Zap
 } from 'lucide-react';
 
 function OrderDetailContent() {
@@ -53,6 +54,20 @@ function OrderDetailContent() {
 
   // Unlock modal state (Master Admin)
   const [unlockModal, setUnlockModal] = useState({ open: false, type: '', reason: '' });
+
+  // Safety Confirmation & Extreme Deviation Modal State
+  const [safetyModal, setSafetyModal] = useState({
+    open: false,
+    stage: '', // 'cutting' | 'production'
+    isExtreme: false,
+    deviationPct: 0,
+    title: '',
+    targetVal: '',
+    actualVal: '',
+    diffVal: '',
+    warningMessage: '',
+    onConfirm: null
+  });
 
   useEffect(() => {
     const u = getCurrentUser();
@@ -115,25 +130,52 @@ function OrderDetailContent() {
     }));
   };
 
-  // Submit Cutting Stage
-  const handleSubmitCutting = async () => {
-    const inputActual = actualCutting !== '' ? parseFloat(actualCutting) : null;
-    const rolls = Object.entries(rollWeights).map(([lineId, weight]) => ({
-      id: Number(lineId),
-      line_id: Number(lineId),
-      qty_berat_kg: parseFloat(weight) || 0
+  // Quick-Fill single accessory or fabric line with SPK standard
+  const handleFillStandard = (lineId, qty) => {
+    if (qty === undefined || qty === null) return;
+    setRollWeights((prev) => ({
+      ...prev,
+      [lineId]: qty
     }));
+  };
 
-    if (inputActual === null && rolls.length === 0) {
-      alert('Harap isi hasil potong aktual atau rincian bahan fisik.');
-      return;
+  // Quick-Fill ALL accessories with SPK standard in one tap
+  const handleFillAllAccessories = () => {
+    setRollWeights((prev) => {
+      const updated = { ...prev };
+      accessoryLines.forEach((line) => {
+        if (line.qty !== undefined && line.qty !== null) {
+          updated[line.id] = line.qty;
+        }
+      });
+      return updated;
+    });
+  };
+
+  // Quick-Fill Cutting Actual with Estimasi SPB
+  const handleFillCuttingWithSpb = () => {
+    if (estimasiSpb > 0) {
+      setActualCutting(String(estimasiSpb));
     }
+  };
 
-    if (!confirm('Apakah Anda yakin ingin MENGUNCI dan menyimpan hasil potong ini? Setelah dikunci, data tidak dapat diubah.')) {
-      return;
-    }
+  // Tactile adjustment for Grade A / Grade B
+  const adjustQty = (setter, currentVal, delta, min = 0) => {
+    const curr = parseFloat(currentVal) || 0;
+    const next = Math.max(min, curr + delta);
+    setter(String(next));
+  };
 
+  // 1-Tap preset for Grade A = 100% Target SPK
+  const setPresetGradeA = (qty) => {
+    setGradeA(String(qty));
+    if (!gradeB) setGradeB('0');
+  };
+
+  // Execute Submit Cutting (Called after safety modal confirmation)
+  const executeSubmitCutting = async (inputActual, rolls) => {
     setSaving(true);
+    setSafetyModal((prev) => ({ ...prev, open: false }));
     setFeedback({ text: '', type: '' });
 
     try {
@@ -158,18 +200,52 @@ function OrderDetailContent() {
     }
   };
 
-  // Submit Production Results
-  const handleSubmitProduction = async () => {
-    if (!gradeA && !gradeB) {
-      alert('Harap isi minimal jumlah Grade A atau Grade B.');
+  // Request Submit Cutting (Safety Net Check for Typos & Extreme Deviations)
+  const handleRequestSubmitCutting = () => {
+    const inputActual = actualCutting !== '' ? parseFloat(actualCutting) : null;
+    const rolls = Object.entries(rollWeights).map(([lineId, weight]) => ({
+      id: Number(lineId),
+      line_id: Number(lineId),
+      qty_berat_kg: parseFloat(weight) || 0
+    }));
+
+    if (inputActual === null && rolls.length === 0) {
+      setFeedback({ text: 'Harap isi hasil potong aktual atau rincian bahan fisik terlebih dahulu.', type: 'error' });
       return;
     }
 
-    if (!confirm('Apakah Anda yakin ingin MENGUNCI hasil jahit ini? Status SPK akan menjadi Selesai.')) {
-      return;
+    const effectiveActual = inputActual !== null ? inputActual : totalPhysicalFabric;
+    const targetRef = estimasiSpb;
+    let isExtreme = false;
+    let devPct = 0;
+
+    if (targetRef > 0) {
+      devPct = Math.abs(effectiveActual - targetRef) / targetRef * 100;
+      isExtreme = devPct > 20 || (effectiveActual === 0 && targetRef > 0) || effectiveActual > (targetRef * 1.5);
     }
 
+    setSafetyModal({
+      open: true,
+      stage: 'cutting',
+      isExtreme,
+      deviationPct: devPct,
+      title: isExtreme ? 'Peringatan: Selisih Hasil Potong Ekstrem' : 'Konfirmasi Kunci Hasil Potong',
+      targetVal: targetRef > 0 ? `${targetRef.toLocaleString('id-ID')} ${order?.unit_kain || 'pcs'}` : '-',
+      actualVal: `${effectiveActual.toLocaleString('id-ID')} ${order?.unit_kain || 'pcs'}`,
+      diffVal: targetRef > 0
+        ? `${effectiveActual - targetRef > 0 ? '+' : ''}${(effectiveActual - targetRef).toFixed(2)} ${order?.unit_kain || 'pcs'}`
+        : '0',
+      warningMessage: isExtreme
+        ? `Angka hasil potong yang Anda masukkan (${effectiveActual.toLocaleString('id-ID')}) berselisih ${devPct.toFixed(0)}% dari target SPB (${targetRef.toLocaleString('id-ID')}). Mohon periksa kembali apakah ada kesalahan ketik (contoh: kelebihan angka 0 atau salah kolom). Setelah dikunci, data ini langsung terkirim ke Odoo dan tidak dapat diubah oleh vendor.`
+        : 'Pastikan seluruh input fisik sudah dicek. Setelah dikunci, data hasil potong akan tersimpan permanen di Odoo dan tahap jahit dapat dimulai.',
+      onConfirm: () => executeSubmitCutting(inputActual, rolls)
+    });
+  };
+
+  // Execute Submit Production Result (Called after safety modal confirmation)
+  const executeSubmitProduction = async () => {
     setSaving(true);
+    setSafetyModal((prev) => ({ ...prev, open: false }));
     setFeedback({ text: '', type: '' });
 
     try {
@@ -194,6 +270,43 @@ function OrderDetailContent() {
     } finally {
       setSaving(false);
     }
+  };
+
+  // Request Submit Production (Safety Net Check for Typos & Abnormal Ratios)
+  const handleRequestSubmitProduction = () => {
+    if (!gradeA && !gradeB) {
+      setFeedback({ text: 'Harap isi minimal jumlah Grade A atau Grade B.', type: 'error' });
+      return;
+    }
+
+    const valA = parseFloat(gradeA) || 0;
+    const valB = parseFloat(gradeB) || 0;
+    const totalYield = valA + valB;
+    const targetRef = targetSpkQty;
+    let isExtreme = false;
+    let devPct = 0;
+
+    if (targetRef > 0) {
+      devPct = Math.abs(totalYield - targetRef) / targetRef * 100;
+      isExtreme = devPct > 20 || (valB > valA && valB > 0);
+    }
+
+    setSafetyModal({
+      open: true,
+      stage: 'production',
+      isExtreme,
+      deviationPct: devPct,
+      title: isExtreme ? 'Peringatan: Selisih Hasil Jahit Ekstrem' : 'Konfirmasi Kunci Hasil Jahit',
+      targetVal: `${targetRef.toLocaleString('id-ID')} pcs`,
+      actualVal: `${totalYield.toLocaleString('id-ID')} pcs (Grade A: ${valA}, Grade B: ${valB})`,
+      diffVal: `${totalYield - targetRef > 0 ? '+' : ''}${(totalYield - targetRef).toFixed(0)} pcs`,
+      warningMessage: isExtreme
+        ? (valB > valA
+            ? `Perhatian: Jumlah Grade B / BS (${valB} pcs) lebih banyak dari Grade A (${valA} pcs). Mohon periksa apakah kolom tertukar sebelum mengunci SPK menjadi Selesai.`
+            : `Total hasil jahit (${totalYield} pcs) berselisih ${devPct.toFixed(0)}% dari target SPK (${targetRef} pcs). Pastikan bukan salah ketik sebelum data dikunci permanen ke Odoo.`)
+        : 'Pastikan seluruh jumlah fisik sudah sesuai dengan surat jalan. Setelah dikunci, status SPK akan menjadi Selesai dan tidak dapat diubah sendiri.',
+      onConfirm: executeSubmitProduction
+    });
   };
 
   // Master Admin Unlock Handler
@@ -344,8 +457,28 @@ function OrderDetailContent() {
                 <span className="badge badge-amber" style={{ fontSize: '0.7rem' }}><Scissors size={13} /> Belum Potong</span>
               )}
             </div>
-            <p style={{ margin: '1px 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              SO: <strong>{order.source_document || order.sales_order || '-'}</strong> • {order.vendor_name}
+            <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <span>SO:</span>
+              {order.source_document || order.sales_order ? (
+                <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>{order.source_document || order.sales_order}</strong>
+              ) : (
+                <span
+                  className="badge badge-slate"
+                  style={{
+                    fontSize: '0.65rem',
+                    padding: '1px 6px',
+                    fontWeight: 600,
+                    background: '#f1f5f9',
+                    color: '#475569',
+                    border: '1px solid #cbd5e1'
+                  }}
+                  title="Make-to-Stock (Pemenuhan Stok Gudang)"
+                >
+                  Stok Gudang (Non-SO)
+                </span>
+              )}
+              <span>•</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.vendor_name}</span>
             </p>
           </div>
         </div>
@@ -616,21 +749,35 @@ function OrderDetailContent() {
                 <div className="hero-tile" style={{ background: '#fffdf7', borderColor: '#fde68a' }}>
                   <div className="metric-label" style={{ fontSize: '0.7rem', color: 'var(--brand-gold)' }}>✂️ Hasil Potong Fisik</div>
                   {canEditCutting ? (
-                    <div className="input-addon-group" style={{ height: '42px', borderColor: actualCutting ? 'var(--brand-gold)' : 'var(--border-strong)' }}>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        disabled={saving}
-                        placeholder={estimasiSpb > 0 ? String(estimasiSpb) : '0'}
-                        value={actualCutting}
-                        onChange={(e) => setActualCutting(e.target.value)}
-                        className="input-addon-field"
-                        style={{ fontSize: '1.25rem', fontWeight: 800 }}
-                      />
-                      <span className="input-addon-label">
-                        {order.unit_kain || 'PCS'}
-                      </span>
+                    <div>
+                      <div className="input-addon-group" style={{ height: '42px', borderColor: actualCutting ? 'var(--brand-gold)' : 'var(--border-strong)' }}>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          disabled={saving}
+                          placeholder={estimasiSpb > 0 ? String(estimasiSpb) : '0'}
+                          value={actualCutting}
+                          onChange={(e) => setActualCutting(e.target.value)}
+                          className="input-addon-field"
+                          style={{ fontSize: '1.25rem', fontWeight: 800 }}
+                        />
+                        <span className="input-addon-label">
+                          {order.unit_kain || 'PCS'}
+                        </span>
+                      </div>
+                      {estimasiSpb > 0 && actualCutting === '' && (
+                        <button
+                          type="button"
+                          onClick={handleFillCuttingWithSpb}
+                          className="quick-action-pill quick-action-pill-amber"
+                          style={{ marginTop: '6px', width: '100%', fontSize: '0.7rem' }}
+                          title="Isi otomatis dengan target SPB"
+                        >
+                          <Zap size={11} />
+                          <span>Pakai Target SPB ({estimasiSpb})</span>
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div className="mono-num" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--brand-gold)', lineHeight: 1.2 }}>
@@ -729,7 +876,28 @@ function OrderDetailContent() {
                         </div>
                       </div>
 
-                      <div className="roll-input-row">
+                      <div className="roll-input-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        {canEditCutting && line.qty > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleFillStandard(line.id, line.qty)}
+                            className={`quick-action-pill ${parseFloat(rollWeights[line.id]) === parseFloat(line.qty) ? 'quick-action-pill-emerald' : ''}`}
+                            style={{ fontSize: '0.68rem', padding: '2px 8px' }}
+                            title="Gunakan estimasi standar SPK"
+                          >
+                            {parseFloat(rollWeights[line.id]) === parseFloat(line.qty) ? (
+                              <>
+                                <Check size={11} />
+                                <span>Sesuai SPK</span>
+                              </>
+                            ) : (
+                              <>
+                                <Zap size={11} />
+                                <span>Pakai SPK ({line.qty})</span>
+                              </>
+                            )}
+                          </button>
+                        )}
                         <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                           {lineLabel}:
                         </label>
@@ -761,13 +929,22 @@ function OrderDetailContent() {
             {/* SECTION 2: AKSESORIS & PELENGKAP (ACCESSORIES) IF PRESENT */}
             {accessoryLines.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: fabricLines.length > 0 ? '6px' : '0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 2px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 2px', flexWrap: 'wrap', gap: '8px' }}>
                   <span style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     🏷️ Aksesoris & Bahan Pelengkap ({accessoryLines.length} item)
                   </span>
-                  <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                    Verifikasi fisik & pemakaian
-                  </span>
+                  {canEditCutting && (
+                    <button
+                      type="button"
+                      onClick={handleFillAllAccessories}
+                      className="quick-action-pill quick-action-pill-amber"
+                      style={{ fontSize: '0.74rem' }}
+                      title="Isi semua baris aksesoris sekaligus sesuai standar SPK"
+                    >
+                      <Zap size={12} />
+                      <span>Isi Semua Standar SPK</span>
+                    </button>
+                  )}
                 </div>
 
                 {accessoryLines.map((line, idx) => {
@@ -797,7 +974,28 @@ function OrderDetailContent() {
                         </div>
                       </div>
 
-                      <div className="roll-input-row">
+                      <div className="roll-input-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        {canEditCutting && line.qty !== undefined && line.qty !== null && (
+                          <button
+                            type="button"
+                            onClick={() => handleFillStandard(line.id, line.qty)}
+                            className={`quick-action-pill ${parseFloat(rollWeights[line.id]) === parseFloat(line.qty) ? 'quick-action-pill-emerald' : ''}`}
+                            style={{ fontSize: '0.68rem', padding: '2px 8px' }}
+                            title="Gunakan estimasi standar SPK"
+                          >
+                            {parseFloat(rollWeights[line.id]) === parseFloat(line.qty) ? (
+                              <>
+                                <Check size={11} />
+                                <span>Sesuai SPK</span>
+                              </>
+                            ) : (
+                              <>
+                                <Zap size={11} />
+                                <span>Pakai SPK ({line.qty || 0})</span>
+                              </>
+                            )}
+                          </button>
+                        )}
                         <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                           JUMLAH FISIK:
                         </label>
@@ -841,7 +1039,7 @@ function OrderDetailContent() {
                 <button
                   type="button"
                   disabled={saving || (actualCutting === '' && totalPhysicalFabric <= 0 && Object.keys(rollWeights).length === 0)}
-                  onClick={handleSubmitCutting}
+                  onClick={handleRequestSubmitCutting}
                   className="btn btn-primary"
                   style={{ width: '100%', padding: '14px 20px', fontSize: '1rem', borderRadius: '14px' }}
                 >
@@ -991,8 +1189,23 @@ function OrderDetailContent() {
             {/* Production Result Form */}
             <div className="card" style={{ padding: '20px 18px', borderRadius: '16px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '14px' }}>
+                {/* Grade A with Steppers */}
                 <div>
-                  <label className="form-label">Grade A (Pcs)</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '4px' }}>
+                    <label className="form-label" style={{ margin: 0, fontWeight: 700 }}>Grade A (Pcs)</label>
+                    {canEditResult && targetSpkQty > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setPresetGradeA(targetSpkQty)}
+                        className="quick-action-pill quick-action-pill-emerald"
+                        style={{ fontSize: '0.68rem', padding: '2px 8px' }}
+                        title="Set Grade A = 100% Target SPK"
+                      >
+                        <Zap size={11} />
+                        <span>100% SPK ({targetSpkQty})</span>
+                      </button>
+                    )}
+                  </div>
                   <input
                     type="number"
                     step="1"
@@ -1002,12 +1215,22 @@ function OrderDetailContent() {
                     value={gradeA}
                     onChange={(e) => setGradeA(e.target.value)}
                     className="input-field mono-num"
-                    style={{ fontSize: '1.15rem', fontWeight: 800, height: '44px', textAlign: 'right' }}
+                    style={{ fontSize: '1.25rem', fontWeight: 800, height: '46px', textAlign: 'right' }}
                   />
+                  {canEditResult && (
+                    <div style={{ display: 'flex', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
+                      <button type="button" onClick={() => adjustQty(setGradeA, gradeA, -5)} className="stepper-btn" title="Kurangi 5">-5</button>
+                      <button type="button" onClick={() => adjustQty(setGradeA, gradeA, -1)} className="stepper-btn" title="Kurangi 1">-1</button>
+                      <button type="button" onClick={() => adjustQty(setGradeA, gradeA, +1)} className="stepper-btn" title="Tambah 1">+1</button>
+                      <button type="button" onClick={() => adjustQty(setGradeA, gradeA, +5)} className="stepper-btn" title="Tambah 5">+5</button>
+                      <button type="button" onClick={() => setGradeA('0')} className="stepper-btn" style={{ fontSize: '0.68rem' }} title="Reset ke 0">0</button>
+                    </div>
+                  )}
                 </div>
 
+                {/* Grade B with Steppers */}
                 <div>
-                  <label className="form-label">Grade B (Pcs)</label>
+                  <label className="form-label" style={{ marginBottom: '6px', fontWeight: 700 }}>Grade B / BS (Pcs)</label>
                   <input
                     type="number"
                     step="1"
@@ -1017,12 +1240,22 @@ function OrderDetailContent() {
                     value={gradeB}
                     onChange={(e) => setGradeB(e.target.value)}
                     className="input-field mono-num"
-                    style={{ fontSize: '1.15rem', fontWeight: 800, height: '44px', textAlign: 'right' }}
+                    style={{ fontSize: '1.25rem', fontWeight: 800, height: '46px', textAlign: 'right' }}
                   />
+                  {canEditResult && (
+                    <div style={{ display: 'flex', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
+                      <button type="button" onClick={() => setGradeB('0')} className="stepper-btn stepper-btn-primary" title="Nol Grade B">0</button>
+                      <button type="button" onClick={() => adjustQty(setGradeB, gradeB, +1)} className="stepper-btn" title="Tambah 1">+1</button>
+                      <button type="button" onClick={() => adjustQty(setGradeB, gradeB, +2)} className="stepper-btn" title="Tambah 2">+2</button>
+                      <button type="button" onClick={() => adjustQty(setGradeB, gradeB, +5)} className="stepper-btn" title="Tambah 5">+5</button>
+                      <button type="button" onClick={() => adjustQty(setGradeB, gradeB, -1)} className="stepper-btn" title="Kurangi 1">-1</button>
+                    </div>
+                  )}
                 </div>
 
+                {/* Sisa Makloon with Steppers */}
                 <div>
-                  <label className="form-label">Sisa Makloon (Kg)</label>
+                  <label className="form-label" style={{ marginBottom: '6px', fontWeight: 700 }}>Sisa Makloon (Kg)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -1032,8 +1265,55 @@ function OrderDetailContent() {
                     value={sisaKg}
                     onChange={(e) => setSisaKg(e.target.value)}
                     className="input-field mono-num"
-                    style={{ fontSize: '1.15rem', fontWeight: 800, height: '44px', textAlign: 'right' }}
+                    style={{ fontSize: '1.25rem', fontWeight: 800, height: '46px', textAlign: 'right' }}
                   />
+                  {canEditResult && (
+                    <div style={{ display: 'flex', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
+                      <button type="button" onClick={() => setSisaKg('0')} className="stepper-btn" style={{ fontSize: '0.68rem' }}>0.0</button>
+                      <button type="button" onClick={() => adjustQty(setSisaKg, sisaKg, +0.5)} className="stepper-btn">+0.5</button>
+                      <button type="button" onClick={() => adjustQty(setSisaKg, sisaKg, +1.0)} className="stepper-btn">+1.0</button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Live Balance Summary Bar */}
+                <div
+                  style={{
+                    gridColumn: '1 / -1',
+                    padding: '10px 14px',
+                    borderRadius: '12px',
+                    background: 'var(--bg-card-subtle)',
+                    border: '1px solid var(--border-default)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    fontSize: '0.84rem',
+                    flexWrap: 'wrap',
+                    gap: '8px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Total Input:</span>
+                    <strong className="mono-num" style={{ fontSize: '1rem', color: 'var(--brand-gold)', fontWeight: 800 }}>
+                      {totalYieldPcs} pcs
+                    </strong>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.76rem' }}>
+                      (A: {parseFloat(gradeA) || 0} + B: {parseFloat(gradeB) || 0})
+                    </span>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-secondary)' }}>Selisih vs Target: </span>
+                    <strong className="mono-num" style={{
+                      fontWeight: 800,
+                      color: totalYieldPcs - targetSpkQty === 0
+                        ? 'var(--status-emerald)'
+                        : totalYieldPcs - targetSpkQty > 0
+                        ? 'var(--status-emerald)'
+                        : 'var(--status-rose)'
+                    }}>
+                      {totalYieldPcs - targetSpkQty > 0 ? `+${totalYieldPcs - targetSpkQty}` : totalYieldPcs - targetSpkQty} pcs
+                    </strong>
+                  </div>
                 </div>
 
                 <div style={{ gridColumn: '1 / -1' }}>
@@ -1055,7 +1335,7 @@ function OrderDetailContent() {
                   <button
                     type="button"
                     disabled={saving || totalYieldPcs <= 0}
-                    onClick={handleSubmitProduction}
+                    onClick={handleRequestSubmitProduction}
                     className="btn btn-primary"
                     style={{ width: '100%', padding: '14px 20px', fontSize: '1rem', borderRadius: '14px' }}
                   >
@@ -1161,6 +1441,110 @@ function OrderDetailContent() {
                 style={{ flex: 1, borderRadius: '10px' }}
               >
                 {saving ? 'Membuka...' : 'Buka Kunci'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SAFETY CONFIRMATION & EXTREME DEVIATION MODAL */}
+      {safetyModal.open && (
+        <div className="modal-backdrop">
+          <div className="modal-content" style={{ maxWidth: '460px', padding: '22px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
+              <div
+                style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '12px',
+                  background: safetyModal.isExtreme ? 'var(--status-rose-bg)' : 'var(--brand-gold-light)',
+                  border: `1.5px solid ${safetyModal.isExtreme ? 'var(--status-rose-border)' : 'var(--brand-gold-border)'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: safetyModal.isExtreme ? 'var(--status-rose)' : 'var(--brand-gold)',
+                  flexShrink: 0
+                }}
+              >
+                {safetyModal.isExtreme ? <ShieldAlert size={24} /> : <Lock size={22} />}
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.3 }}>
+                  {safetyModal.title}
+                </h3>
+                <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                  SPK #{order.id} • {order.mo_name}
+                </p>
+              </div>
+            </div>
+
+            {/* Comparison Metrics Grid */}
+            <div className="comparison-card">
+              <div className="comparison-box">
+                <span className="comparison-box-label">Target Rujukan</span>
+                <span className="comparison-box-value" style={{ fontSize: '1.05rem' }}>{safetyModal.targetVal}</span>
+              </div>
+              <div className="comparison-box" style={{ background: '#ffffff', borderRadius: '8px', padding: '4px' }}>
+                <span className="comparison-box-label" style={{ color: safetyModal.isExtreme ? 'var(--status-rose)' : 'var(--brand-gold)' }}>
+                  Input Anda
+                </span>
+                <span className="comparison-box-value" style={{ fontSize: '1.05rem', color: safetyModal.isExtreme ? 'var(--status-rose)' : 'var(--brand-gold)' }}>
+                  {safetyModal.actualVal}
+                </span>
+              </div>
+              <div className="comparison-box">
+                <span className="comparison-box-label">Selisih</span>
+                <span className="comparison-box-value" style={{
+                  fontSize: '1.05rem',
+                  color: safetyModal.isExtreme ? 'var(--status-rose)' : 'var(--text-primary)'
+                }}>
+                  {safetyModal.diffVal}
+                </span>
+              </div>
+            </div>
+
+            {/* Warning Message Box */}
+            <div
+              style={{
+                padding: '12px 14px',
+                borderRadius: '12px',
+                background: safetyModal.isExtreme ? '#fff1f2' : '#f8fafc',
+                border: `1px solid ${safetyModal.isExtreme ? '#fecdd3' : '#e2e8f0'}`,
+                fontSize: '0.82rem',
+                lineHeight: 1.5,
+                color: safetyModal.isExtreme ? '#9f1239' : 'var(--text-secondary)',
+                marginBottom: '18px'
+              }}
+            >
+              {safetyModal.isExtreme && (
+                <div style={{ fontWeight: 800, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <AlertTriangle size={15} />
+                  <span>PERINGATAN SELISIH EKSTREM</span>
+                </div>
+              )}
+              <p style={{ margin: 0 }}>{safetyModal.warningMessage}</p>
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setSafetyModal((prev) => ({ ...prev, open: false }))}
+                className="btn btn-secondary"
+                style={{ flex: 1, height: '44px', borderRadius: '12px', fontWeight: 700 }}
+              >
+                Periksa Lagi
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => {
+                  if (safetyModal.onConfirm) safetyModal.onConfirm();
+                }}
+                className={`btn ${safetyModal.isExtreme ? 'btn-danger' : 'btn-primary'}`}
+                style={{ flex: 1.2, height: '44px', borderRadius: '12px', fontWeight: 800, fontSize: '0.88rem' }}
+              >
+                {saving ? 'Mengunci...' : safetyModal.isExtreme ? 'Ya, Kunci Data Ini' : 'Ya, Kunci Sekarang'}
               </button>
             </div>
           </div>

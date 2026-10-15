@@ -843,3 +843,133 @@ h1, h2, h3, h4, .font-heading {
   }
 }
 
+/* ==========================================================================
+   Ergonomic Quick-Action Pills & Tactile Stepper Buttons
+   ========================================================================== */
+.quick-action-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  min-height: 30px;
+}
+
+.quick-action-pill:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+
+.quick-action-pill:active {
+  transform: scale(0.96);
+}
+
+.quick-action-pill-amber {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #b45309;
+}
+
+.quick-action-pill-amber:hover {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: #92400e;
+}
+
+.quick-action-pill-emerald {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #047857;
+}
+
+.quick-action-pill-emerald:hover {
+  background: #d1fae5;
+  border-color: #10b981;
+  color: #065f46;
+}
+
+/* Tactile steppers for easy tapping by older operators */
+.stepper-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  background: #ffffff;
+  border: 1.5px solid var(--border-default);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.stepper-btn:hover {
+  background: #f8fafc;
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.stepper-btn:active {
+  background: #e2e8f0;
+  transform: scale(0.95);
+}
+
+.stepper-btn-primary {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #b45309;
+}
+
+.stepper-btn-primary:hover {
+  background: #fef3c7;
+  border-color: #f59e0b;
+}
+
+/* Comparison Card in Confirmation Modal */
+.comparison-card {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  background: var(--bg-card-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 12px;
+  text-align: center;
+  margin: 14px 0;
+}
+
+.comparison-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.comparison-box-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.comparison-box-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
