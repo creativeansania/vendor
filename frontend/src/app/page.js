@@ -145,7 +145,7 @@ export default function DashboardPage() {
     const target = `${Number(o.qty_target || o.qty_spk || 0).toLocaleString('id-ID')} pcs`;
     const kainInfo = `${o.status_kebutuhan_kain || 'Cukup'}${o.kain_dari_gudang !== null && o.kain_dari_gudang !== undefined ? ` (Terima: ${Number(o.kain_dari_gudang).toLocaleString('id-ID')} ${o.unit_kain || 'kg'} / Butuh: ${Number(o.qty_kebutuhan_kain || 0).toLocaleString('id-ID')} ${o.unit_kain || 'kg'})` : ''}`;
 
-    let msg = `Halo Tim Ansania, mau tanya / ada kendala terkait SPK ini:\n\n`;
+    let msg = `Halo Tim Kantiss, mau tanya / ada kendala terkait SPK ini:\n\n`;
     msg += `📋 *No SPK*: ${spkNo}\n`;
     msg += `👗 *Produk*: ${product}\n`;
     msg += `🎯 *Target SPK*: ${target}\n`;

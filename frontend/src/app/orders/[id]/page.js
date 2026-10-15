@@ -132,7 +132,7 @@ function OrderDetailContent() {
     const target = `${Number(order.qty_spk || order.qty_target || 0).toLocaleString('id-ID')} pcs`;
     const kainInfo = `${order.status_kebutuhan_kain || 'Cukup'}${order.kain_dari_gudang !== null && order.kain_dari_gudang !== undefined ? ` (Terima: ${Number(order.kain_dari_gudang).toLocaleString('id-ID')} ${order.unit_kain || 'kg'} / Butuh: ${Number(order.qty_kebutuhan_kain || 0).toLocaleString('id-ID')} ${order.unit_kain || 'kg'})` : ''}`;
 
-    let msg = `Halo Tim Ansania, mau tanya / ada kendala terkait SPK ini:\n\n`;
+    let msg = `Halo Tim Kantiss, mau tanya / ada kendala terkait SPK ini:\n\n`;
     msg += `📋 *No SPK*: ${spkNo}\n`;
     msg += `👗 *Produk*: ${product}\n`;
     msg += `🎯 *Target SPK*: ${target}\n`;
