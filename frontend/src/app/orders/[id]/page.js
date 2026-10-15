@@ -674,6 +674,7 @@ function OrderDetailContent() {
         {/* Operational Segmented Tabs (Apple / Linear Pill Style) */}
         <div className="segmented-tabs-wrapper">
           <button
+            id="tab-btn-timbang"
             onClick={() => setActiveTab('timbang')}
             className={`segmented-tab-btn ${activeTab === 'timbang' ? 'active' : ''}`}
           >
@@ -682,6 +683,7 @@ function OrderDetailContent() {
           </button>
 
           <button
+            id="tab-btn-hasil"
             onClick={() => setActiveTab('hasil')}
             className={`segmented-tab-btn ${activeTab === 'hasil' ? 'active' : ''}`}
           >
@@ -690,6 +692,7 @@ function OrderDetailContent() {
           </button>
 
           <button
+            id="tab-btn-bahan"
             onClick={() => setActiveTab('bahan')}
             className={`segmented-tab-btn ${activeTab === 'bahan' ? 'active' : ''}`}
           >
