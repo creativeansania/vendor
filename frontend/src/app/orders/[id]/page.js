@@ -26,7 +26,8 @@ import {
   ChevronRight,
   Check,
   Tag,
-  Zap
+  Zap,
+  MessageCircle
 } from 'lucide-react';
 
 function OrderDetailContent() {
@@ -121,6 +122,36 @@ function OrderDetailContent() {
       loadData();
     }
   }, [user, orderId]);
+
+  // Share SPK context to WhatsApp Group / Chat
+  const handleShareToWa = (customIssue = '') => {
+    if (!order) return;
+    const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
+    const spkNo = order.mo_name || `SPK #${order.id}`;
+    const product = order.product_name || '-';
+    const target = `${Number(order.qty_spk || order.qty_target || 0).toLocaleString('id-ID')} pcs`;
+    const kainInfo = `${order.status_kebutuhan_kain || 'Cukup'}${order.kain_dari_gudang !== null && order.kain_dari_gudang !== undefined ? ` (Terima: ${Number(order.kain_dari_gudang).toLocaleString('id-ID')} ${order.unit_kain || 'kg'} / Butuh: ${Number(order.qty_kebutuhan_kain || 0).toLocaleString('id-ID')} ${order.unit_kain || 'kg'})` : ''}`;
+
+    let msg = `Halo Tim Ansania, mau tanya / ada kendala terkait SPK ini:\n\n`;
+    msg += `📋 *No SPK*: ${spkNo}\n`;
+    msg += `👗 *Produk*: ${product}\n`;
+    msg += `🎯 *Target SPK*: ${target}\n`;
+    msg += `📦 *Status Kain*: ${kainInfo}\n`;
+    msg += `🔗 *Link SPK*: ${currentUrl}\n\n`;
+
+    if (customIssue) {
+      msg += `⚠️ *Kendala*: ${customIssue}\n`;
+    } else {
+      msg += `💬 *Pertanyaan / Kendala*: `;
+    }
+
+    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+    window.open(waUrl, '_blank');
+  };
+
+  const handleAskWaKainKurang = () => {
+    handleShareToWa('Total kain yang kami terima di konveksi KURANG dari kebutuhan standar SPK. Mohon arahan apakah kain boleh dipotong atau menunggu kiriman tambahan? Terima kasih.');
+  };
 
   // Handle Roll Weight Change
   const handleWeightChange = (lineId, value) => {
@@ -484,15 +515,41 @@ function OrderDetailContent() {
           </div>
         </div>
 
-        <button
-          onClick={loadData}
-          className="btn btn-secondary btn-icon"
-          style={{ flexShrink: 0, borderRadius: '10px' }}
-          title="Segarkan Data"
-          disabled={loading}
-        >
-          <RefreshCw size={15} className={loading ? 'spinner' : ''} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={() => handleShareToWa()}
+            className="btn"
+            style={{
+              background: '#25D366',
+              color: '#ffffff',
+              border: 'none',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              padding: '7px 12px',
+              borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 6px rgba(37, 211, 102, 0.35)',
+              cursor: 'pointer'
+            }}
+            title="Kirim pertanyaan atau kendala SPK ini ke WhatsApp Group"
+          >
+            <MessageCircle size={15} />
+            <span className="hide-on-mobile">Tanya di WA</span>
+          </button>
+
+          <button
+            onClick={loadData}
+            className="btn btn-secondary btn-icon"
+            style={{ width: '36px', height: '36px', borderRadius: '10px' }}
+            title="Segarkan Data"
+            disabled={loading}
+          >
+            <RefreshCw size={15} className={loading ? 'spinner' : ''} />
+          </button>
+        </div>
       </header>
 
       {/* Main Content Area */}
@@ -763,12 +820,36 @@ function OrderDetailContent() {
                   >
                     <AlertCircle size={20} />
                   </div>
-                  <div style={{ fontSize: '0.86rem', lineHeight: 1.4 }}>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: '0.86rem', lineHeight: 1.4 }}>
                     <strong>Perhatian: Total Kain Diterima Kurang!</strong>
                     <div style={{ fontSize: '0.8rem', color: '#b91c1c', marginTop: '2px' }}>
                       Kain diterima: <strong>{Number(order.kain_dari_gudang || 0).toLocaleString('id-ID')} {order.unit_kain || 'kg'}</strong> (Kebutuhan standar SPK: <strong>{Number(order.qty_kebutuhan_kain || 0).toLocaleString('id-ID')} {order.unit_kain || 'kg'}</strong>). Harap periksa fisik kain sebelum memotong.
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleAskWaKainKurang}
+                    className="btn"
+                    style={{
+                      background: '#25D366',
+                      color: '#ffffff',
+                      border: 'none',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      padding: '8px 12px',
+                      borderRadius: '10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      flexShrink: 0,
+                      boxShadow: '0 2px 6px rgba(37, 211, 102, 0.35)',
+                      cursor: 'pointer'
+                    }}
+                    title="Laporkan kendala kain kurang ke WhatsApp Group"
+                  >
+                    <MessageCircle size={15} />
+                    <span>Tanya di WA</span>
+                  </button>
                 </div>
               )}
 

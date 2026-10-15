@@ -24,7 +24,8 @@ import {
   TrendingUp,
   AlertCircle,
   X,
-  Smartphone
+  Smartphone,
+  MessageCircle
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -134,6 +135,32 @@ export default function DashboardPage() {
     }
     return orders;
   }, [orders, status]);
+
+  // Share SPK context to WhatsApp Group from card
+  const handleAskWaFromCard = (o, isKainKurang = false) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://vendor-sandy-eight.vercel.app';
+    const currentUrl = `${origin}/orders/${o.id}`;
+    const spkNo = o.mo_name || `SPK #${o.id}`;
+    const product = o.product_name || '-';
+    const target = `${Number(o.qty_target || o.qty_spk || 0).toLocaleString('id-ID')} pcs`;
+    const kainInfo = `${o.status_kebutuhan_kain || 'Cukup'}${o.kain_dari_gudang !== null && o.kain_dari_gudang !== undefined ? ` (Terima: ${Number(o.kain_dari_gudang).toLocaleString('id-ID')} ${o.unit_kain || 'kg'} / Butuh: ${Number(o.qty_kebutuhan_kain || 0).toLocaleString('id-ID')} ${o.unit_kain || 'kg'})` : ''}`;
+
+    let msg = `Halo Tim Ansania, mau tanya / ada kendala terkait SPK ini:\n\n`;
+    msg += `📋 *No SPK*: ${spkNo}\n`;
+    msg += `👗 *Produk*: ${product}\n`;
+    msg += `🎯 *Target SPK*: ${target}\n`;
+    msg += `📦 *Status Kain*: ${kainInfo}\n`;
+    msg += `🔗 *Link SPK*: ${currentUrl}\n\n`;
+
+    if (isKainKurang) {
+      msg += `⚠️ *Kendala*: Total kain yang kami terima di konveksi KURANG dari kebutuhan standar SPK. Mohon arahan apakah kain boleh dipotong atau menunggu kiriman tambahan? Terima kasih.\n`;
+    } else {
+      msg += `💬 *Pertanyaan / Kendala*: `;
+    }
+
+    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+    window.open(waUrl, '_blank');
+  };
 
   const pageNumbers = useMemo(() => {
     if (totalPages <= 1) return [];
@@ -612,7 +639,12 @@ export default function DashboardPage() {
                       {/* Status Badges */}
                       <div style={{ flexShrink: 0, display: 'flex', gap: '4px', alignItems: 'center' }}>
                         {o.status_kebutuhan_kain === 'Kurang' && (
-                          <span
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAskWaFromCard(o, true);
+                            }}
                             className="badge"
                             style={{
                               fontSize: '0.68rem',
@@ -620,11 +652,13 @@ export default function DashboardPage() {
                               background: '#fef2f2',
                               color: '#dc2626',
                               border: '1px solid #fecaca',
-                              fontWeight: 800
+                              fontWeight: 800,
+                              cursor: 'pointer'
                             }}
+                            title="Laporkan kain kurang ke WhatsApp Group"
                           >
                             ⚠️ Kurang
-                          </span>
+                          </button>
                         )}
                         {isResultLocked ? (
                           <span className="badge badge-emerald" style={{ fontSize: '0.7rem' }}>
@@ -729,6 +763,31 @@ export default function DashboardPage() {
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAskWaFromCard(o);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '4px 8px',
+                          borderRadius: '8px',
+                          background: '#ecfdf5',
+                          border: '1px solid #a7f3d0',
+                          color: '#059669',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                        title="Tanyakan SPK ini ke WhatsApp Group"
+                      >
+                        <MessageCircle size={13} color="#059669" />
+                        <span>Tanya WA</span>
+                      </button>
+
                       {price && (
                         <div className="mono-num" style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--brand-gold)' }}>
                           {price}
