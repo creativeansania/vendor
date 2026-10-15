@@ -4,8 +4,8 @@
   "description": "Aplikasi Monitoring WIP Vendor & Timbang Roll Kain Ansania",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#090d16",
-  "theme_color": "#0f172a",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "orientation": "portrait-primary",
   "icons": [
     {

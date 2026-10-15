@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchApi, getCurrentUser, logout } from '@/lib/api';
+import InstallPwaPrompt from '@/components/InstallPwaPrompt';
 import {
   Search,
   Filter,
@@ -219,6 +220,9 @@ export default function DashboardPage() {
 
       {/* Main Container */}
       <main className="main-content">
+        {/* PWA Home Screen Install Banner for Older Operators */}
+        <InstallPwaPrompt />
+
         {/* KPI Summary Cards */}
         <div className="metrics-grid">
           {/* Card 1: Total SPK */}
