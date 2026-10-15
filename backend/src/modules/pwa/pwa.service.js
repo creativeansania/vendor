@@ -1,5 +1,10 @@
 import { db } from '../../core/database/mysql.js';
 import { outboxWorker } from './outbox.worker.js';
+import { adminOdooClient } from '../../core/odoo/odooClient.js';
+
+// In-memory cache for Odoo BOM stock moves to minimize XML-RPC calls
+const rawMovesCache = new Map();
+const RAW_MOVES_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 export class PwaService {
   /**
@@ -121,9 +126,9 @@ export class PwaService {
   }
 
   /**
-   * Get single order details and its roll lines
+   * Get single order details, roll lines, and Odoo raw moves (BOM)
    */
-  async getOrderDetails({ user, orderId }) {
+  async getOrderDetails({ user, orderId, includeRawMoves = true }) {
     const showPrice = user.role !== 'admin_vendor';
     const priceFields = showPrice
       ? 'w.harga_vendor, w.total_harga,'
@@ -174,9 +179,33 @@ export class PwaService {
       [orderId]
     );
 
+    // Fetch raw material moves (BOM components) from Odoo ERP
+    let rawMoves = [];
+    if (includeRawMoves && order.odoo_mo_id) {
+      const cached = rawMovesCache.get(order.odoo_mo_id);
+      if (cached && Date.now() - cached.time < RAW_MOVES_CACHE_TTL) {
+        rawMoves = cached.data;
+      } else {
+        try {
+          await adminOdooClient.authenticate();
+          rawMoves = await adminOdooClient._callObject('stock.move', 'search_read', [
+            [['raw_material_production_id', '=', order.odoo_mo_id]]
+          ], {
+            fields: ['id', 'product_id', 'product_uom_qty', 'quantity', 'product_uom', 'state'],
+            order: 'id asc'
+          });
+          rawMovesCache.set(order.odoo_mo_id, { time: Date.now(), data: rawMoves });
+        } catch (err) {
+          console.warn(`[PWA] Failed to fetch raw moves from Odoo for MO #${order.odoo_mo_id}:`, err.message);
+        }
+      }
+    }
+    order.raw_moves = rawMoves;
+
     return {
       order,
-      rollLines
+      rollLines,
+      rawMoves
     };
   }
 
@@ -184,7 +213,7 @@ export class PwaService {
    * Submit physical cutting results and/or roll weights (locks cutting stage)
    */
   async submitCuttingRolls({ user, orderId, rollUpdates = [], actualCutting }) {
-    const { order, rollLines } = await this.getOrderDetails({ user, orderId });
+    const { order, rollLines } = await this.getOrderDetails({ user, orderId, includeRawMoves: false });
 
     if (order.is_backorder) {
       throw new Error('MO Backorder tidak perlu diinput ulang (mengikuti MO induk)');
@@ -281,7 +310,7 @@ export class PwaService {
    * Submit final production results (locks result stage)
    */
   async submitProductionResult({ user, orderId, qtyGradeA, qtyGradeB, sisaMakloonKg, noSuratJalan }) {
-    const { order } = await this.getOrderDetails({ user, orderId });
+    const { order } = await this.getOrderDetails({ user, orderId, includeRawMoves: false });
 
     if (order.result_locked_at) {
       throw new Error('Laporan hasil jahit sudah terkunci. Hubungi Master Admin untuk unlock.');
@@ -358,7 +387,7 @@ export class PwaService {
       throw new Error('Alasan unlock wajib diisi untuk catatan audit');
     }
 
-    const { order } = await this.getOrderDetails({ user, orderId });
+    const { order } = await this.getOrderDetails({ user, orderId, includeRawMoves: false });
 
     if (unlockType === 'cutting') {
       await db.query(

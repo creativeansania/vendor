@@ -38,6 +38,7 @@ function OrderDetailContent() {
   const [user, setUser] = useState(null);
   const [order, setOrder] = useState(null);
   const [rollLines, setRollLines] = useState([]);
+  const [rawMoves, setRawMoves] = useState([]);
   const [activeTab, setActiveTab] = useState('timbang'); // 'timbang', 'hasil', 'bahan'
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -87,6 +88,7 @@ function OrderDetailContent() {
       if (res.success && res.order) {
         setOrder(res.order);
         setRollLines(res.rollLines || []);
+        setRawMoves(res.rawMoves || res.order?.raw_moves || []);
 
         // Prepopulate cutting actual
         setActualCutting(
@@ -692,7 +694,9 @@ function OrderDetailContent() {
             className={`segmented-tab-btn ${activeTab === 'bahan' ? 'active' : ''}`}
           >
             <Layers size={15} className="tab-icon" />
-            <span>3. Bahan BOM</span>
+            <span>
+              3. Bahan BOM {(rawMoves.length > 0 || (order?.raw_moves && order.raw_moves.length > 0)) ? `(${rawMoves.length || order?.raw_moves?.length})` : ''}
+            </span>
           </button>
         </div>
 
@@ -1472,49 +1476,228 @@ function OrderDetailContent() {
         {/* ==================================================================
             TAB 3: KOMPONEN BAHAN BAKU BOM
             ================================================================== */}
-        {activeTab === 'bahan' && (
-          <div className="card" style={{ padding: '18px 20px', borderRadius: '16px' }}>
-            <h3 style={{ fontSize: '1.02rem', marginBottom: '14px', fontWeight: 800, color: 'var(--text-primary)' }}>
-              Daftar Komponen Material dari Odoo ERP
-            </h3>
-            {(!order.raw_moves || order.raw_moves.length === 0) ? (
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
-                Tidak ada data pergerakan stok bahan baku yang terdaftar di Odoo.
-              </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {order.raw_moves.map((move, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: '12px 16px',
-                      background: 'var(--bg-card-subtle)',
-                      borderRadius: '12px',
-                      border: '1px solid var(--border-default)',
+        {activeTab === 'bahan' && (() => {
+          const movesList = (rawMoves && rawMoves.length > 0) ? rawMoves : (order?.raw_moves || []);
+          const hasMoves = movesList.length > 0;
+          const hasRollLines = rollLines && rollLines.length > 0;
+
+          const getMoveStateBadge = (state) => {
+            switch (state) {
+              case 'assigned':
+                return { label: 'Tersedia / Siap', bg: 'rgba(34, 197, 94, 0.12)', border: 'rgba(34, 197, 94, 0.25)', color: 'var(--status-emerald)' };
+              case 'partially_available':
+                return { label: 'Tersedia Sebagian', bg: 'rgba(234, 179, 8, 0.12)', border: 'rgba(234, 179, 8, 0.25)', color: 'var(--status-amber)' };
+              case 'confirmed':
+                return { label: 'Menunggu Ketersediaan', bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.25)', color: 'var(--status-sky)' };
+              case 'done':
+                return { label: 'Selesai', bg: 'rgba(168, 85, 247, 0.12)', border: 'rgba(168, 85, 247, 0.25)', color: '#a855f7' };
+              case 'draft':
+                return { label: 'Draft', bg: 'rgba(148, 163, 184, 0.12)', border: 'rgba(148, 163, 184, 0.25)', color: 'var(--text-muted)' };
+              default:
+                return { label: state || 'Tercatat', bg: 'rgba(148, 163, 184, 0.12)', border: 'rgba(148, 163, 184, 0.25)', color: 'var(--text-muted)' };
+            }
+          };
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div className="card" style={{ padding: '18px 20px', borderRadius: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '8px',
+                      background: 'rgba(217, 119, 6, 0.12)',
                       display: 'flex',
-                      justifyContent: 'space-between',
                       alignItems: 'center',
-                      gap: '12px',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {move.product_id ? (Array.isArray(move.product_id) ? move.product_id[1] : move.product_id) : 'Item Material'}
-                      </div>
-                      <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                        Status Move: <span className="mono-num" style={{ fontWeight: 600 }}>{move.state || 'assigned'}</span>
-                      </div>
+                      justifyContent: 'center',
+                      color: 'var(--brand-gold)'
+                    }}>
+                      <Layers size={18} />
                     </div>
-                    <div className="mono-num" style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--brand-gold)', whiteSpace: 'nowrap' }}>
-                      {move.product_uom_qty || 0} {move.product_uom ? (Array.isArray(move.product_uom) ? move.product_uom[1] : move.product_uom) : 'Unit'}
+                    <div>
+                      <h3 style={{ fontSize: '1.02rem', margin: 0, fontWeight: 800, color: 'var(--text-primary)' }}>
+                        Daftar Komponen Material dari Odoo ERP
+                      </h3>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        Bill of Materials (BOM) & Pergerakan Stok Bahan Baku MO #{order?.mo_name || order?.id}
+                      </div>
                     </div>
                   </div>
-                ))}
+                  {hasMoves && (
+                    <span style={{
+                      fontSize: '0.76rem',
+                      fontWeight: 700,
+                      padding: '4px 10px',
+                      borderRadius: '20px',
+                      background: 'rgba(34, 197, 94, 0.12)',
+                      border: '1px solid rgba(34, 197, 94, 0.25)',
+                      color: 'var(--status-emerald)'
+                    }}>
+                      {movesList.length} Material Terdaftar
+                    </span>
+                  )}
+                </div>
+
+                {/* LAYER 1: Odoo stock.move available */}
+                {hasMoves ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {movesList.map((move, i) => {
+                      const st = getMoveStateBadge(move.state);
+                      const productName = move.product_id
+                        ? (Array.isArray(move.product_id) ? move.product_id[1] : move.product_id)
+                        : 'Item Material';
+                      const uomName = move.product_uom
+                        ? (Array.isArray(move.product_uom) ? move.product_uom[1] : move.product_uom)
+                        : 'Unit';
+
+                      return (
+                        <div
+                          key={move.id || i}
+                          style={{
+                            padding: '14px 16px',
+                            background: 'var(--bg-card-subtle)',
+                            borderRadius: '12px',
+                            border: '1px solid var(--border-default)',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '14px',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{
+                              fontWeight: 700,
+                              fontSize: '0.9rem',
+                              color: 'var(--text-primary)',
+                              lineHeight: 1.35,
+                              marginBottom: '6px'
+                            }}>
+                              {productName}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              <span style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                background: st.bg,
+                                border: `1px solid ${st.border}`,
+                                color: st.color
+                              }}>
+                                {st.label}
+                              </span>
+                              {move.quantity !== undefined && move.quantity !== null && Number(move.quantity) > 0 && Number(move.quantity) !== Number(move.product_uom_qty) && (
+                                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                                  Alokasi fisik: <strong style={{ color: 'var(--text-primary)' }}>{move.quantity} {uomName}</strong>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <div className="mono-num" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--brand-gold)' }}>
+                              {move.product_uom_qty || 0}
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                              {uomName}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : hasRollLines ? (
+                  /* LAYER 2: Fallback to assigned roll lines */
+                  <div>
+                    <div style={{
+                      padding: '10px 14px',
+                      background: 'rgba(59, 130, 246, 0.08)',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(59, 130, 246, 0.2)',
+                      fontSize: '0.82rem',
+                      color: 'var(--status-sky)',
+                      marginBottom: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      <Info size={16} />
+                      <span>Data BOM Odoo umum. Komponen kain dialokasikan melalui rincian roll berikut:</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {rollLines.map((r, i) => (
+                        <div
+                          key={r.id || i}
+                          style={{
+                            padding: '12px 14px',
+                            background: 'var(--bg-card-subtle)',
+                            borderRadius: '10px',
+                            border: '1px solid var(--border-default)',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '12px'
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
+                              {r.nama_item || 'Kain Roll'}
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                              Lot: <span className="mono-num" style={{ fontWeight: 600 }}>{r.kode_lot || '-'}</span>
+                            </div>
+                          </div>
+                          <div className="mono-num" style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--brand-gold)' }}>
+                            {r.qty || 0} {r.uom || 'Meter'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  /* LAYER 3: Global SPK Material Summary Card */
+                  <div style={{
+                    padding: '16px',
+                    background: 'var(--bg-card-subtle)',
+                    borderRadius: '12px',
+                    border: '1px dashed var(--border-default)'
+                  }}>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem', margin: '0 0 14px 0', lineHeight: 1.5 }}>
+                      SPK ini menggunakan alokasi material global tanpa pergerakan stock move individual di Odoo.
+                    </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+                      <div style={{ padding: '10px 12px', background: 'var(--bg-page)', borderRadius: '8px', border: '1px solid var(--border-default)' }}>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Kebutuhan Kain</div>
+                        <div className="mono-num" style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                          {order?.qty_kebutuhan_kain || 0} {order?.unit_kain || 'Meter'}
+                        </div>
+                      </div>
+                      <div style={{ padding: '10px 12px', background: 'var(--bg-page)', borderRadius: '8px', border: '1px solid var(--border-default)' }}>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Kain dari Gudang</div>
+                        <div className="mono-num" style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--brand-gold)', marginTop: '2px' }}>
+                          {order?.kain_dari_gudang || 0} {order?.unit_kain || 'Meter'}
+                        </div>
+                      </div>
+                      <div style={{ padding: '10px 12px', background: 'var(--bg-page)', borderRadius: '8px', border: '1px solid var(--border-default)' }}>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Status Kebutuhan</div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: (order?.status_kebutuhan_kain || '').includes('Kurang') ? 'var(--status-rose)' : 'var(--status-emerald)', marginTop: '2px' }}>
+                          {order?.status_kebutuhan_kain || 'Normal'}
+                        </div>
+                      </div>
+                      <div style={{ padding: '10px 12px', background: 'var(--bg-page)', borderRadius: '8px', border: '1px solid var(--border-default)' }}>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Aksesoris Gudang</div>
+                        <div className="mono-num" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginTop: '2px' }}>
+                          {order?.accessories_dari_gudang || '-'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          );
+        })()}
       </main>
 
       {/* UNLOCK MODAL (MASTER ADMIN ONLY) */}
