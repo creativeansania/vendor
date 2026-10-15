@@ -25,7 +25,11 @@ import {
   AlertCircle,
   X,
   Smartphone,
-  MessageCircle
+  MessageCircle,
+  ArrowUpDown,
+  Calendar,
+  Flame,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -41,6 +45,19 @@ export default function DashboardPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [kainKurangCount, setKainKurangCount] = useState(0);
+  const [sort, setSort] = useState('latest');
+  const [period, setPeriod] = useState('');
+  const [backorderFilter, setBackorderFilter] = useState('');
+  const [metrics, setMetrics] = useState({
+    total: 0,
+    cutting_pending: 0,
+    sewing_active: 0,
+    result_locked: 0,
+    kain_kurang: 0,
+    overdue: 0,
+    deadline_week: 0,
+    backorder_count: 0
+  });
 
   // Check auth
   useEffect(() => {
@@ -75,6 +92,9 @@ export default function DashboardPage() {
       if (search.trim()) queryParams.set('search', search.trim());
       if (status !== 'all') queryParams.set('status', status);
       if (selectedVendor) queryParams.set('vendorId', selectedVendor);
+      if (sort !== 'latest') queryParams.set('sort', sort);
+      if (period) queryParams.set('period', period);
+      if (backorderFilter) queryParams.set('backorder', backorderFilter);
 
       const res = await fetchApi(`/pwa/orders?${queryParams.toString()}`);
       if (res.success) {
@@ -82,13 +102,16 @@ export default function DashboardPage() {
         setTotalPages(res.pagination?.totalPages || 1);
         setTotalCount(res.pagination?.total || 0);
         setKainKurangCount(res.pagination?.kainKurangCount || 0);
+        if (res.metrics) {
+          setMetrics(res.metrics);
+        }
       }
     } catch (err) {
       console.error('Failed to load orders:', err);
     } finally {
       setLoading(false);
     }
-  }, [user, page, search, status, selectedVendor]);
+  }, [user, page, search, status, selectedVendor, sort, period, backorderFilter]);
 
   useEffect(() => {
     loadOrders();
@@ -104,6 +127,30 @@ export default function DashboardPage() {
     setSearch('');
     setPage(1);
   };
+
+  const handleToggleStatus = (targetStatus) => {
+    setStatus((prev) => (prev === targetStatus ? 'all' : targetStatus));
+    setPage(1);
+  };
+
+  const handleResetFilters = () => {
+    setStatus('all');
+    setSearch('');
+    setSelectedVendor('');
+    setSort('latest');
+    setPeriod('');
+    setBackorderFilter('');
+    setPage(1);
+  };
+
+  const hasActiveFilters = Boolean(
+    status !== 'all' ||
+    search.trim() ||
+    selectedVendor ||
+    sort !== 'latest' ||
+    period ||
+    backorderFilter
+  );
 
   const handlePageChange = (newPage) => {
     if (newPage < 1 || newPage > totalPages || newPage === page) return;
@@ -287,126 +334,260 @@ export default function DashboardPage() {
         {/* PWA Home Screen Install Banner for Older Operators */}
         <InstallPwaPrompt />
 
-        {/* KPI Summary Cards */}
-        <div className="metrics-grid">
+        {/* KPI Summary Cards (Interactive Filters) */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+          gap: '10px'
+        }}>
           {/* Card 1: Total SPK */}
-          <div className="card metric-card">
+          <div
+            onClick={() => handleToggleStatus('all')}
+            className="card metric-card"
+            style={{
+              cursor: 'pointer',
+              border: status === 'all' ? '2px solid var(--brand-gold)' : '1px solid var(--border-default)',
+              boxShadow: status === 'all' ? '0 4px 14px rgba(217, 119, 6, 0.15)' : 'none',
+              transform: status === 'all' ? 'scale(1.02)' : 'none',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              background: status === 'all' ? 'rgba(217, 119, 6, 0.04)' : 'var(--bg-card)'
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="metric-label" style={{ fontSize: '0.68rem' }}>Total SPK</span>
+              <span className="metric-label" style={{ fontSize: '0.68rem' }}>Semua SPK</span>
               <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Layers size={14} />
               </div>
             </div>
-            <div className="metric-value mono-num" style={{ fontSize: '1.5rem' }}>{totalCount}</div>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Sinkron Odoo</span>
+            <div className="metric-value mono-num" style={{ fontSize: '1.45rem', marginTop: '4px' }}>
+              {metrics.total || totalCount}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Sinkron Odoo</span>
+              {status === 'all' && (
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--brand-gold)', background: 'rgba(217, 119, 6, 0.12)', padding: '1px 6px', borderRadius: '4px' }}>Aktif</span>
+              )}
+            </div>
           </div>
 
           {/* Card 2: Perlu Potong */}
-          <div className="card metric-card">
+          <div
+            onClick={() => handleToggleStatus('cutting_pending')}
+            className="card metric-card"
+            style={{
+              cursor: 'pointer',
+              border: status === 'cutting_pending' ? '2px solid #d97706' : '1px solid var(--border-default)',
+              boxShadow: status === 'cutting_pending' ? '0 4px 14px rgba(217, 119, 6, 0.15)' : 'none',
+              transform: status === 'cutting_pending' ? 'scale(1.02)' : 'none',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              background: status === 'cutting_pending' ? '#fffbeb' : 'var(--bg-card)'
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="metric-label" style={{ fontSize: '0.68rem', color: 'var(--brand-gold)' }}>Perlu Potong</span>
+              <span className="metric-label" style={{ fontSize: '0.68rem', color: '#b45309' }}>Perlu Potong</span>
               <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#fffbeb', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Scissors size={14} />
               </div>
             </div>
-            <div className="metric-value mono-num" style={{ fontSize: '1.5rem', color: 'var(--brand-gold)' }}>
-              {orders.filter(o => !o.cutting_locked_at && !o.is_backorder).length}
+            <div className="metric-value mono-num" style={{ fontSize: '1.45rem', color: '#b45309', marginTop: '4px' }}>
+              {metrics.cutting_pending}
             </div>
-            <span style={{ fontSize: '0.72rem', color: 'var(--brand-gold)' }}>Halaman ini</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+              <span style={{ fontSize: '0.7rem', color: '#d97706' }}>Antrean Meja</span>
+              {status === 'cutting_pending' && (
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#b45309', background: '#fef3c7', padding: '1px 6px', borderRadius: '4px' }}>Aktif</span>
+              )}
+            </div>
           </div>
 
           {/* Card 3: Sedang Jahit */}
-          <div className="card metric-card">
+          <div
+            onClick={() => handleToggleStatus('cutting_locked')}
+            className="card metric-card"
+            style={{
+              cursor: 'pointer',
+              border: status === 'cutting_locked' ? '2px solid #0284c7' : '1px solid var(--border-default)',
+              boxShadow: status === 'cutting_locked' ? '0 4px 14px rgba(2, 132, 199, 0.15)' : 'none',
+              transform: status === 'cutting_locked' ? 'scale(1.02)' : 'none',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              background: status === 'cutting_locked' ? '#f0f9ff' : 'var(--bg-card)'
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="metric-label" style={{ fontSize: '0.68rem', color: 'var(--status-sky)' }}>Sedang Jahit</span>
+              <span className="metric-label" style={{ fontSize: '0.68rem', color: '#0369a1' }}>Sedang Jahit</span>
               <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#f0f9ff', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Lock size={14} />
               </div>
             </div>
-            <div className="metric-value mono-num" style={{ fontSize: '1.5rem', color: 'var(--status-sky)' }}>
-              {orders.filter(o => o.cutting_locked_at && !o.result_locked_at).length}
+            <div className="metric-value mono-num" style={{ fontSize: '1.45rem', color: '#0284c7', marginTop: '4px' }}>
+              {metrics.sewing_active}
             </div>
-            <span style={{ fontSize: '0.72rem', color: 'var(--status-sky)' }}>Halaman ini</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+              <span style={{ fontSize: '0.7rem', color: '#0369a1' }}>Proses Sewing</span>
+              {status === 'cutting_locked' && (
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: '4px' }}>Aktif</span>
+              )}
+            </div>
           </div>
 
-          {/* Card 4: Selesai */}
-          <div className="card metric-card">
+          {/* Card 4: Kain Kurang */}
+          <div
+            onClick={() => handleToggleStatus('kain_kurang')}
+            className="card metric-card"
+            style={{
+              cursor: 'pointer',
+              border: status === 'kain_kurang' ? '2px solid #ef4444' : (metrics.kain_kurang > 0 ? '1px solid #fca5a5' : '1px solid var(--border-default)'),
+              boxShadow: status === 'kain_kurang' ? '0 4px 14px rgba(239, 68, 68, 0.2)' : 'none',
+              transform: status === 'kain_kurang' ? 'scale(1.02)' : 'none',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              background: status === 'kain_kurang' ? '#fef2f2' : (metrics.kain_kurang > 0 ? '#fff8f8' : 'var(--bg-card)')
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="metric-label" style={{ fontSize: '0.68rem', color: 'var(--status-emerald)' }}>Selesai</span>
+              <span className="metric-label" style={{ fontSize: '0.68rem', color: '#b91c1c' }}>Kain Kurang</span>
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#fee2e2', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <AlertTriangle size={14} />
+              </div>
+            </div>
+            <div className="metric-value mono-num" style={{ fontSize: '1.45rem', color: '#dc2626', marginTop: '4px' }}>
+              {metrics.kain_kurang}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+              <span style={{ fontSize: '0.7rem', color: '#b91c1c' }}>Perlu Solusi</span>
+              {status === 'kain_kurang' && (
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#b91c1c', background: '#fee2e2', padding: '1px 6px', borderRadius: '4px' }}>Aktif</span>
+              )}
+            </div>
+          </div>
+
+          {/* Card 5: Overdue */}
+          <div
+            onClick={() => handleToggleStatus('overdue')}
+            className="card metric-card"
+            style={{
+              cursor: 'pointer',
+              border: status === 'overdue' ? '2px solid #ea580c' : (metrics.overdue > 0 ? '1px solid #fed7aa' : '1px solid var(--border-default)'),
+              boxShadow: status === 'overdue' ? '0 4px 14px rgba(234, 88, 12, 0.2)' : 'none',
+              transform: status === 'overdue' ? 'scale(1.02)' : 'none',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              background: status === 'overdue' ? '#fff7ed' : 'var(--bg-card)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="metric-label" style={{ fontSize: '0.68rem', color: '#c2410c' }}>Lewat Batas</span>
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#ffedd5', color: '#ea580c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Flame size={14} />
+              </div>
+            </div>
+            <div className="metric-value mono-num" style={{ fontSize: '1.45rem', color: '#ea580c', marginTop: '4px' }}>
+              {metrics.overdue}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+              <span style={{ fontSize: '0.7rem', color: '#c2410c' }}>Overdue SPK</span>
+              {status === 'overdue' && (
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#c2410c', background: '#fed7aa', padding: '1px 6px', borderRadius: '4px' }}>Aktif</span>
+              )}
+            </div>
+          </div>
+
+          {/* Card 6: Selesai */}
+          <div
+            onClick={() => handleToggleStatus('result_locked')}
+            className="card metric-card"
+            style={{
+              cursor: 'pointer',
+              border: status === 'result_locked' ? '2px solid #059669' : '1px solid var(--border-default)',
+              boxShadow: status === 'result_locked' ? '0 4px 14px rgba(5, 150, 105, 0.15)' : 'none',
+              transform: status === 'result_locked' ? 'scale(1.02)' : 'none',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              background: status === 'result_locked' ? '#ecfdf5' : 'var(--bg-card)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="metric-label" style={{ fontSize: '0.68rem', color: '#047857' }}>Selesai</span>
               <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <CheckCircle2 size={14} />
               </div>
             </div>
-            <div className="metric-value mono-num" style={{ fontSize: '1.5rem', color: 'var(--status-emerald)' }}>
-              {orders.filter(o => o.result_locked_at).length}
+            <div className="metric-value mono-num" style={{ fontSize: '1.45rem', color: '#059669', marginTop: '4px' }}>
+              {metrics.result_locked}
             </div>
-            <span style={{ fontSize: '0.72rem', color: 'var(--status-emerald)' }}>Halaman ini</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+              <span style={{ fontSize: '0.7rem', color: '#047857' }}>SJ Terbit</span>
+              {status === 'result_locked' && (
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#047857', background: '#d1fae5', padding: '1px 6px', borderRadius: '4px' }}>Aktif</span>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Toolbar: Search, Vendor Filter, Status Filter */}
+        {/* Toolbar: Search & Extended Filter Controls */}
         <div className="card" style={{ padding: '16px', borderRadius: '16px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', width: '100%' }}>
-              {/* Search Bar */}
-              <form onSubmit={handleSearchSubmit} style={{ flex: 1, minWidth: 0, display: 'flex', gap: '8px', width: '100%' }}>
-                <div style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex', alignItems: 'center' }}>
-                  <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '14px', pointerEvents: 'none' }} />
-                  <input
-                    type="text"
-                    placeholder="Ketik 4 angka nomor SPK (misal: 1495) atau nama produk..."
-                    className="input-field"
+            {/* Search Bar */}
+            <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '8px', width: '100%' }}>
+              <div style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex', alignItems: 'center' }}>
+                <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '14px', pointerEvents: 'none' }} />
+                <input
+                  type="text"
+                  placeholder="Ketik 4 angka nomor SPK (misal: 1495) atau nama produk..."
+                  className="input-field"
+                  style={{
+                    paddingLeft: '40px',
+                    paddingRight: search ? '40px' : '14px',
+                    height: '44px',
+                    fontSize: '0.92rem',
+                    borderRadius: '12px',
+                    fontWeight: 500
+                  }}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={handleClearSearch}
                     style={{
-                      paddingLeft: '40px',
-                      paddingRight: search ? '40px' : '14px',
-                      height: '44px',
-                      fontSize: '0.92rem',
-                      borderRadius: '12px',
-                      fontWeight: 500
+                      position: 'absolute',
+                      right: '10px',
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '50%',
+                      background: '#f1f5f9',
+                      border: '1px solid #cbd5e1',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      color: '#475569',
+                      transition: 'all 0.15s ease'
                     }}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                  {search && (
-                    <button
-                      type="button"
-                      onClick={handleClearSearch}
-                      style={{
-                        position: 'absolute',
-                        right: '10px',
-                        width: '28px',
-                        height: '28px',
-                        borderRadius: '50%',
-                        background: '#f1f5f9',
-                        border: '1px solid #cbd5e1',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
-                        color: '#475569',
-                        transition: 'all 0.15s ease'
-                      }}
-                      title="Hapus ketikan pencarian"
-                    >
-                      <X size={15} />
-                    </button>
-                  )}
-                </div>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  style={{ height: '44px', padding: '0 20px', fontSize: '0.9rem', flexShrink: 0, borderRadius: '12px', fontWeight: 700 }}
-                >
-                  Cari
-                </button>
-              </form>
+                    title="Hapus ketikan pencarian"
+                  >
+                    <X size={15} />
+                  </button>
+                )}
+              </div>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                style={{ height: '44px', padding: '0 20px', fontSize: '0.9rem', flexShrink: 0, borderRadius: '12px', fontWeight: 700 }}
+              >
+                Cari
+              </button>
+            </form>
 
+            {/* Extended Controls: Vendor, Sort, Period, Type */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', width: '100%' }}>
               {/* Vendor Selector for internal staff */}
               {vendors.length > 0 && (
-                <div style={{ width: '100%', minWidth: 0 }}>
+                <div style={{ minWidth: 0 }}>
+                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Building2 size={13} /> Mitra CMT / Vendor
+                  </label>
                   <select
                     className="select-field"
-                    style={{ height: '44px', fontSize: '0.88rem', borderRadius: '12px' }}
+                    style={{ height: '40px', fontSize: '0.84rem', borderRadius: '10px' }}
                     value={selectedVendor}
                     onChange={(e) => {
                       setSelectedVendor(e.target.value);
@@ -422,46 +603,136 @@ export default function DashboardPage() {
                   </select>
                 </div>
               )}
+
+              {/* Sorting Selector */}
+              <div style={{ minWidth: 0 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <ArrowUpDown size={13} /> Urutan (Sort)
+                </label>
+                <select
+                  className="select-field"
+                  style={{ height: '40px', fontSize: '0.84rem', borderRadius: '10px' }}
+                  value={sort}
+                  onChange={(e) => {
+                    setSort(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="latest">🆕 SPK Terbaru Dibuat</option>
+                  <option value="deadline_asc">⏳ Deadline Paling Dekat</option>
+                  <option value="deadline_desc">📅 Deadline Paling Jauh</option>
+                  <option value="qty_desc">📦 Target SPK Terbesar</option>
+                  <option value="qty_asc">🔹 Target SPK Terkecil</option>
+                  <option value="oldest">⌛ SPK Terlama (FIFO)</option>
+                </select>
+              </div>
+
+              {/* Period Selector */}
+              <div style={{ minWidth: 0 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Calendar size={13} /> Periode Mulai SPK
+                </label>
+                <select
+                  className="select-field"
+                  style={{ height: '40px', fontSize: '0.84rem', borderRadius: '10px' }}
+                  value={period}
+                  onChange={(e) => {
+                    setPeriod(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="">Semua Waktu</option>
+                  <option value="this_month">📅 Bulan Ini (Mulai SPK)</option>
+                  <option value="last_month">🗓️ Bulan Lalu (Mulai SPK)</option>
+                </select>
+              </div>
+
+              {/* Backorder / Regular Selector */}
+              <div style={{ minWidth: 0 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Filter size={13} /> Tipe Produksi
+                </label>
+                <select
+                  className="select-field"
+                  style={{ height: '40px', fontSize: '0.84rem', borderRadius: '10px' }}
+                  value={backorderFilter}
+                  onChange={(e) => {
+                    setBackorderFilter(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="">Semua Tipe SPK</option>
+                  <option value="regular">📋 SPK Induk / Reguler Saja</option>
+                  <option value="backorder">🔄 SPK Backorder Saja</option>
+                </select>
+              </div>
             </div>
 
-            {/* Active Search Filter Banner */}
-            {search.trim() && (
+            {/* Active Filters Summary Banner */}
+            {hasActiveFilters && (
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '8px 14px',
-                  background: '#fffbeb',
-                  border: '1px solid #fde68a',
+                  padding: '10px 14px',
+                  background: 'var(--bg-card-subtle)',
+                  border: '1px solid var(--border-default)',
                   borderRadius: '10px',
-                  fontSize: '0.84rem',
+                  fontSize: '0.82rem',
                   flexWrap: 'wrap',
                   gap: '8px'
                 }}
               >
-                <div style={{ color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>Hasil pencarian:</span>
-                  <strong className="mono-num" style={{ background: '#ffffff', padding: '2px 8px', borderRadius: '6px', border: '1px solid #fde68a' }}>
-                    "{search.trim()}"
-                  </strong>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>({totalCount} SPK ditemukan)</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Filter aktif:</span>
+                  {search.trim() && (
+                    <span style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                      Cari: "{search}"
+                    </span>
+                  )}
+                  {status !== 'all' && (
+                    <span style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                      Status: {status}
+                    </span>
+                  )}
+                  {selectedVendor && (
+                    <span style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', color: '#6d28d9', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                      Vendor: {vendors.find(v => String(v.id) === String(selectedVendor))?.name || selectedVendor}
+                    </span>
+                  )}
+                  {sort !== 'latest' && (
+                    <span style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                      Sort: {sort === 'deadline_asc' ? 'Deadline Terdekat' : sort === 'qty_desc' ? 'Qty Terbesar' : sort}
+                    </span>
+                  )}
+                  {period && (
+                    <span style={{ background: '#fef3c7', border: '1px solid #fde68a', color: '#92400e', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                      Periode: {period === 'this_month' ? 'Bulan Ini' : period === 'last_month' ? 'Bulan Lalu' : period}
+                    </span>
+                  )}
+                  {backorderFilter && (
+                    <span style={{ background: '#f8fafc', border: '1px solid #cbd5e1', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                      Tipe: {backorderFilter === 'regular' ? 'Reguler' : 'Backorder'}
+                    </span>
+                  )}
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.76rem' }}>({totalCount} SPK sesuai filter)</span>
                 </div>
                 <button
                   type="button"
-                  onClick={handleClearSearch}
+                  onClick={handleResetFilters}
                   className="quick-action-pill"
                   style={{
                     fontSize: '0.74rem',
                     background: '#ffffff',
-                    borderColor: '#f59e0b',
-                    color: '#b45309',
+                    borderColor: '#cbd5e1',
+                    color: '#475569',
                     height: '28px'
                   }}
-                  title="Kembali ke semua SPK"
+                  title="Kembalikan semua filter ke awal"
                 >
                   <X size={13} />
-                  <span>Bersihkan & Lihat Semua</span>
+                  <span>Reset Filter</span>
                 </button>
               </div>
             )}
@@ -470,25 +741,25 @@ export default function DashboardPage() {
             <div className="filter-bar">
               <button
                 className={`filter-chip ${status === 'all' ? 'active' : ''}`}
-                onClick={() => { setStatus('all'); setPage(1); }}
+                onClick={() => handleToggleStatus('all')}
               >
-                Semua ({totalCount})
+                Semua ({metrics.total || totalCount})
               </button>
               <button
                 className={`filter-chip ${status === 'cutting_pending' ? 'active' : ''}`}
-                onClick={() => { setStatus('cutting_pending'); setPage(1); }}
+                onClick={() => handleToggleStatus('cutting_pending')}
               >
-                ✂️ Belum Potong
+                ✂️ Belum Potong ({metrics.cutting_pending})
               </button>
               <button
                 className={`filter-chip ${status === 'cutting_locked' ? 'active' : ''}`}
-                onClick={() => { setStatus('cutting_locked'); setPage(1); }}
+                onClick={() => handleToggleStatus('cutting_locked')}
               >
-                🔒 Sedang Jahit
+                🔒 Sedang Jahit ({metrics.sewing_active})
               </button>
               <button
                 className={`filter-chip ${status === 'kain_kurang' ? 'active' : ''}`}
-                onClick={() => { setStatus('kain_kurang'); setPage(1); }}
+                onClick={() => handleToggleStatus('kain_kurang')}
                 style={
                   status === 'kain_kurang'
                     ? {
@@ -498,7 +769,7 @@ export default function DashboardPage() {
                         fontWeight: 800,
                         boxShadow: '0 2px 8px rgba(239, 68, 68, 0.2)'
                       }
-                    : activeKainKurangBadge > 0
+                    : metrics.kain_kurang > 0
                     ? {
                         borderColor: '#fca5a5',
                         color: '#b91c1c',
@@ -508,19 +779,55 @@ export default function DashboardPage() {
                     : {}
                 }
               >
-                ⚠️ Kain Kurang {activeKainKurangBadge > 0 ? `(${activeKainKurangBadge})` : ''}
+                ⚠️ Kain Kurang ({metrics.kain_kurang || activeKainKurangBadge || 0})
+              </button>
+              <button
+                className={`filter-chip ${status === 'overdue' ? 'active' : ''}`}
+                onClick={() => handleToggleStatus('overdue')}
+                style={
+                  status === 'overdue'
+                    ? {
+                        background: '#fff7ed',
+                        borderColor: '#ea580c',
+                        color: '#c2410c',
+                        fontWeight: 800,
+                        boxShadow: '0 2px 8px rgba(234, 88, 12, 0.2)'
+                      }
+                    : metrics.overdue > 0
+                    ? {
+                        borderColor: '#fed7aa',
+                        color: '#c2410c',
+                        background: '#fffaf5',
+                        fontWeight: 600
+                      }
+                    : {}
+                }
+              >
+                🔥 Overdue ({metrics.overdue})
+              </button>
+              <button
+                className={`filter-chip ${status === 'deadline_week' ? 'active' : ''}`}
+                onClick={() => handleToggleStatus('deadline_week')}
+              >
+                ⏰ Deadline 7 Hari ({metrics.deadline_week})
+              </button>
+              <button
+                className={`filter-chip ${status === 'backorder' ? 'active' : ''}`}
+                onClick={() => handleToggleStatus('backorder')}
+              >
+                🔄 Backorder ({metrics.backorder_count})
               </button>
               <button
                 className={`filter-chip ${status === 'result_locked' ? 'active' : ''}`}
-                onClick={() => { setStatus('result_locked'); setPage(1); }}
+                onClick={() => handleToggleStatus('result_locked')}
               >
-                ✅ Selesai
+                ✅ Selesai ({metrics.result_locked})
               </button>
             </div>
           </div>
         </div>
 
-        {/* Kain Kurang Active Filter Banner */}
+        {/* Status Context Banners */}
         {status === 'kain_kurang' && (
           <div
             style={{
@@ -539,9 +846,9 @@ export default function DashboardPage() {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <AlertCircle size={18} color="#dc2626" />
+              <AlertTriangle size={18} color="#dc2626" />
               <span>
-                Menampilkan <strong>{displayedOrders.length} SPK</strong> dengan status <strong>Kain Kurang</strong>. Harap pastikan fisik kain sebelum memotong.
+                Menampilkan <strong>{totalCount} SPK</strong> dengan status <strong>Kain Kurang</strong>. Harap pastikan fisik kain sebelum memotong.
               </span>
             </div>
             <button
@@ -549,6 +856,74 @@ export default function DashboardPage() {
               onClick={() => { setStatus('all'); setPage(1); }}
               className="quick-action-pill"
               style={{ fontSize: '0.74rem', background: '#ffffff', borderColor: '#fca5a5', color: '#b91c1c', height: '28px' }}
+            >
+              Lihat Semua SPK
+            </button>
+          </div>
+        )}
+
+        {status === 'overdue' && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 16px',
+              marginBottom: '16px',
+              background: '#fff7ed',
+              border: '1.5px solid #fed7aa',
+              borderRadius: '12px',
+              color: '#9a3412',
+              fontSize: '0.86rem',
+              flexWrap: 'wrap',
+              gap: '8px'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Flame size={18} color="#ea580c" />
+              <span>
+                Menampilkan <strong>{totalCount} SPK</strong> yang <strong>Lewat Batas Deadline (Overdue)</strong>. Mohon percepat proses potong & jahit!
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setStatus('all'); setPage(1); }}
+              className="quick-action-pill"
+              style={{ fontSize: '0.74rem', background: '#ffffff', borderColor: '#fdba74', color: '#c2410c', height: '28px' }}
+            >
+              Lihat Semua SPK
+            </button>
+          </div>
+        )}
+
+        {status === 'deadline_week' && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 16px',
+              marginBottom: '16px',
+              background: '#f0f9ff',
+              border: '1.5px solid #bae6fd',
+              borderRadius: '12px',
+              color: '#075985',
+              fontSize: '0.86rem',
+              flexWrap: 'wrap',
+              gap: '8px'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Clock size={18} color="#0284c7" />
+              <span>
+                Menampilkan <strong>{totalCount} SPK</strong> dengan batas deadline dalam <strong>7 hari ke depan</strong>.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setStatus('all'); setPage(1); }}
+              className="quick-action-pill"
+              style={{ fontSize: '0.74rem', background: '#ffffff', borderColor: '#7dd3fc', color: '#0369a1', height: '28px' }}
             >
               Lihat Semua SPK
             </button>

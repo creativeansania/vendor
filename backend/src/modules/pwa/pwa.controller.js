@@ -2,14 +2,17 @@ import { pwaService } from './pwa.service.js';
 
 export const handleGetOrders = async (req, res) => {
   try {
-    const { search, status, vendorId, page, limit } = req.query;
+    const { search, status, vendorId, page, limit, sort, period, backorder } = req.query;
     const result = await pwaService.getOrders({
       user: req.user,
       search,
       status,
       vendorId,
       page,
-      limit
+      limit,
+      sort,
+      period,
+      backorder
     });
     return res.status(200).json({ success: true, ...result });
   } catch (err) {

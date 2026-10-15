@@ -8,9 +8,9 @@ const RAW_MOVES_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 export class PwaService {
   /**
-   * Get orders list with pagination, search, and strict role security
+   * Get orders list with pagination, search, advanced filters, sorting, and server-wide metrics
    */
-  async getOrders({ user, search, status, vendorId, page = 1, limit = 20 }) {
+  async getOrders({ user, search, status, vendorId, page = 1, limit = 20, sort = 'latest', period, backorder }) {
     const offset = (Math.max(1, Number(page)) - 1) * Number(limit);
     const conditions = ['w.is_active = 1'];
     const params = [];
@@ -45,13 +45,36 @@ export class PwaService {
     if (status === 'cutting_pending') {
       conditions.push('w.cutting_locked_at IS NULL AND w.parent_wip_order_id IS NULL');
     } else if (status === 'cutting_locked') {
-      conditions.push('(w.cutting_locked_at IS NOT NULL OR w.parent_wip_order_id IS NOT NULL)');
+      conditions.push('(w.cutting_locked_at IS NOT NULL OR w.parent_wip_order_id IS NOT NULL) AND w.result_locked_at IS NULL');
     } else if (status === 'result_pending') {
       conditions.push('w.result_locked_at IS NULL');
     } else if (status === 'result_locked') {
       conditions.push('w.result_locked_at IS NOT NULL');
     } else if (status === 'kain_kurang') {
       conditions.push("(w.status_kebutuhan_kain = 'Kurang' OR w.status_kebutuhan_kain LIKE '%Kurang%')");
+    } else if (status === 'overdue') {
+      conditions.push('w.result_locked_at IS NULL AND w.deadline_spk IS NOT NULL AND w.deadline_spk < CURDATE()');
+    } else if (status === 'deadline_week') {
+      conditions.push('w.result_locked_at IS NULL AND w.deadline_spk IS NOT NULL AND w.deadline_spk >= CURDATE() AND w.deadline_spk <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)');
+    } else if (status === 'backorder') {
+      conditions.push('w.parent_wip_order_id IS NOT NULL');
+    }
+
+    // 4. Backorder specific filter
+    if (backorder === 'backorder') {
+      conditions.push('w.parent_wip_order_id IS NOT NULL');
+    } else if (backorder === 'regular') {
+      conditions.push('w.parent_wip_order_id IS NULL');
+    }
+
+    // 5. Period / Date filter
+    if (period === 'this_month') {
+      conditions.push('w.start_spk >= DATE_FORMAT(CURDATE(), "%Y-%m-01")');
+    } else if (period === 'last_month') {
+      conditions.push('w.start_spk >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), "%Y-%m-01") AND w.start_spk < DATE_FORMAT(CURDATE(), "%Y-%m-01")');
+    } else if (period && /^\d{4}-\d{2}$/.test(period)) {
+      conditions.push('DATE_FORMAT(w.start_spk, "%Y-%m") = ?');
+      params.push(period);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -62,14 +85,14 @@ export class PwaService {
       ? 'w.harga_vendor, w.total_harga,'
       : '0.00 AS harga_vendor, 0.00 AS total_harga,';
 
-    // Count query
+    // Count query for current filter
     const [countRows] = await db.query(
       `SELECT COUNT(*) AS total FROM wip_orders w ${whereClause}`,
       params
     );
     const total = countRows[0].total;
 
-    // Count total active orders with kain kurang for current vendor scope
+    // Server-wide live metrics for current vendor scope (unfiltered by search/status for KPI cards)
     const baseVendorConditions = ['w.is_active = 1'];
     const baseVendorParams = [];
     if (isVendorRole) {
@@ -79,11 +102,45 @@ export class PwaService {
       baseVendorConditions.push('w.vendor_id = ?');
       baseVendorParams.push(Number(vendorId));
     }
-    const [kainKurangRows] = await db.query(
-      `SELECT COUNT(*) AS total FROM wip_orders w WHERE ${baseVendorConditions.join(' AND ')} AND (w.status_kebutuhan_kain = 'Kurang' OR w.status_kebutuhan_kain LIKE '%Kurang%')`,
+
+    const [metricsRows] = await db.query(
+      `SELECT
+        COUNT(*) AS total,
+        CAST(COALESCE(SUM(CASE WHEN w.cutting_locked_at IS NULL AND w.parent_wip_order_id IS NULL THEN 1 ELSE 0 END), 0) AS UNSIGNED) AS cutting_pending,
+        CAST(COALESCE(SUM(CASE WHEN (w.cutting_locked_at IS NOT NULL OR w.parent_wip_order_id IS NOT NULL) AND w.result_locked_at IS NULL THEN 1 ELSE 0 END), 0) AS UNSIGNED) AS sewing_active,
+        CAST(COALESCE(SUM(CASE WHEN w.result_locked_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS UNSIGNED) AS result_locked,
+        CAST(COALESCE(SUM(CASE WHEN w.status_kebutuhan_kain = 'Kurang' OR w.status_kebutuhan_kain LIKE '%Kurang%' THEN 1 ELSE 0 END), 0) AS UNSIGNED) AS kain_kurang,
+        CAST(COALESCE(SUM(CASE WHEN w.result_locked_at IS NULL AND w.deadline_spk IS NOT NULL AND w.deadline_spk < CURDATE() THEN 1 ELSE 0 END), 0) AS UNSIGNED) AS overdue,
+        CAST(COALESCE(SUM(CASE WHEN w.result_locked_at IS NULL AND w.deadline_spk IS NOT NULL AND w.deadline_spk >= CURDATE() AND w.deadline_spk <= DATE_ADD(CURDATE(), INTERVAL 7 DAY) THEN 1 ELSE 0 END), 0) AS UNSIGNED) AS deadline_week,
+        CAST(COALESCE(SUM(CASE WHEN w.parent_wip_order_id IS NOT NULL THEN 1 ELSE 0 END), 0) AS UNSIGNED) AS backorder_count
+       FROM wip_orders w
+       ${baseVendorConditions.length > 0 ? `WHERE ${baseVendorConditions.join(' AND ')}` : ''}`,
       baseVendorParams
     );
-    const kainKurangCount = kainKurangRows[0]?.total || 0;
+    const metrics = metricsRows[0] || {
+      total: 0,
+      cutting_pending: 0,
+      sewing_active: 0,
+      result_locked: 0,
+      kain_kurang: 0,
+      overdue: 0,
+      deadline_week: 0,
+      backorder_count: 0
+    };
+
+    // Sorting Clause
+    let orderClause = 'ORDER BY w.id DESC';
+    if (sort === 'deadline_asc') {
+      orderClause = 'ORDER BY (w.deadline_spk IS NULL) ASC, w.deadline_spk ASC, w.id DESC';
+    } else if (sort === 'deadline_desc') {
+      orderClause = 'ORDER BY (w.deadline_spk IS NULL) ASC, w.deadline_spk DESC, w.id DESC';
+    } else if (sort === 'qty_desc') {
+      orderClause = 'ORDER BY w.qty_spk DESC, w.id DESC';
+    } else if (sort === 'qty_asc') {
+      orderClause = 'ORDER BY w.qty_spk ASC, w.id DESC';
+    } else if (sort === 'oldest') {
+      orderClause = 'ORDER BY w.id ASC';
+    }
 
     // Data query
     const selectSql = `
@@ -107,7 +164,7 @@ export class PwaService {
       JOIN vendors v ON v.id = w.vendor_id
       LEFT JOIN wip_orders parent ON parent.id = w.parent_wip_order_id
       ${whereClause}
-      ORDER BY w.id DESC
+      ${orderClause}
       LIMIT ? OFFSET ?
     `;
 
@@ -120,8 +177,9 @@ export class PwaService {
         page: Number(page),
         limit: Number(limit),
         totalPages: Math.ceil(total / Number(limit)),
-        kainKurangCount
-      }
+        kainKurangCount: metrics.kain_kurang
+      },
+      metrics
     };
   }
 
