@@ -39,6 +39,7 @@ export default function DashboardPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [kainKurangCount, setKainKurangCount] = useState(0);
 
   // Check auth
   useEffect(() => {
@@ -79,6 +80,7 @@ export default function DashboardPage() {
         setOrders(res.orders || []);
         setTotalPages(res.pagination?.totalPages || 1);
         setTotalCount(res.pagination?.total || 0);
+        setKainKurangCount(res.pagination?.kainKurangCount || 0);
       }
     } catch (err) {
       console.error('Failed to load orders:', err);
@@ -435,6 +437,30 @@ export default function DashboardPage() {
                 🔒 Sedang Jahit
               </button>
               <button
+                className={`filter-chip ${status === 'kain_kurang' ? 'active' : ''}`}
+                onClick={() => { setStatus('kain_kurang'); setPage(1); }}
+                style={
+                  status === 'kain_kurang'
+                    ? {
+                        background: '#fef2f2',
+                        borderColor: '#ef4444',
+                        color: '#b91c1c',
+                        fontWeight: 800,
+                        boxShadow: '0 2px 8px rgba(239, 68, 68, 0.2)'
+                      }
+                    : kainKurangCount > 0
+                    ? {
+                        borderColor: '#fca5a5',
+                        color: '#b91c1c',
+                        background: '#fff5f5',
+                        fontWeight: 700
+                      }
+                    : {}
+                }
+              >
+                ⚠️ Kain Kurang {kainKurangCount > 0 ? `(${kainKurangCount})` : ''}
+              </button>
+              <button
                 className={`filter-chip ${status === 'result_locked' ? 'active' : ''}`}
                 onClick={() => { setStatus('result_locked'); setPage(1); }}
               >
@@ -443,6 +469,41 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* Kain Kurang Active Filter Banner */}
+        {status === 'kain_kurang' && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 16px',
+              marginBottom: '16px',
+              background: '#fef2f2',
+              border: '1.5px solid #fecaca',
+              borderRadius: '12px',
+              color: '#991b1b',
+              fontSize: '0.86rem',
+              flexWrap: 'wrap',
+              gap: '8px'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <AlertCircle size={18} color="#dc2626" />
+              <span>
+                Menampilkan <strong>{totalCount} SPK</strong> dengan status <strong>Kain Kurang</strong>. Harap pastikan fisik kain sebelum memotong.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setStatus('all'); setPage(1); }}
+              className="quick-action-pill"
+              style={{ fontSize: '0.74rem', background: '#ffffff', borderColor: '#fca5a5', color: '#b91c1c', height: '28px' }}
+            >
+              Lihat Semua SPK
+            </button>
+          </div>
+        )}
 
         {/* Orders Grid */}
         {loading ? (
@@ -513,7 +574,22 @@ export default function DashboardPage() {
                       </div>
 
                       {/* Status Badges */}
-                      <div style={{ flexShrink: 0 }}>
+                      <div style={{ flexShrink: 0, display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        {o.status_kebutuhan_kain === 'Kurang' && (
+                          <span
+                            className="badge"
+                            style={{
+                              fontSize: '0.68rem',
+                              padding: '2px 7px',
+                              background: '#fef2f2',
+                              color: '#dc2626',
+                              border: '1px solid #fecaca',
+                              fontWeight: 800
+                            }}
+                          >
+                            ⚠️ Kurang
+                          </span>
+                        )}
                         {isResultLocked ? (
                           <span className="badge badge-emerald" style={{ fontSize: '0.7rem' }}>
                             <CheckCircle2 size={12} /> Selesai
@@ -594,8 +670,17 @@ export default function DashboardPage() {
 
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Kain</div>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: o.status_kebutuhan_kain === 'Cukup' ? 'var(--status-emerald)' : 'var(--status-amber)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {o.status_kebutuhan_kain || 'Cukup'}
+                      <div
+                        style={{
+                          fontSize: '0.82rem',
+                          fontWeight: 800,
+                          color: o.status_kebutuhan_kain === 'Kurang' ? '#dc2626' : 'var(--status-emerald)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}
+                      >
+                        {o.status_kebutuhan_kain === 'Kurang' ? '⚠️ Kurang' : (o.status_kebutuhan_kain || 'Cukup')}
                       </div>
                     </div>
                   </div>

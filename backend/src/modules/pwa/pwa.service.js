@@ -45,6 +45,8 @@ export class PwaService {
       conditions.push('w.result_locked_at IS NULL');
     } else if (status === 'result_locked') {
       conditions.push('w.result_locked_at IS NOT NULL');
+    } else if (status === 'kain_kurang') {
+      conditions.push("(w.status_kebutuhan_kain = 'Kurang' OR w.status_kebutuhan_kain LIKE '%Kurang%')");
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -61,6 +63,22 @@ export class PwaService {
       params
     );
     const total = countRows[0].total;
+
+    // Count total active orders with kain kurang for current vendor scope
+    const baseVendorConditions = ['w.is_active = 1'];
+    const baseVendorParams = [];
+    if (isVendorRole) {
+      baseVendorConditions.push('w.vendor_id = ?');
+      baseVendorParams.push(user.vendor_id);
+    } else if (vendorId) {
+      baseVendorConditions.push('w.vendor_id = ?');
+      baseVendorParams.push(Number(vendorId));
+    }
+    const [kainKurangRows] = await db.query(
+      `SELECT COUNT(*) AS total FROM wip_orders w WHERE ${baseVendorConditions.join(' AND ')} AND (w.status_kebutuhan_kain = 'Kurang' OR w.status_kebutuhan_kain LIKE '%Kurang%')`,
+      baseVendorParams
+    );
+    const kainKurangCount = kainKurangRows[0]?.total || 0;
 
     // Data query
     const selectSql = `
@@ -96,7 +114,8 @@ export class PwaService {
         total,
         page: Number(page),
         limit: Number(limit),
-        totalPages: Math.ceil(total / Number(limit))
+        totalPages: Math.ceil(total / Number(limit)),
+        kainKurangCount
       }
     };
   }

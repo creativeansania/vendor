@@ -733,6 +733,45 @@ function OrderDetailContent() {
                 </span>
               </div>
 
+              {/* Alert Banner if Status Kebutuhan Kain Kurang */}
+              {order.status_kebutuhan_kain === 'Kurang' && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '12px 16px',
+                    marginBottom: '16px',
+                    background: '#fef2f2',
+                    border: '1.5px solid #fca5a5',
+                    borderRadius: '12px',
+                    color: '#991b1b'
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '8px',
+                      background: '#fee2e2',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      color: '#dc2626'
+                    }}
+                  >
+                    <AlertCircle size={20} />
+                  </div>
+                  <div style={{ fontSize: '0.86rem', lineHeight: 1.4 }}>
+                    <strong>Perhatian: Total Kain Diterima Kurang!</strong>
+                    <div style={{ fontSize: '0.8rem', color: '#b91c1c', marginTop: '2px' }}>
+                      Kain diterima: <strong>{Number(order.kain_dari_gudang || 0).toLocaleString('id-ID')} {order.unit_kain || 'kg'}</strong> (Kebutuhan standar SPK: <strong>{Number(order.qty_kebutuhan_kain || 0).toLocaleString('id-ID')} {order.unit_kain || 'kg'}</strong>). Harap periksa fisik kain sebelum memotong.
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* 3 Metric Tiles Grid */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
                 {/* 1. Estimasi SPB */}
