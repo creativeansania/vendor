@@ -20,7 +20,8 @@ export async function GET(req, { params }) {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="${filename}"`,
-        'Content-Length': String(buffer.length)
+        'Content-Length': String(buffer.length),
+        'Cache-Control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400'
       }
     });
   } catch (err) {
