@@ -330,7 +330,7 @@ function OrderDetailContent() {
       warningMessage: isExtreme
         ? `Angka hasil potong yang Anda masukkan (${effectiveActual.toLocaleString('id-ID')}) berselisih ${devPct.toFixed(0)}% dari ${targetLabel} (${targetRef.toLocaleString('id-ID')}). Mohon periksa kembali apakah ada kesalahan ketik (contoh: kelebihan angka 0 atau salah kolom). Setelah dikunci, data ini langsung terkirim ke Odoo dan tidak dapat diubah oleh vendor.`
         : 'Pastikan seluruh input fisik sudah dicek. Setelah dikunci, data hasil potong akan tersimpan permanen di Odoo dan tahap jahit dapat dimulai.',
-      onConfirm: () => executeSubmitCutting(inputActual, rolls)
+      onConfirm: () => executeSubmitCutting(effectiveActual, rolls)
     });
   };
 
@@ -341,13 +341,23 @@ function OrderDetailContent() {
     setFeedback({ text: '', type: '' });
 
     try {
+      const aVal = parseFloat(gradeA) || 0;
+      const bVal = parseFloat(gradeB) || 0;
+      const sisaVal = parseFloat(sisaKg) || 0;
+      const sjVal = noSuratJalan.trim();
+
       const res = await fetchApi(`/pwa/orders/${orderId}/production-result`, {
         method: 'POST',
         body: JSON.stringify({
-          qty_grade_a: parseFloat(gradeA) || 0,
-          qty_grade_b: parseFloat(gradeB) || 0,
-          sisa_makloon_kg: parseFloat(sisaKg) || 0,
-          no_surat_jalan: noSuratJalan.trim()
+          qty_grade_a: aVal,
+          qtyGradeA: aVal,
+          qty_grade_b: bVal,
+          qtyGradeB: bVal,
+          sisa_makloon_kg: sisaVal,
+          sisaMakloonKg: sisaVal,
+          no_surat_jalan: sjVal,
+          noSuratJalan: sjVal,
+          no_surat_jalan_sfp: sjVal
         })
       });
 

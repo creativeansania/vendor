@@ -39,6 +39,7 @@ export default function DashboardPage() {
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [selectedVendor, setSelectedVendor] = useState('');
   const [page, setPage] = useState(1);
@@ -48,6 +49,14 @@ export default function DashboardPage() {
   const [sort, setSort] = useState('latest');
   const [period, setPeriod] = useState('');
   const [backorderFilter, setBackorderFilter] = useState('');
+
+  // 350ms debounce for search input to prevent rapid API requests
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [search]);
   const [metrics, setMetrics] = useState({
     total: 0,
     cutting_pending: 0,
@@ -89,7 +98,7 @@ export default function DashboardPage() {
         page: String(page),
         limit: '16'
       });
-      if (search.trim()) queryParams.set('search', search.trim());
+      if (debouncedSearch.trim()) queryParams.set('search', debouncedSearch.trim());
       if (status !== 'all') queryParams.set('status', status);
       if (selectedVendor) queryParams.set('vendorId', selectedVendor);
       if (sort !== 'latest') queryParams.set('sort', sort);
@@ -111,7 +120,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [user, page, search, status, selectedVendor, sort, period, backorderFilter]);
+  }, [user, page, debouncedSearch, status, selectedVendor, sort, period, backorderFilter]);
 
   useEffect(() => {
     loadOrders();
