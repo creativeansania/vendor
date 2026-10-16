@@ -33,6 +33,7 @@ export async function GET(req) {
 
     return NextResponse.json({ success: true, ...result });
   } catch (err) {
+    if (err.digest === 'NEXT_PRERENDER_INTERRUPTED') throw err;
     console.error('[API /orders] error:', err);
     return NextResponse.json({ success: false, message: err.message }, { status: 400 });
   }
