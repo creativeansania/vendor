@@ -1,5 +1,5 @@
 export const config = {
-  baseUrl: (process.env.SERVER_BASE_URL || 'https://api.kantiss.com').replace(/\/+$/, ''),
+  baseUrl: (process.env.SERVER_BASE_URL || 'https://vendor.kantiss.com').replace(/\/+$/, ''),
   jubelio: {
     apiUrl: process.env.JUBELIO_API_URL || 'https://api2.jubelio.com',
     email: process.env.JUBELIO_EMAIL || '',
