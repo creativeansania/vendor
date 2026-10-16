@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { soBypassService } from '@/lib/services/soBypassService';
+
+export const maxDuration = 60;
 
 export async function POST(req) {
   try {
     let body = {};
     try {
       body = await req.json();
-    } catch (e) {
+    } catch {
       body = {};
     }
 
@@ -34,8 +37,19 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
-    // Fast 200 OK
-    setImmediate(async () => {
+    const isSync = Boolean(body.sync || searchParams.get('sync'));
+
+    if (isSync) {
+      const result = await soBypassService.processSOBypass(soIdentifier);
+      return NextResponse.json({
+        success: !result.error,
+        message: result.message || 'SO Bypass processed synchronously',
+        data: result
+      });
+    }
+
+    // Use Next.js after() to keep Vercel serverless context alive until background execution completes
+    after(async () => {
       try {
         console.log(`[Odoo Webhook] Starting background bypass for SO: ${soIdentifier}`);
         const result = await soBypassService.processSOBypass(soIdentifier);

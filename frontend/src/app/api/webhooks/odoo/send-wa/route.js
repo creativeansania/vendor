@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { adminOdooClient } from '@/lib/odoo/odooClient';
 import { wablasService } from '@/lib/services/wablasService';
 import { config } from '@/lib/config';
+
+export const maxDuration = 60;
 
 function formatRupiah(amount) {
   if (typeof amount !== 'number') return amount || '0';
@@ -13,7 +16,7 @@ export async function POST(req) {
     let payload = {};
     try {
       payload = await req.json();
-    } catch (e) {
+    } catch {
       payload = {};
     }
 
@@ -53,11 +56,11 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
-    // Acknowledge Odoo immediately with 200 OK
-    setImmediate(async () => {
+    // Acknowledge Odoo immediately and run Wablas PDF dispatch in after()
+    after(async () => {
       try {
         console.log(`[Wablas Webhook] Background processing for ${model} ID: ${recordId}`);
-        const { buffer, filename, docInfo, reportName, publicAttachmentUrl } = await adminOdooClient.downloadDocumentPdf(model, recordId, customReport);
+        const { buffer, filename, docInfo, publicAttachmentUrl } = await adminOdooClient.downloadDocumentPdf(model, recordId, customReport);
         console.log(`[Wablas Webhook] Downloaded ${filename} (${buffer.length} bytes) for ${docInfo.name}`);
 
         const rawPhone =

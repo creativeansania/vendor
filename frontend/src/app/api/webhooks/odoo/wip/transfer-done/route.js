@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { wipService } from '@/lib/services/wipService';
+
+export const maxDuration = 60;
 
 export async function POST(req) {
   try {
     let payload = {};
     try {
       payload = await req.json();
-    } catch (e) {
+    } catch {
       payload = {};
     }
 
@@ -19,7 +22,7 @@ export async function POST(req) {
       return NextResponse.json({ success: false, message: 'Picking ID is required' }, { status: 400 });
     }
 
-    setImmediate(async () => {
+    after(async () => {
       try {
         await wipService.onTransferDone(pickingId);
       } catch (err) {

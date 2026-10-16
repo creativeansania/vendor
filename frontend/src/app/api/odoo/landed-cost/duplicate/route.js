@@ -1,24 +1,55 @@
 import { NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { landedCostService } from '@/lib/services/landedCostService';
+
+export const maxDuration = 60;
+
+export async function GET() {
+  return NextResponse.json({
+    service: 'Odoo Landed Cost Duplication Webhook',
+    status: 'online',
+    description: 'Duplicates stock.landed.cost record(s) and preserves all linked Manufacturing Orders (mrp_production_ids).',
+    usage: {
+      method: 'POST',
+      body: {
+        _id: 123,
+        _model: 'stock.landed.cost'
+      }
+    }
+  });
+}
 
 export async function POST(req) {
   try {
     let payload = {};
     try {
-      payload = await req.json();
-    } catch (e) {
+      const contentType = req.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        payload = await req.json();
+      } else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
+        const formData = await req.formData();
+        payload = Object.fromEntries(formData.entries());
+      } else {
+        payload = await req.json();
+      }
+    } catch {
       payload = {};
     }
 
     const { searchParams } = new URL(req.url);
 
     const rawIds =
+      payload._ids ||
+      payload.active_ids ||
       payload._id ||
       payload.id ||
       payload.ids ||
       payload.res_id ||
+      payload.res_ids ||
       payload.record_ids ||
       payload.records ||
+      searchParams.get('_ids') ||
+      searchParams.get('active_ids') ||
       searchParams.get('_id') ||
       searchParams.get('id') ||
       searchParams.get('ids');
@@ -49,52 +80,71 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
-    const isSync = Boolean(payload.sync || searchParams.get('sync'));
+    const isAsync = Boolean(payload.async || searchParams.get('async'));
 
-    if (isSync) {
-      const result = await landedCostService.duplicateLandedCostWithMO(ids);
+    if (isAsync) {
+      after(async () => {
+        try {
+          console.log(`[Landed Cost Webhook] Starting background duplication for IDs: [${ids.join(', ')}]`);
+          const result = await landedCostService.duplicateLandedCostWithMO(ids);
+
+          if (result.success && result.createdRecords) {
+            for (const rec of result.createdRecords) {
+              try {
+                await landedCostService.postChatterNote(
+                  rec.originalId,
+                  `📋 <b>Duplikasi Berhasil:</b> Record ini telah diduplikasi menjadi <b>${rec.newName}</b> (ID: ${rec.newId}) dengan ${rec.mrpProductionCount} Manufacturing Order (MO).`
+                );
+                await landedCostService.postChatterNote(
+                  rec.newId,
+                  `📋 Record ini dibuat dari duplikasi <b>${rec.originalName}</b> (ID: ${rec.originalId}) beserta ${rec.mrpProductionCount} Manufacturing Order (MO).`
+                );
+              } catch (chatterErr) {
+                console.warn(`[Landed Cost Webhook] Chatter note warning for LC #${rec.newId}: ${chatterErr.message}`);
+              }
+            }
+          }
+          console.log(`[Landed Cost Webhook] Background process finished for IDs: [${ids.join(', ')}]`);
+        } catch (err) {
+          console.error(`[Landed Cost Webhook] Background duplication failed for IDs: [${ids.join(', ')}]:`, err.message);
+        }
+      });
+
       return NextResponse.json({
         success: true,
-        message: `Successfully duplicated ${result.count} Landed Cost record(s) with MOs`,
-        count: result.count,
-        newRecordIds: result.newRecordIds,
-        records: result.createdRecords,
-        errors: result.errors
+        message: `Webhook received for ${model} (ID: [${ids.join(', ')}]). Processing duplication with MOs in background.`,
+        targetIds: ids
       });
     }
 
-    // Default: Fast ack 200 OK + background execution
-    setImmediate(async () => {
-      try {
-        console.log(`[Landed Cost Webhook] Starting background duplication for IDs: [${ids.join(', ')}]`);
-        const result = await landedCostService.duplicateLandedCostWithMO(ids);
+    // Default: Synchronous execution so Odoo and user get the immediate result and new record IDs!
+    const result = await landedCostService.duplicateLandedCostWithMO(ids);
 
-        if (result.success && result.createdRecords) {
-          for (const rec of result.createdRecords) {
-            try {
-              await landedCostService.postChatterNote(
-                rec.originalId,
-                `📋 <b>Duplikasi Berhasil:</b> Record ini telah diduplikasi menjadi <b>${rec.newName}</b> (ID: ${rec.newId}) dengan ${rec.mrpProductionCount} Manufacturing Order (MO).`
-              );
-              await landedCostService.postChatterNote(
-                rec.newId,
-                `📋 Record ini dibuat dari duplikasi <b>${rec.originalName}</b> (ID: ${rec.originalId}) beserta ${rec.mrpProductionCount} Manufacturing Order (MO).`
-              );
-            } catch (chatterErr) {
-              console.warn(`[Landed Cost Webhook] Chatter note warning for LC #${rec.newId}: ${chatterErr.message}`);
-            }
-          }
+    // Post chatter notes
+    if (result.success && result.createdRecords) {
+      for (const rec of result.createdRecords) {
+        try {
+          await landedCostService.postChatterNote(
+            rec.originalId,
+            `📋 <b>Duplikasi Berhasil:</b> Record ini telah diduplikasi menjadi <b>${rec.newName}</b> (ID: ${rec.newId}) dengan ${rec.mrpProductionCount} Manufacturing Order (MO).`
+          );
+          await landedCostService.postChatterNote(
+            rec.newId,
+            `📋 Record ini dibuat dari duplikasi <b>${rec.originalName}</b> (ID: ${rec.originalId}) beserta ${rec.mrpProductionCount} Manufacturing Order (MO).`
+          );
+        } catch (chatterErr) {
+          console.warn(`[Landed Cost Webhook] Chatter note warning for LC #${rec.newId}: ${chatterErr.message}`);
         }
-        console.log(`[Landed Cost Webhook] Background process finished for IDs: [${ids.join(', ')}]`);
-      } catch (err) {
-        console.error(`[Landed Cost Webhook] Background duplication failed for IDs: [${ids.join(', ')}]:`, err.message);
       }
-    });
+    }
 
     return NextResponse.json({
       success: true,
-      message: `Webhook received for ${model} (ID: [${ids.join(', ')}]). Processing duplication with MOs in background.`,
-      targetIds: ids
+      message: `Successfully duplicated ${result.count} Landed Cost record(s) with MOs`,
+      count: result.count,
+      newRecordIds: result.newRecordIds,
+      records: result.createdRecords,
+      errors: result.errors
     });
   } catch (err) {
     console.error('[Landed Cost Webhook] Handler error:', err.message);

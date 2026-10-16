@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { jubelioService } from '@/lib/services/jubelioService';
 import { verifyJubelioSignature } from '@/lib/jubelioSignature';
+
+export const maxDuration = 60;
 
 export async function POST(req) {
   try {
@@ -17,7 +20,7 @@ export async function POST(req) {
     let body = {};
     try {
       body = JSON.parse(rawBody);
-    } catch (parseErr) {
+    } catch {
       return NextResponse.json({
         success: false,
         message: 'Invalid JSON payload'
@@ -29,11 +32,13 @@ export async function POST(req) {
     });
 
     // Send 200 OK fast-ack to prevent Jubelio timeout
-    // Process asynchronously in background
-    setImmediate(() => {
-      jubelioService.processInvoiceAsync(body).catch(err => {
+    // Process asynchronously in after() to keep Vercel serverless context alive
+    after(async () => {
+      try {
+        await jubelioService.processInvoiceAsync(body);
+      } catch (err) {
         console.error('[Jubelio Webhook] Async error:', err.message);
-      });
+      }
     });
 
     return NextResponse.json({

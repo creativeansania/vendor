@@ -1,26 +1,34 @@
 import { NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { transferService } from '@/lib/services/transferService';
+
+export const maxDuration = 60;
 
 export async function POST(req) {
   try {
     let payload = {};
     try {
       payload = await req.json();
-    } catch (e) {
+    } catch {
       payload = {};
     }
 
     const { searchParams } = new URL(req.url);
 
     const rawIds =
+      payload._ids ||
+      payload.active_ids ||
       payload._id ||
       payload.id ||
       payload.ids ||
       payload.res_id ||
+      payload.res_ids ||
       payload.picking_id ||
       payload.picking_ids ||
       payload.record_ids ||
       payload.records ||
+      searchParams.get('_ids') ||
+      searchParams.get('active_ids') ||
       searchParams.get('_id') ||
       searchParams.get('id') ||
       searchParams.get('ids');
@@ -55,8 +63,8 @@ export async function POST(req) {
       });
     }
 
-    // Default fast-ack + background execution
-    setImmediate(async () => {
+    // Use Next.js after() to keep Vercel serverless context alive
+    after(async () => {
       try {
         console.log(`[Transfer Webhook] Processing transfers: [${ids.join(', ')}]`);
         await transferService.resolveTransferMoAndSo(ids);
