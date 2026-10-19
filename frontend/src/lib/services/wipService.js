@@ -276,8 +276,9 @@ export class WipService {
       }
     }
 
-    // Lazy fetch vendor price from Odoo if missing or 0
-    if (showPrice && Number(order.harga_vendor || 0) === 0 && order.odoo_wip_id) {
+    // Lazy fetch vendor price from Odoo if missing or 0 and status is not 'Selesai' (Kombinasi A)
+    const orderStatus = (order.status_produksi || '').trim().toLowerCase();
+    if (showPrice && Number(order.harga_vendor || 0) === 0 && orderStatus !== 'selesai' && order.odoo_wip_id) {
       try {
         await adminOdooClient.authenticate();
         const wipData = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'read', [[order.odoo_wip_id]], {
@@ -1097,8 +1098,9 @@ export class WipService {
     let totalHarga = Number(w.x_studio_total_harga || 0);
     const qtyMasukSfp = Number(w.x_studio_qty_masuk_sfp || 0);
 
-    // Auto-check pricing from Odoo if currently 0
-    if (hargaVendor === 0 && whId && prodId) {
+    // Auto-check pricing from Odoo if currently 0 and status is not 'Selesai' (Kombinasi A)
+    const statusProduksi = (w.x_studio_status_produksi || '').trim().toLowerCase();
+    if (hargaVendor === 0 && statusProduksi !== 'selesai' && whId && prodId) {
       try {
         const freshPrice = await this.fetchVendorPriceFromOdoo(whId, prodId);
         if (freshPrice > 0) {
@@ -1753,7 +1755,9 @@ export class WipService {
       const warehouseId = mo.warehouse_id ? mo.warehouse_id[0] : (wip.x_studio_warehouse ? wip.x_studio_warehouse[0] : null);
       const productId = mo.product_id ? mo.product_id[0] : (wip.x_studio_product ? wip.x_studio_product[0] : null);
 
-      if (warehouseId && productId && workcenterIds.length > 0) {
+      // Only lookup vendor price if hargaVendor is currently 0 and WIP is not 'Selesai' (Kombinasi A)
+      const wipStatusProduksi = (wip.x_studio_status_produksi || '').trim().toLowerCase();
+      if (hargaVendor === 0 && wipStatusProduksi !== 'selesai' && warehouseId && productId && workcenterIds.length > 0) {
         try {
           const vendorPrices = await adminOdooClient._callObject('x_vendor_production', 'search_read', [
             [
@@ -1969,7 +1973,7 @@ export class WipService {
       fields: [
         'id', 'x_name', 'x_studio_harga', 'x_studio_total_harga',
         'x_studio_qty_masuk_sfp', 'x_studio_manufacturing_order',
-        'x_studio_many2many_field_869_1k3jdrdl1'
+        'x_studio_many2many_field_869_1k3jdrdl1', 'x_studio_status_produksi'
       ],
       order: 'id desc'
     });
@@ -1985,6 +1989,21 @@ export class WipService {
         if (!matchesWc) {
           continue;
         }
+      }
+
+      // Kombinasi A (Strict):
+      // 1. Kunci SPK yang status produksinya sudah 'Selesai'
+      const statusProduksi = (w.x_studio_status_produksi || '').trim().toLowerCase();
+      if (statusProduksi === 'selesai') {
+        console.log(`[WIP Service] Skipping WIP #${w.id} (${w.x_name}): Status is 'Selesai' (Locked)`);
+        continue;
+      }
+
+      // 2. Kunci SPK yang sudah memiliki harga (> 0), hanya isi yang harganya masih 0
+      const currentPrice = parseFloat(w.x_studio_harga) || 0.0;
+      if (currentPrice > 0) {
+        console.log(`[WIP Service] Skipping WIP #${w.id} (${w.x_name}): Existing price Rp ${currentPrice} preserved (Only 0 is filled)`);
+        continue;
       }
 
       const sfpQty = parseFloat(w.x_studio_qty_masuk_sfp) || 0.0;
