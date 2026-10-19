@@ -304,6 +304,7 @@ export class WipService {
 
     return {
       order,
+      rollLines: order.roll_lines || [],
       rawMoves,
       transfers
     };
@@ -330,7 +331,7 @@ export class WipService {
       const moveIds = mo[0].move_raw_ids;
       const moves = await adminOdooClient._callObject('stock.move', 'read', [
         moveIds,
-        ['id', 'product_id', 'product_uom_qty', 'quantity_done', 'product_uom', 'state']
+        ['id', 'product_id', 'product_uom_qty', 'quantity', 'product_uom', 'state']
       ]);
 
       const stateMap = {
@@ -346,7 +347,7 @@ export class WipService {
         id: m.id,
         productName: Array.isArray(m.product_id) ? m.product_id[1] : (m.product_id || '-'),
         demandQty: Number(m.product_uom_qty || 0),
-        quantityDone: Number(m.quantity_done || 0),
+        quantityDone: Number(m.quantity || 0),
         uom: Array.isArray(m.product_uom) ? m.product_uom[1] : (m.product_uom || 'yard'),
         state: m.state,
         stateDisplay: stateMap[m.state] || m.state
@@ -464,17 +465,32 @@ export class WipService {
       const rawVal = update.qtyBeratKg !== undefined ? update.qtyBeratKg : update.qty_berat_kg;
       const weight = (rawVal !== undefined && rawVal !== null && rawVal !== '') ? Math.max(0, parseFloat(rawVal) || 0) : null;
 
+      const rawPenerimaan = update.qtyPenerimaan !== undefined ? update.qtyPenerimaan : update.qty_penerimaan;
+      const penerimaan = (rawPenerimaan !== undefined && rawPenerimaan !== null && rawPenerimaan !== '') ? Math.max(0, parseFloat(rawPenerimaan) || 0) : null;
+
       if (lineId) {
-        await supabaseServer
+        const updateData = { updated_at: new Date().toISOString() };
+        if (weight !== null) updateData.qty_berat_kg = weight;
+        if (penerimaan !== null) updateData.qty_penerimaan = penerimaan;
+
+        const { error: lineErr } = await supabaseServer
           .from('wip_roll_lines')
-          .update({ qty_berat_kg: weight, updated_at: new Date().toISOString() })
+          .update(updateData)
           .eq('id', lineId);
+
+        if (lineErr && lineErr.message && lineErr.message.includes('qty_penerimaan')) {
+          delete updateData.qty_penerimaan;
+          await supabaseServer
+            .from('wip_roll_lines')
+            .update(updateData)
+            .eq('id', lineId);
+        }
       }
 
       if (weight !== null) {
         sumRollWeights += weight;
-        formattedRollUpdates.push({ lineId, qtyBeratKg: weight });
       }
+      formattedRollUpdates.push({ lineId, qtyBeratKg: weight, qtyPenerimaan: penerimaan });
     }
 
     // If vendor didn't input explicit actualCutting, fallback to sum of roll weights
@@ -538,10 +554,20 @@ export class WipService {
         // Read Odoo line ID
         const { data: rl } = await supabaseServer.from('wip_roll_lines').select('odoo_line_id').eq('id', update.lineId).single();
         if (rl && rl.odoo_line_id) {
-          await adminOdooClient._callObject('x_monitoring_wip_vendo_line_4c93a', 'write', [
-            [rl.odoo_line_id],
-            { x_studio_qty_berat_kg: update.qtyBeratKg }
-          ]);
+          const odooPayload = {};
+          if (update.qtyBeratKg !== null && update.qtyBeratKg !== undefined) {
+            odooPayload.x_studio_qty_berat_kg = update.qtyBeratKg;
+          }
+          if (update.qtyPenerimaan !== null && update.qtyPenerimaan !== undefined) {
+            odooPayload.x_studio_qty_penerimaan = update.qtyPenerimaan;
+          }
+
+          if (Object.keys(odooPayload).length > 0) {
+            await adminOdooClient._callObject('x_monitoring_wip_vendo_line_4c93a', 'write', [
+              [rl.odoo_line_id],
+              odooPayload
+            ]);
+          }
         }
       }
     }
@@ -771,7 +797,7 @@ export class WipService {
     if (w.x_studio_detail_roll_kain && w.x_studio_detail_roll_kain.length > 0) {
       const rolls = await adminOdooClient._callObject('x_monitoring_wip_vendo_line_4c93a', 'read', [
         w.x_studio_detail_roll_kain,
-        ['id', 'x_name', 'x_studio_kode_warna_roll', 'x_studio_yards', 'x_studio_uom', 'x_studio_qty_berat_kg']
+        ['id', 'x_name', 'x_studio_kode_warna_roll', 'x_studio_yards', 'x_studio_uom', 'x_studio_qty_penerimaan', 'x_studio_qty_berat_kg']
       ]);
       await wipRepo.upsertRollLines(order.id, rolls);
     }
@@ -868,7 +894,7 @@ export class WipService {
           if (w.x_studio_detail_roll_kain && w.x_studio_detail_roll_kain.length > 0) {
             const rolls = await adminOdooClient._callObject('x_monitoring_wip_vendo_line_4c93a', 'read', [
               w.x_studio_detail_roll_kain,
-              ['id', 'x_name', 'x_studio_kode_warna_roll', 'x_studio_yards', 'x_studio_uom', 'x_studio_qty_berat_kg']
+              ['id', 'x_name', 'x_studio_kode_warna_roll', 'x_studio_yards', 'x_studio_uom', 'x_studio_qty_penerimaan', 'x_studio_qty_berat_kg']
             ]);
             await wipRepo.upsertRollLines(savedId, rolls);
           }
@@ -1208,7 +1234,7 @@ export class WipService {
       const rawRollLines = wip.x_studio_detail_roll_kain && wip.x_studio_detail_roll_kain.length > 0
         ? await adminOdooClient._callObject('x_monitoring_wip_vendo_line_4c93a', 'read', [
             wip.x_studio_detail_roll_kain,
-            ['id', 'x_name', 'x_studio_kode_warna_roll', 'x_studio_yards', 'x_studio_uom', 'x_studio_qty_berat_kg']
+            ['id', 'x_name', 'x_studio_kode_warna_roll', 'x_studio_yards', 'x_studio_uom', 'x_studio_qty_penerimaan', 'x_studio_qty_berat_kg']
           ])
         : [];
 
@@ -1226,6 +1252,20 @@ export class WipService {
         } else {
           seenRollKeys.set(key, line);
         }
+
+        // Opsi C default: If Qty Penerimaan is 0/empty, set default from Qty (Surat Jalan Transfer)
+        if ((parseFloat(line.x_studio_qty_penerimaan) || 0) === 0 && (parseFloat(line.x_studio_yards) || 0) > 0) {
+          line.x_studio_qty_penerimaan = line.x_studio_yards;
+          try {
+            await adminOdooClient._callObject('x_monitoring_wip_vendo_line_4c93a', 'write', [
+              [line.id],
+              { x_studio_qty_penerimaan: line.x_studio_yards }
+            ]);
+          } catch (writeErr) {
+            console.warn(`[WipService] Failed to set default Qty Penerimaan for line #${line.id}: ${writeErr.message}`);
+          }
+        }
+
         existingRollLines.push(line);
       }
 
@@ -1252,7 +1292,7 @@ export class WipService {
           if (prevWips && prevWips.length > 0 && prevWips[0].x_studio_detail_roll_kain.length > 0) {
             const prevLines = await adminOdooClient._callObject('x_monitoring_wip_vendo_line_4c93a', 'read', [
               prevWips[0].x_studio_detail_roll_kain,
-              ['x_name', 'x_studio_kode_warna_roll', 'x_studio_yards', 'x_studio_uom', 'x_studio_qty_berat_kg']
+              ['x_name', 'x_studio_kode_warna_roll', 'x_studio_yards', 'x_studio_uom', 'x_studio_qty_penerimaan', 'x_studio_qty_berat_kg']
             ]);
 
             for (const l of prevLines) {
@@ -1261,6 +1301,7 @@ export class WipService {
                 x_studio_kode_warna_roll: l.x_studio_kode_warna_roll,
                 x_studio_yards: l.x_studio_yards,
                 x_studio_uom: l.x_studio_uom,
+                x_studio_qty_penerimaan: l.x_studio_qty_penerimaan !== undefined ? l.x_studio_qty_penerimaan : l.x_studio_yards,
                 x_studio_qty_berat_kg: l.x_studio_qty_berat_kg
               }]);
             }
@@ -1287,6 +1328,7 @@ export class WipService {
               x_studio_kode_warna_roll: lotName,
               x_studio_yards: l.quantity,
               x_studio_uom: l.product_uom_id ? l.product_uom_id[1] : '',
+              x_studio_qty_penerimaan: l.quantity, // Default dari Surat Jalan Transfer PC
               x_studio_qty_berat_kg: 0.0
             }]);
           }
@@ -1449,7 +1491,24 @@ export class WipService {
         });
 
         if (allLinesToSum.length > 0) {
-          await wipRepo.upsertRollLines(savedId, allLinesToSum);
+          // Re-fetch updated lines with actual Odoo line IDs if new lines were added
+          let linesToSave = allLinesToSum;
+          if (newRollLines.length > 0) {
+            try {
+              const freshWip = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'read', [[wipId]], {
+                fields: ['x_studio_detail_roll_kain']
+              });
+              if (freshWip && freshWip[0] && freshWip[0].x_studio_detail_roll_kain && freshWip[0].x_studio_detail_roll_kain.length > 0) {
+                linesToSave = await adminOdooClient._callObject('x_monitoring_wip_vendo_line_4c93a', 'read', [
+                  freshWip[0].x_studio_detail_roll_kain,
+                  ['id', 'x_name', 'x_studio_kode_warna_roll', 'x_studio_yards', 'x_studio_uom', 'x_studio_qty_penerimaan', 'x_studio_qty_berat_kg']
+                ]);
+              }
+            } catch (refErr) {
+              console.warn(`[WipService] Failed to read fresh lines after write: ${refErr.message}`);
+            }
+          }
+          await wipRepo.upsertRollLines(savedId, linesToSave);
         }
       } catch (sbErr) {
         console.warn(`[WIP Service] Supabase sync warning for WIP #${wipId}: ${sbErr.message}`);

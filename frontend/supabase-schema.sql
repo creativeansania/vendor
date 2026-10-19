@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS wip_roll_lines (
   kode_lot VARCHAR(100) NOT NULL DEFAULT 'Tanpa Lot',
   qty NUMERIC(12,2) DEFAULT 0,
   uom VARCHAR(50) NULL,
+  qty_penerimaan NUMERIC(12,2) DEFAULT 0,
   qty_berat_kg NUMERIC(10,2) NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT uq_roll UNIQUE (wip_order_id, nama_item, kode_lot)

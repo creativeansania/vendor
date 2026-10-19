@@ -136,6 +136,8 @@ class WipRepository {
       const uom = line.uom || line.x_studio_uom || 'yard';
       const rawBerat = line.qty_berat_kg !== undefined ? line.qty_berat_kg : line.x_studio_qty_berat_kg;
       const qtyBeratKg = rawBerat !== null && rawBerat !== undefined && rawBerat !== '' ? Number(rawBerat) : null;
+      const rawPenerimaan = line.qty_penerimaan !== undefined ? line.qty_penerimaan : line.x_studio_qty_penerimaan;
+      const qtyPenerimaan = rawPenerimaan !== null && rawPenerimaan !== undefined && rawPenerimaan !== '' ? Number(rawPenerimaan) : qty;
       const odooLineId = line.odoo_line_id || line.id || null;
 
       const row = {
@@ -150,10 +152,23 @@ class WipRepository {
 
       if (odooLineId) row.odoo_line_id = Number(odooLineId);
       if (qtyBeratKg !== null) row.qty_berat_kg = qtyBeratKg;
+      if (qtyPenerimaan !== null) row.qty_penerimaan = qtyPenerimaan;
 
-      await supabaseServer
+      const { error: upsertErr } = await supabaseServer
         .from('wip_roll_lines')
         .upsert(row, { onConflict: 'wip_order_id,nama_item,kode_lot' });
+
+      if (upsertErr) {
+        // Graceful fallback if qty_penerimaan column not yet migrated in Supabase
+        if (upsertErr.message && upsertErr.message.includes('qty_penerimaan')) {
+          delete row.qty_penerimaan;
+          await supabaseServer
+            .from('wip_roll_lines')
+            .upsert(row, { onConflict: 'wip_order_id,nama_item,kode_lot' });
+        } else {
+          console.warn('[WipRepo] upsertRollLines error:', upsertErr.message);
+        }
+      }
     }
   }
 
@@ -169,25 +184,37 @@ class WipRepository {
     // Get parent roll lines
     const { data: parentRolls } = await supabaseServer
       .from('wip_roll_lines')
-      .select('line_type, nama_item, kode_lot, qty, uom, qty_berat_kg')
+      .select('*')
       .eq('wip_order_id', parentWipOrderId);
 
     if (!parentRolls || parentRolls.length === 0) return;
 
     for (const child of children) {
       for (const pr of parentRolls) {
-        await supabaseServer
+        const childRow = {
+          wip_order_id: child.id,
+          line_type: pr.line_type,
+          nama_item: pr.nama_item,
+          kode_lot: pr.kode_lot,
+          qty: pr.qty,
+          uom: pr.uom,
+          qty_berat_kg: pr.qty_berat_kg,
+          updated_at: new Date().toISOString()
+        };
+        if (pr.qty_penerimaan !== undefined) {
+          childRow.qty_penerimaan = pr.qty_penerimaan;
+        }
+
+        const { error: childErr } = await supabaseServer
           .from('wip_roll_lines')
-          .upsert({
-            wip_order_id: child.id,
-            line_type: pr.line_type,
-            nama_item: pr.nama_item,
-            kode_lot: pr.kode_lot,
-            qty: pr.qty,
-            uom: pr.uom,
-            qty_berat_kg: pr.qty_berat_kg,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'wip_order_id,nama_item,kode_lot' });
+          .upsert(childRow, { onConflict: 'wip_order_id,nama_item,kode_lot' });
+
+        if (childErr && childErr.message && childErr.message.includes('qty_penerimaan')) {
+          delete childRow.qty_penerimaan;
+          await supabaseServer
+            .from('wip_roll_lines')
+            .upsert(childRow, { onConflict: 'wip_order_id,nama_item,kode_lot' });
+        }
       }
     }
   }
