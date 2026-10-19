@@ -131,7 +131,8 @@ class WipRepository {
       if (!namaItem) continue;
 
       const kodeLot = line.kode_lot || line.x_studio_kode_warna_roll || 'Tanpa Lot';
-      const lineType = line.line_type || 'kain';
+      const isAcc = (namaItem || '').toLowerCase().includes('acc') || (namaItem || '').toLowerCase().includes('aksesoris') || (namaItem || '').toLowerCase().includes('kancing') || (namaItem || '').toLowerCase().includes('benang');
+      const lineType = line.line_type || (isAcc ? 'aksesoris' : 'kain');
       const qty = Number(line.qty || line.x_studio_yards || 0);
       const uom = line.uom || line.x_studio_uom || 'yard';
       const rawBerat = line.qty_berat_kg !== undefined ? line.qty_berat_kg : line.x_studio_qty_berat_kg;

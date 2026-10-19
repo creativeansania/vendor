@@ -517,7 +517,12 @@ function OrderDetailContent() {
 
   // Material lines segmentation: Kain (Fabric) vs Aksesoris/Pelengkap
   const fabricLines = useMemo(() => {
-    return rollLines.filter((l) => l.line_type === 'kain' || (!l.line_type && (l.nama_item || '').toLowerCase().includes('kain')));
+    return rollLines.filter((l) => {
+      const name = (l.nama_item || '').toLowerCase();
+      const isAcc = l.line_type === 'aksesoris' || name.includes('acc') || name.includes('acces') || name.includes('aksesoris') || name.includes('kancing') || name.includes('benang') || name.includes('zipper') || name.includes('label');
+      if (isAcc) return false;
+      return l.line_type === 'kain' || name.includes('kain');
+    });
   }, [rollLines]);
 
   const accessoryLines = useMemo(() => {

@@ -528,14 +528,16 @@ export class WipService {
       created_by: user.id
     });
 
-    // Asynchronously push to Odoo without blocking the response
-    this._syncCuttingToOdoo(order.odoo_wip_id, formattedRollUpdates, finalActualCutting).catch(err => {
-      console.warn(`[WipService] Odoo async cutting push warning: ${err.message}`);
-    });
+    // Synchronously push to Odoo so Vercel Serverless Function waits for completion
+    try {
+      await this._syncCuttingToOdoo(order.odoo_wip_id, formattedRollUpdates, finalActualCutting);
+    } catch (err) {
+      console.warn(`[WipService] Odoo cutting push warning: ${err.message}`);
+    }
 
     return {
       success: true,
-      message: 'Hasil potong berhasil disimpan dan dikunci.',
+      message: 'Hasil potong berhasil disimpan dan disinkronkan ke Odoo.',
       actualCutting: finalActualCutting,
       selisihCutting
     };
@@ -623,14 +625,16 @@ export class WipService {
       created_by: user.id
     });
 
-    // 4. Push to Odoo asynchronously
-    this._syncProductionToOdoo(order.odoo_wip_id, aGrade, bGrade, sisaKg).catch(err => {
+    // 4. Push to Odoo
+    try {
+      await this._syncProductionToOdoo(order.odoo_wip_id, aGrade, bGrade, sisaKg);
+    } catch (err) {
       console.warn(`[WipService] Odoo async production push warning: ${err.message}`);
-    });
+    }
 
     return {
       success: true,
-      message: 'Hasil jahit berhasil dilaporkan dan terkunci.',
+      message: 'Hasil jahit berhasil dilaporkan dan disinkronkan ke Odoo.',
       qtyGradeA: aGrade,
       qtyGradeB: bGrade,
       sisaMakloonKg: sisaKg,
