@@ -2,10 +2,9 @@
 
 import { useRouter } from 'next/navigation';
 import ThemeToggle from '@/components/ThemeToggle';
+import StatusBadge from '@/components/common/StatusBadge';
 import {
   ArrowLeft,
-  CheckCircle2,
-  Scissors,
   RefreshCw,
   MessageCircle
 } from 'lucide-react';
@@ -39,19 +38,11 @@ export default function OrderNavbar({
               {order.mo_name}
             </span>
             {isBackorder && <span className="badge badge-purple" style={{ fontSize: '0.68rem' }}>Backorder</span>}
-            {order.status_produksi === 'Selesai' ? (
-              <span className="badge badge-emerald" style={{ fontSize: '0.7rem' }}>
-                <CheckCircle2 size={13} /> Selesai
-              </span>
-            ) : actualCutting !== '' || order.actual_cutting ? (
-              <span className="badge badge-sky" style={{ fontSize: '0.7rem' }}>
-                <Scissors size={13} /> Sedang Jahit
-              </span>
-            ) : (
-              <span className="badge badge-amber" style={{ fontSize: '0.7rem' }}>
-                <Scissors size={13} /> Belum Potong
-              </span>
-            )}
+            <StatusBadge
+              type="order_stage"
+              value={order.status_produksi === 'Selesai' ? 'result_locked' : actualCutting !== '' || order.actual_cutting ? 'cutting_locked' : 'cutting_pending'}
+              label={order.status_produksi === 'Selesai' ? 'Selesai' : actualCutting !== '' || order.actual_cutting ? 'Sedang Jahit' : 'Belum Potong'}
+            />
           </div>
           <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
             <span>SO:</span>

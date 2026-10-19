@@ -1,6 +1,7 @@
 'use client';
 
-import { Scissors, Lock, CheckCircle2, Building2, MessageCircle, ChevronRight } from 'lucide-react';
+import StatusBadge from '@/components/common/StatusBadge';
+import { Building2, MessageCircle, ChevronRight } from 'lucide-react';
 
 function formatRupiahPrice(val) {
   const num = parseFloat(val);
@@ -74,19 +75,10 @@ export default function DashboardOrderCard({ order, onClick, onAskWa }) {
                 ⚠️ Kurang
               </button>
             )}
-            {isResultLocked ? (
-              <span className="badge badge-emerald" style={{ fontSize: '0.7rem' }}>
-                <CheckCircle2 size={12} /> Selesai
-              </span>
-            ) : isCuttingLocked ? (
-              <span className="badge badge-sky" style={{ fontSize: '0.7rem' }}>
-                <Lock size={12} /> Jahit
-              </span>
-            ) : (
-              <span className="badge badge-amber" style={{ fontSize: '0.7rem' }}>
-                <Scissors size={12} /> Potong
-              </span>
-            )}
+            <StatusBadge
+              type="order_stage"
+              value={isResultLocked ? 'result_locked' : isCuttingLocked ? 'cutting_locked' : 'cutting_pending'}
+            />
           </div>
         </div>
 

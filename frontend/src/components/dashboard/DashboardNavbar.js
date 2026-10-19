@@ -3,27 +3,13 @@
 import { useRouter } from 'next/navigation';
 import { logout } from '@/lib/api';
 import ThemeToggle from '@/components/ThemeToggle';
+import StatusBadge from '@/components/common/StatusBadge';
 import { Users, Smartphone, LogOut } from 'lucide-react';
 
 export default function DashboardNavbar({ user }) {
   const router = useRouter();
 
   if (!user) return null;
-
-  const getRoleBadge = (role) => {
-    switch (role) {
-      case 'master_admin':
-        return <span className="badge badge-purple" style={{ fontSize: '0.68rem' }}>Master Admin</span>;
-      case 'admin':
-        return <span className="badge badge-sky" style={{ fontSize: '0.68rem' }}>Admin Internal</span>;
-      case 'master_vendor':
-        return <span className="badge badge-emerald" style={{ fontSize: '0.68rem' }}>Master Vendor</span>;
-      case 'admin_vendor':
-        return <span className="badge badge-amber" style={{ fontSize: '0.68rem' }}>Admin Vendor</span>;
-      default:
-        return null;
-    }
-  };
 
   const handleInstallPwa = () => {
     if (typeof window !== 'undefined') {
@@ -42,7 +28,7 @@ export default function DashboardNavbar({ user }) {
             <h1 style={{ fontSize: '0.98rem', margin: 0, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {user.vendor_name || 'Ansania Operations'}
             </h1>
-            {getRoleBadge(user.role)}
+            <StatusBadge type="role" value={user.role} />
           </div>
           <p style={{ margin: '1px 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {user.name}
