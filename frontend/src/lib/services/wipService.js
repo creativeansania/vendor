@@ -717,29 +717,105 @@ export class WipService {
 
     await adminOdooClient.authenticate();
 
-    // 1. Sync to Monitoring WIP Vendor
-    if (odooWipId) {
-      await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [[odooWipId], {
-        x_studio_qty_kirim_a_grade: aGrade,
-        x_studio_qty_kirim_b_grade: bGrade,
-        x_studio_sisa_makloon_kg: sisaKg
-      }], { context: { tracking_disable: true, no_automation: true } });
-    }
+    const wipUpdateVals = {
+      x_studio_qty_kirim_a_grade: aGrade,
+      x_studio_qty_kirim_b_grade: bGrade,
+      x_studio_sisa_makloon_kg: sisaKg
+    };
 
-    // 2. Sync to Manufacturing Order (qty_producing)
-    if (odooMoId && aGrade !== undefined && aGrade !== null) {
+    let parentMo = null;
+    if (odooMoId) {
       try {
         const mos = await adminOdooClient._callObject('mrp.production', 'read', [[odooMoId]], {
-          fields: ['id', 'state', 'qty_producing']
+          fields: ['id', 'name', 'state', 'qty_producing', 'product_id', 'product_uom_id', 'company_id', 'picking_type_id', 'production_group_id', 'bom_id']
         });
-        if (mos && mos[0] && !['done', 'cancel'].includes(mos[0].state)) {
-          await adminOdooClient._callObject('mrp.production', 'write', [[odooMoId], {
+        if (mos && mos[0]) {
+          parentMo = mos[0];
+        }
+      } catch (moErr) {
+        console.warn(`[WipService] Read parent MO #${odooMoId} error:`, moErr.message);
+      }
+    }
+
+    // 1. Sync to Parent Manufacturing Order (qty_producing for Grade A)
+    if (parentMo && aGrade !== undefined && aGrade !== null) {
+      try {
+        if (!['done', 'cancel'].includes(parentMo.state)) {
+          await adminOdooClient._callObject('mrp.production', 'write', [[parentMo.id], {
             qty_producing: aGrade
           }]);
         }
       } catch (moErr) {
         console.warn(`[WipService] Sync qty_producing to MO #${odooMoId} warning:`, moErr.message);
       }
+    }
+
+    // 2. MO Grade B creation / update if bGrade > 0
+    if (parentMo && bGrade > 0) {
+      try {
+        const originB = `Turunan Grade B - ${parentMo.name}`;
+        // Find if MO Grade B already exists
+        const existingMoBs = await adminOdooClient._callObject('mrp.production', 'search_read', [
+          [[ 'origin', '=', originB ]]
+        ], { fields: ['id', 'name', 'state', 'product_qty'], limit: 1 });
+
+        if (existingMoBs && existingMoBs.length > 0) {
+          const moB = existingMoBs[0];
+          if (!['done', 'cancel'].includes(moB.state) && parseFloat(moB.product_qty) !== bGrade) {
+            await adminOdooClient._callObject('mrp.production', 'write', [[moB.id], { product_qty: bGrade }]);
+          }
+          wipUpdateVals.x_studio_nama_mo_grade_b = moB.name;
+        } else {
+          // Search for a Grade B product variant, or fallback to the parent product
+          let targetProdBId = parentMo.product_id[0];
+          try {
+            const prods = await adminOdooClient._callObject('product.product', 'read', [[parentMo.product_id[0]]], {
+              fields: ['product_tmpl_id']
+            });
+            const tmplId = prods && prods[0] && prods[0].product_tmpl_id ? prods[0].product_tmpl_id[0] : null;
+            if (tmplId) {
+              const prodBs = await adminOdooClient._callObject('product.product', 'search_read', [
+                [
+                  ['product_tmpl_id', '=', tmplId],
+                  ['name', 'ilike', 'GRADE B']
+                ]
+              ], { fields: ['id', 'name', 'uom_id'], limit: 1 });
+              if (prodBs && prodBs.length > 0) {
+                targetProdBId = prodBs[0].id;
+              }
+            }
+          } catch (e) {}
+
+          const moPayload = {
+            product_id: targetProdBId,
+            product_qty: bGrade,
+            product_uom_id: parentMo.product_uom_id ? parentMo.product_uom_id[0] : 1,
+            origin: originB,
+            company_id: parentMo.company_id ? parentMo.company_id[0] : 1,
+            picking_type_id: parentMo.picking_type_id ? parentMo.picking_type_id[0] : false
+          };
+          if (parentMo.production_group_id) {
+            moPayload.production_group_id = parentMo.production_group_id[0];
+          }
+          if (parentMo.bom_id) {
+            moPayload.bom_id = parentMo.bom_id[0];
+          }
+
+          const newMoBId = await adminOdooClient._callObject('mrp.production', 'create', [moPayload]);
+          const readMoB = await adminOdooClient._callObject('mrp.production', 'read', [[newMoBId]], { fields: ['name'] });
+          const moBName = readMoB && readMoB[0] ? readMoB[0].name : `MO#${newMoBId}`;
+          wipUpdateVals.x_studio_nama_mo_grade_b = moBName;
+        }
+      } catch (moBErr) {
+        console.warn(`[WipService] MO Grade B creation error:`, moBErr.message);
+      }
+    }
+
+    // 3. Write all values to Monitoring WIP Vendor
+    if (odooWipId) {
+      await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [[odooWipId], wipUpdateVals], {
+        context: { tracking_disable: true, no_automation: true }
+      });
     }
   }
 
