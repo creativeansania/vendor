@@ -339,7 +339,7 @@ function OrderDetailContent() {
       });
 
       if (res.success) {
-        setFeedback({ text: 'Tahap hasil potong berhasil dikunci dan disinkronkan ke Odoo!', type: 'success' });
+        setFeedback({ text: 'Hasil potong berhasil disimpan dan disinkronkan ke Odoo!', type: 'success' });
         loadData();
       } else {
         setFeedback({ text: res.message || 'Gagal menyimpan hasil potong.', type: 'error' });
@@ -2720,7 +2720,7 @@ function OrderDetailContent() {
                 className={`btn ${safetyModal.isExtreme ? 'btn-danger' : 'btn-primary'}`}
                 style={{ flex: 1.2, height: '44px', borderRadius: '12px', fontWeight: 800, fontSize: '0.88rem' }}
               >
-                {saving ? 'Mengunci...' : safetyModal.isExtreme ? 'Ya, Kunci Data Ini' : 'Ya, Kunci Sekarang'}
+                {saving ? 'Menyimpan...' : (safetyModal.isExtreme ? 'Ya, Simpan Data Ini' : 'Ya, Simpan Perubahan')}
               </button>
             </div>
           </div>
