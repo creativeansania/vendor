@@ -6,12 +6,10 @@ import { fetchApi, getCurrentUser } from '@/lib/api';
 import {
   ArrowLeft,
   Lock,
-  Unlock,
   CheckCircle2,
   AlertTriangle,
   Scissors,
   Package,
-  Layers,
   Send,
   RefreshCw,
   Info,
@@ -21,7 +19,6 @@ import {
   AlertCircle,
   Clock,
   ShieldAlert,
-  Sparkles,
   TrendingUp,
   ChevronRight,
   Check,
@@ -29,7 +26,6 @@ import {
   Zap,
   MessageCircle,
   Truck,
-  Calculator,
   Copy,
   Percent,
   ExternalLink,
@@ -46,12 +42,11 @@ function OrderDetailContent() {
   const [rollLines, setRollLines] = useState([]);
   const [rawMoves, setRawMoves] = useState([]);
   const [transfers, setTransfers] = useState([]);
-  const [activeTab, setActiveTab] = useState('timbang'); // 'timbang', 'hasil', 'bahan', 'transfer'
+  const [activeTab, setActiveTab] = useState('timbang'); // 'timbang', 'hasil', 'transfer'
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncingOdoo, setSyncingOdoo] = useState(false);
   const [copiedTransferId, setCopiedTransferId] = useState(null);
-  const [calcInputYards, setCalcInputYards] = useState('');
   const [transferFilter, setTransferFilter] = useState('all');
   const [feedback, setFeedback] = useState({ text: '', type: '' });
 
@@ -65,9 +60,6 @@ function OrderDetailContent() {
   const [gradeB, setGradeB] = useState('');
   const [sisaKg, setSisaKg] = useState('');
   const [noSuratJalan, setNoSuratJalan] = useState('');
-
-  // Unlock modal state (Master Admin)
-  const [unlockModal, setUnlockModal] = useState({ open: false, type: '', reason: '' });
 
   // Safety Confirmation & Extreme Deviation Modal State
   const [safetyModal, setSafetyModal] = useState({
@@ -394,7 +386,7 @@ function OrderDetailContent() {
       stage: 'cutting',
       isExtreme,
       deviationPct: devPct,
-      title: isExtreme ? 'Peringatan: Selisih Hasil Potong Ekstrem' : (isCuttingLocked ? 'Konfirmasi Simpan Perubahan' : 'Konfirmasi Simpan Hasil Potong'),
+      title: isExtreme ? 'Peringatan: Selisih Hasil Potong Ekstrem' : 'Konfirmasi Simpan Hasil Potong',
       targetVal: targetRef > 0 ? `${targetRef.toLocaleString('id-ID')} ${order?.unit_kain || 'pcs'}` : '-',
       actualVal: `${effectiveActual.toLocaleString('id-ID')} ${order?.unit_kain || 'pcs'}`,
       diffVal: targetRef > 0
@@ -471,7 +463,7 @@ function OrderDetailContent() {
       stage: 'production',
       isExtreme,
       deviationPct: devPct,
-      title: isExtreme ? 'Peringatan: Selisih Hasil Jahit Ekstrem' : (isResultLocked ? 'Konfirmasi Simpan Perubahan Hasil Jahit' : 'Konfirmasi Simpan Hasil Jahit'),
+      title: isExtreme ? 'Peringatan: Selisih Hasil Jahit Ekstrem' : 'Konfirmasi Simpan Hasil Jahit',
       targetVal: `${targetRef.toLocaleString('id-ID')} pcs`,
       actualVal: `${totalYield.toLocaleString('id-ID')} pcs (Grade A: ${valA}, Grade B: ${valB})`,
       diffVal: `${totalYield - targetRef > 0 ? '+' : ''}${(totalYield - targetRef).toFixed(0)} pcs`,
@@ -482,37 +474,6 @@ function OrderDetailContent() {
         : 'Pastikan seluruh jumlah fisik sudah sesuai dengan surat jalan. Data akan disimpan dan disinkronkan langsung ke Odoo ERP.',
       onConfirm: executeSubmitProduction
     });
-  };
-
-  // Master Admin Unlock Handler
-  const handleUnlock = async () => {
-    if (!unlockModal.reason.trim()) {
-      alert('Alasan buka kunci wajib diisi untuk catatan audit trail.');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const res = await fetchApi(`/pwa/orders/${orderId}/unlock`, {
-        method: 'POST',
-        body: JSON.stringify({
-          stage: unlockModal.type,
-          reason: unlockModal.reason.trim()
-        })
-      });
-
-      if (res.success) {
-        setFeedback({ text: `Kunci tahap ${unlockModal.type} berhasil dibuka oleh Master Admin.`, type: 'success' });
-        setUnlockModal({ open: false, type: '', reason: '' });
-        loadData();
-      } else {
-        alert(res.message || 'Gagal membuka kunci.');
-      }
-    } catch (err) {
-      alert('Error: ' + err.message);
-    } finally {
-      setSaving(false);
-    }
   };
 
   // Material lines segmentation: Kain (Fabric) vs Aksesoris/Pelengkap
@@ -571,44 +532,7 @@ function OrderDetailContent() {
     return Math.round((currentActualCutting / estimasiSpb) * 100);
   }, [currentActualCutting, estimasiSpb]);
 
-  // Standard Pattern Consumption & Fabric Yield Calculations (Feature 4)
-  const consumptionValue = useMemo(() => {
-    return parseFloat(order?.consumption_per_pcs) || 0;
-  }, [order?.consumption_per_pcs]);
 
-  const consumptionUom = useMemo(() => {
-    return order?.consumption_uom || order?.unit_kain || 'yard';
-  }, [order?.consumption_uom, order?.unit_kain]);
-
-  const totalFabricAvailable = useMemo(() => {
-    if (totalPhysicalFabric > 0) return totalPhysicalFabric;
-    if (order?.kain_dari_gudang) return parseFloat(order.kain_dari_gudang);
-    if (order?.qty_kebutuhan_kain) return parseFloat(order.qty_kebutuhan_kain);
-    return 0;
-  }, [totalPhysicalFabric, order?.kain_dari_gudang, order?.qty_kebutuhan_kain]);
-
-  const theoreticalMaxGarments = useMemo(() => {
-    if (consumptionValue <= 0 || totalFabricAvailable <= 0) return 0;
-    return Math.floor(totalFabricAvailable / consumptionValue);
-  }, [consumptionValue, totalFabricAvailable]);
-
-  const patternEfficiencyRatio = useMemo(() => {
-    if (theoreticalMaxGarments <= 0 || currentActualCutting <= 0) return null;
-    return Math.round((currentActualCutting / theoreticalMaxGarments) * 100);
-  }, [theoreticalMaxGarments, currentActualCutting]);
-
-  // Pre-fill interactive calculator with available fabric when loaded
-  useEffect(() => {
-    if (totalFabricAvailable > 0 && calcInputYards === '') {
-      setCalcInputYards(String(totalFabricAvailable));
-    }
-  }, [totalFabricAvailable]);
-
-  const calculatedGarments = useMemo(() => {
-    const inputVal = parseFloat(calcInputYards) || 0;
-    if (consumptionValue <= 0 || inputVal <= 0) return 0;
-    return Math.floor(inputVal / consumptionValue);
-  }, [calcInputYards, consumptionValue]);
 
   // Filtered transfers for Tab 4 (Feature 3)
   const filteredTransfers = useMemo(() => {
@@ -684,10 +608,10 @@ function OrderDetailContent() {
                 {order.mo_name}
               </span>
               {isBackorder && <span className="badge badge-purple" style={{ fontSize: '0.68rem' }}>Backorder</span>}
-              {isResultLocked ? (
+              {order.status_produksi === 'Selesai' ? (
                 <span className="badge badge-emerald" style={{ fontSize: '0.7rem' }}><CheckCircle2 size={13} /> Selesai</span>
-              ) : isCuttingLocked ? (
-                <span className="badge badge-sky" style={{ fontSize: '0.7rem' }}><Lock size={13} /> Sedang Jahit</span>
+              ) : (actualCutting !== '' || order.actual_cutting) ? (
+                <span className="badge badge-sky" style={{ fontSize: '0.7rem' }}><Scissors size={13} /> Sedang Jahit</span>
               ) : (
                 <span className="badge badge-amber" style={{ fontSize: '0.7rem' }}><Scissors size={13} /> Belum Potong</span>
               )}
@@ -1008,24 +932,13 @@ function OrderDetailContent() {
           </button>
 
           <button
-            id="tab-btn-bahan"
-            onClick={() => setActiveTab('bahan')}
-            className={`segmented-tab-btn ${activeTab === 'bahan' ? 'active' : ''}`}
-          >
-            <Layers size={15} className="tab-icon" />
-            <span>
-              3. Bahan BOM {(rawMoves.length > 0 || (order?.raw_moves && order.raw_moves.length > 0)) ? `(${rawMoves.length || order?.raw_moves?.length})` : ''}
-            </span>
-          </button>
-
-          <button
             id="tab-btn-transfer"
             onClick={() => setActiveTab('transfer')}
             className={`segmented-tab-btn ${activeTab === 'transfer' ? 'active' : ''}`}
           >
             <Truck size={15} className="tab-icon" />
             <span>
-              4. Dokumen Transfer {transfers.length > 0 ? `(${transfers.length})` : ''}
+              3. Dokumen Transfer {transfers.length > 0 ? `(${transfers.length})` : ''}
             </span>
           </button>
         </div>
@@ -1035,64 +948,6 @@ function OrderDetailContent() {
             ================================================================== */}
         {activeTab === 'timbang' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* Stage Status Card */}
-            <div
-              className="card"
-              style={{
-                padding: '14px 18px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '12px',
-                background: isCuttingLocked
-                  ? 'linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)'
-                  : 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
-                borderColor: isCuttingLocked ? 'var(--status-emerald-border)' : 'var(--status-amber-border)',
-                borderRadius: '14px'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
-                <div
-                  style={{
-                    width: '38px',
-                    height: '38px',
-                    borderRadius: '10px',
-                    background: isCuttingLocked ? 'var(--status-emerald)' : 'var(--brand-gold)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#ffffff',
-                    flexShrink: 0,
-                    boxShadow: 'var(--shadow-subtle)'
-                  }}
-                >
-                  {isCuttingLocked ? <Lock size={18} /> : <Scissors size={18} />}
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: '0.94rem', color: 'var(--text-primary)' }}>
-                    {isCuttingLocked ? 'Tahap Hasil Potong Tersimpan' : 'Tahap 1: Verifikasi Hasil Potong & Bahan'}
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                    {isCuttingLocked
-                      ? `Tersinkron ke Odoo: ${order.cutting_locked_at ? new Date(order.cutting_locked_at).toLocaleString('id-ID') : 'Otomatis'}. Data tetap dapat diedit & diperbarui kapan saja.`
-                      : 'Input fisik hasil potong dan verifikasi bahan baku sebelum masuk proses jahit.'}
-                  </div>
-                </div>
-              </div>
-
-              {isMasterAdmin && isCuttingLocked && !isBackorder && (
-                <button
-                  type="button"
-                  onClick={() => setUnlockModal({ open: true, type: 'cutting', reason: '' })}
-                  className="btn btn-secondary"
-                  style={{ fontSize: '0.78rem', padding: '6px 12px', flexShrink: 0, borderRadius: '8px' }}
-                >
-                  <Unlock size={14} />
-                  <span>Buka Kunci</span>
-                </button>
-              )}
-            </div>
 
             {/* HERO CARD: HASIL CUTTING (POTONG) AKTUAL */}
             <div className="card" style={{ padding: '18px 20px', borderRadius: '16px' }}>
@@ -1293,195 +1148,7 @@ function OrderDetailContent() {
               )}
             </div>
 
-            {/* FEATURE 4: STANDAR KONSUMSI KAIN & KALKULATOR MEJA POTONG */}
-            <div className="card" style={{ padding: '18px 20px', borderRadius: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div
-                    style={{
-                      width: '32px',
-                      height: '32px',
-                      borderRadius: '8px',
-                      background: 'rgba(99, 102, 241, 0.12)',
-                      color: '#6366f1',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                  >
-                    <Calculator size={18} />
-                  </div>
-                  <div>
-                    <span style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)' }}>
-                      Standar Konsumsi Kain & Kapasitas Meja Potong
-                    </span>
-                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-                      BOM Master Odoo & Kalkulasi Efisiensi Pemotongan Pola
-                    </div>
-                  </div>
-                </div>
-                {consumptionValue > 0 ? (
-                  <span className="badge badge-purple mono-num" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
-                    Standar: {consumptionValue} {consumptionUom}/pcs
-                  </span>
-                ) : (
-                  <span className="badge badge-slate" style={{ fontSize: '0.74rem' }}>
-                    Standar Belum Diisi di Odoo
-                  </span>
-                )}
-              </div>
 
-              {/* 3 Metrics: Standar Konsumsi, Kapasitas Teoretis, Efisiensi Rendemen */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '14px' }}>
-                {/* Metric 1: Standar Konsumsi per Pcs */}
-                <div className="hero-tile">
-                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>📐 Konsumsi per Pcs</div>
-                  <div className="mono-num" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.2 }}>
-                    {consumptionValue > 0 ? consumptionValue : '-'}{' '}
-                    <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>{consumptionUom}</span>
-                  </div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                    Standar pola garmen Odoo
-                  </div>
-                </div>
-
-                {/* Metric 2: Kapasitas Potong Teoretis */}
-                <div className="hero-tile">
-                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>👗 Kapasitas Teoretis</div>
-                  <div className="mono-num" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#6366f1', lineHeight: 1.2 }}>
-                    {theoreticalMaxGarments > 0 ? theoreticalMaxGarments.toLocaleString('id-ID') : '-'}{' '}
-                    <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>pcs</span>
-                  </div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                    Dari {totalFabricAvailable.toLocaleString('id-ID')} {consumptionUom} kain
-                  </div>
-                </div>
-
-                {/* Metric 3: Rendemen Efisiensi Potong */}
-                <div className="hero-tile" style={{
-                  background: patternEfficiencyRatio && patternEfficiencyRatio >= 100
-                    ? 'var(--status-emerald-bg)'
-                    : patternEfficiencyRatio && patternEfficiencyRatio >= 95
-                    ? 'var(--status-amber-bg)'
-                    : '#fffdf7'
-                }}>
-                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>📊 Rendemen Pola Riil</div>
-                  <div className="mono-num" style={{
-                    fontSize: '1.35rem',
-                    fontWeight: 800,
-                    lineHeight: 1.2,
-                    color: patternEfficiencyRatio && patternEfficiencyRatio >= 100
-                      ? 'var(--status-emerald)'
-                      : patternEfficiencyRatio && patternEfficiencyRatio >= 95
-                      ? 'var(--brand-gold)'
-                      : patternEfficiencyRatio
-                      ? 'var(--status-rose)'
-                      : 'var(--text-primary)'
-                  }}>
-                    {patternEfficiencyRatio !== null ? `${patternEfficiencyRatio}%` : '-'}
-                  </div>
-                  <div style={{ marginTop: '2px' }}>
-                    {patternEfficiencyRatio !== null ? (
-                      patternEfficiencyRatio >= 100 ? (
-                        <span className="badge badge-emerald" style={{ fontSize: '0.66rem', padding: '1px 6px' }}>✓ Hemat Kain</span>
-                      ) : patternEfficiencyRatio >= 95 ? (
-                        <span className="badge badge-gold" style={{ fontSize: '0.66rem', padding: '1px 6px' }}>Normal (Toleransi)</span>
-                      ) : (
-                        <span className="badge badge-rose" style={{ fontSize: '0.66rem', padding: '1px 6px' }}>Boros Bahan</span>
-                      )
-                    ) : (
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Isi hasil potong fisik</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Interactive Meja Potong Output Calculator */}
-              <div style={{
-                padding: '14px 16px',
-                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%)',
-                borderRadius: '12px',
-                border: '1px solid rgba(99, 102, 241, 0.2)'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 700, color: '#4338ca' }}>
-                    <Sparkles size={14} />
-                    <span>Kalkulator Meja Potong Interaktif</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    {totalFabricAvailable > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setCalcInputYards(String(totalFabricAvailable))}
-                        className="quick-action-pill"
-                        style={{ fontSize: '0.68rem', padding: '2px 8px', background: '#ffffff' }}
-                      >
-                        Total Kain ({totalFabricAvailable} {consumptionUom})
-                      </button>
-                    )}
-                    {order?.qty_kebutuhan_kain && (
-                      <button
-                        type="button"
-                        onClick={() => setCalcInputYards(String(order.qty_kebutuhan_kain))}
-                        className="quick-action-pill"
-                        style={{ fontSize: '0.68rem', padding: '2px 8px', background: '#ffffff' }}
-                      >
-                        Kebutuhan SPK ({order.qty_kebutuhan_kain})
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <div style={{ flex: '1 1 200px', minWidth: '160px' }}>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                      Berapa {consumptionUom} kain yang digelar di meja potong?
-                    </div>
-                    <div className="input-addon-group" style={{ height: '38px', background: '#ffffff' }}>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        value={calcInputYards}
-                        onChange={(e) => setCalcInputYards(e.target.value)}
-                        className="input-addon-field"
-                        style={{ fontSize: '1rem', fontWeight: 800 }}
-                      />
-                      <span className="input-addon-label" style={{ fontSize: '0.72rem' }}>
-                        {consumptionUom.toUpperCase()}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div style={{
-                    flex: '1 1 200px',
-                    padding: '8px 12px',
-                    background: '#ffffff',
-                    borderRadius: '10px',
-                    border: '1px solid #e2e8f0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}>
-                    <div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Estimasi Potongan Garmen:</div>
-                      <div className="mono-num" style={{ fontSize: '1.25rem', fontWeight: 800, color: '#4338ca', lineHeight: 1.1 }}>
-                        {calculatedGarments.toLocaleString('id-ID')} <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>pcs</span>
-                      </div>
-                    </div>
-                    {targetSpkQty > 0 && calculatedGarments > 0 && (
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Target SPK:</div>
-                        <span className={`badge ${calculatedGarments >= targetSpkQty ? 'badge-emerald' : 'badge-amber'}`} style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
-                          {calculatedGarments >= targetSpkQty ? '✓ Cukup SPK' : `Kurang ${(targetSpkQty - calculatedGarments).toLocaleString('id-ID')} pcs`}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
 
             {/* SECTION 1: BAHAN KAIN (FABRIC ROLLS) IF PRESENT */}
             {fabricLines.length > 0 && (
@@ -1815,7 +1482,7 @@ function OrderDetailContent() {
                   style={{ width: '100%', padding: '14px 20px', fontSize: '1rem', borderRadius: '14px' }}
                 >
                   <Save size={18} />
-                  <span>{saving ? 'Menyimpan...' : (isCuttingLocked ? 'Simpan Perubahan Hasil Potong' : 'Simpan Hasil Potong')}</span>
+                  <span>{saving ? 'Menyimpan...' : 'Simpan Hasil Potong'}</span>
                 </button>
               </div>
             )}
@@ -1827,86 +1494,6 @@ function OrderDetailContent() {
             ================================================================== */}
         {activeTab === 'hasil' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* Cutting Lock Warning */}
-            {!isCuttingLocked && (
-              <div
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  background: 'var(--status-amber-bg)',
-                  border: '1.5px solid var(--status-amber-border)',
-                  color: 'var(--status-amber)',
-                  fontSize: '0.84rem'
-                }}
-              >
-                <AlertCircle size={20} style={{ flexShrink: 0 }} />
-                <span>
-                  <strong>Perhatian:</strong> Kunci tahap hasil potong terlebih dahulu sebelum mengunci hasil jahit.
-                </span>
-              </div>
-            )}
-
-            {/* Stage Status Card */}
-            <div
-              className="card"
-              style={{
-                padding: '14px 18px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '12px',
-                background: isResultLocked
-                  ? 'linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)'
-                  : 'var(--bg-card)',
-                borderColor: isResultLocked ? 'var(--status-emerald-border)' : 'var(--border-default)',
-                borderRadius: '14px'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
-                <div
-                  style={{
-                    width: '38px',
-                    height: '38px',
-                    borderRadius: '10px',
-                    background: isResultLocked ? 'var(--status-emerald)' : 'var(--brand-gold)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#ffffff',
-                    flexShrink: 0,
-                    boxShadow: 'var(--shadow-subtle)'
-                  }}
-                >
-                  {isResultLocked ? <CheckCircle2 size={20} /> : <Package size={20} />}
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: '0.94rem', color: 'var(--text-primary)' }}>
-                    {isResultLocked ? 'Hasil Jahit Terkunci (Selesai)' : 'Tahap 2: Input Hasil Produksi Jahit'}
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                    {isResultLocked
-                      ? `Tersinkron ke Odoo: ${order.result_locked_at ? new Date(order.result_locked_at).toLocaleString('id-ID') : '-'}`
-                      : 'Input Grade A, Grade B, sisa kain (BSKL), serta nomor surat jalan.'}
-                  </div>
-                </div>
-              </div>
-
-              {isMasterAdmin && isResultLocked && (
-                <button
-                  type="button"
-                  onClick={() => setUnlockModal({ open: true, type: 'result', reason: '' })}
-                  className="btn btn-secondary"
-                  style={{ fontSize: '0.78rem', padding: '6px 12px', flexShrink: 0, borderRadius: '8px' }}
-                >
-                  <Unlock size={14} />
-                  <span>Buka Kunci</span>
-                </button>
-              )}
-            </div>
 
             {/* Yield Summary Calculator */}
             <div className="card" style={{ padding: '16px 18px', borderRadius: '16px' }}>
@@ -2111,7 +1698,7 @@ function OrderDetailContent() {
                     style={{ width: '100%', padding: '14px 20px', fontSize: '1rem', borderRadius: '14px' }}
                   >
                     <CheckCircle2 size={18} />
-                    <span>{saving ? 'Menyimpan...' : (isResultLocked ? 'Simpan Perubahan Hasil Jahit' : 'Simpan Hasil Jahit')}</span>
+                    <span>{saving ? 'Menyimpan...' : 'Simpan Hasil Jahit'}</span>
                   </button>
                 </div>
               )}
@@ -2120,233 +1707,7 @@ function OrderDetailContent() {
         )}
 
         {/* ==================================================================
-            TAB 3: KOMPONEN BAHAN BAKU BOM
-            ================================================================== */}
-        {activeTab === 'bahan' && (() => {
-          const movesList = (rawMoves && rawMoves.length > 0) ? rawMoves : (order?.raw_moves || []);
-          const hasMoves = movesList.length > 0;
-          const hasRollLines = rollLines && rollLines.length > 0;
-
-          const getMoveStateBadge = (state) => {
-            switch (state) {
-              case 'assigned':
-                return { label: 'Tersedia / Siap', bg: 'rgba(34, 197, 94, 0.12)', border: 'rgba(34, 197, 94, 0.25)', color: 'var(--status-emerald)' };
-              case 'partially_available':
-                return { label: 'Tersedia Sebagian', bg: 'rgba(234, 179, 8, 0.12)', border: 'rgba(234, 179, 8, 0.25)', color: 'var(--status-amber)' };
-              case 'confirmed':
-                return { label: 'Menunggu Ketersediaan', bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.25)', color: 'var(--status-sky)' };
-              case 'done':
-                return { label: 'Selesai', bg: 'rgba(168, 85, 247, 0.12)', border: 'rgba(168, 85, 247, 0.25)', color: '#a855f7' };
-              case 'draft':
-                return { label: 'Draft', bg: 'rgba(148, 163, 184, 0.12)', border: 'rgba(148, 163, 184, 0.25)', color: 'var(--text-muted)' };
-              default:
-                return { label: state || 'Tercatat', bg: 'rgba(148, 163, 184, 0.12)', border: 'rgba(148, 163, 184, 0.25)', color: 'var(--text-muted)' };
-            }
-          };
-
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div className="card" style={{ padding: '18px 20px', borderRadius: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{
-                      width: '32px',
-                      height: '32px',
-                      borderRadius: '8px',
-                      background: 'rgba(217, 119, 6, 0.12)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'var(--brand-gold)'
-                    }}>
-                      <Layers size={18} />
-                    </div>
-                    <div>
-                      <h3 style={{ fontSize: '1.02rem', margin: 0, fontWeight: 800, color: 'var(--text-primary)' }}>
-                        Daftar Komponen Material dari Odoo ERP
-                      </h3>
-                      <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        Bill of Materials (BOM) & Pergerakan Stok Bahan Baku MO #{order?.mo_name || order?.id}
-                      </div>
-                    </div>
-                  </div>
-                  {hasMoves && (
-                    <span style={{
-                      fontSize: '0.76rem',
-                      fontWeight: 700,
-                      padding: '4px 10px',
-                      borderRadius: '20px',
-                      background: 'rgba(34, 197, 94, 0.12)',
-                      border: '1px solid rgba(34, 197, 94, 0.25)',
-                      color: 'var(--status-emerald)'
-                    }}>
-                      {movesList.length} Material Terdaftar
-                    </span>
-                  )}
-                </div>
-
-                {/* LAYER 1: Odoo stock.move available */}
-                {hasMoves ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {movesList.map((move, i) => {
-                      const st = getMoveStateBadge(move.state);
-                      const productName = move.product_id
-                        ? (Array.isArray(move.product_id) ? move.product_id[1] : move.product_id)
-                        : 'Item Material';
-                      const uomName = move.product_uom
-                        ? (Array.isArray(move.product_uom) ? move.product_uom[1] : move.product_uom)
-                        : 'Unit';
-
-                      return (
-                        <div
-                          key={move.id || i}
-                          style={{
-                            padding: '14px 16px',
-                            background: 'var(--bg-card-subtle)',
-                            borderRadius: '12px',
-                            border: '1px solid var(--border-default)',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            gap: '14px',
-                            transition: 'all 0.15s ease'
-                          }}
-                        >
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <div style={{
-                              fontWeight: 700,
-                              fontSize: '0.9rem',
-                              color: 'var(--text-primary)',
-                              lineHeight: 1.35,
-                              marginBottom: '6px'
-                            }}>
-                              {productName}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                              <span style={{
-                                fontSize: '0.72rem',
-                                fontWeight: 600,
-                                padding: '2px 8px',
-                                borderRadius: '6px',
-                                background: st.bg,
-                                border: `1px solid ${st.border}`,
-                                color: st.color
-                              }}>
-                                {st.label}
-                              </span>
-                              {move.quantity !== undefined && move.quantity !== null && Number(move.quantity) > 0 && Number(move.quantity) !== Number(move.product_uom_qty) && (
-                                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-                                  Alokasi fisik: <strong style={{ color: 'var(--text-primary)' }}>{move.quantity} {uomName}</strong>
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                            <div className="mono-num" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--brand-gold)' }}>
-                              {move.product_uom_qty || 0}
-                            </div>
-                            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                              {uomName}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : hasRollLines ? (
-                  /* LAYER 2: Fallback to assigned roll lines */
-                  <div>
-                    <div style={{
-                      padding: '10px 14px',
-                      background: 'rgba(59, 130, 246, 0.08)',
-                      borderRadius: '10px',
-                      border: '1px solid rgba(59, 130, 246, 0.2)',
-                      fontSize: '0.82rem',
-                      color: 'var(--status-sky)',
-                      marginBottom: '12px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}>
-                      <Info size={16} />
-                      <span>Data BOM Odoo umum. Komponen kain dialokasikan melalui rincian roll berikut:</span>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {rollLines.map((r, i) => (
-                        <div
-                          key={r.id || i}
-                          style={{
-                            padding: '12px 14px',
-                            background: 'var(--bg-card-subtle)',
-                            borderRadius: '10px',
-                            border: '1px solid var(--border-default)',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            gap: '12px'
-                          }}
-                        >
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
-                              {r.nama_item || 'Kain Roll'}
-                            </div>
-                            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-                              Lot: <span className="mono-num" style={{ fontWeight: 600 }}>{r.kode_lot || '-'}</span>
-                            </div>
-                          </div>
-                          <div className="mono-num" style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--brand-gold)' }}>
-                            {r.qty || 0} {r.uom || 'Meter'}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  /* LAYER 3: Global SPK Material Summary Card */
-                  <div style={{
-                    padding: '16px',
-                    background: 'var(--bg-card-subtle)',
-                    borderRadius: '12px',
-                    border: '1px dashed var(--border-default)'
-                  }}>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem', margin: '0 0 14px 0', lineHeight: 1.5 }}>
-                      SPK ini menggunakan alokasi material global tanpa pergerakan stock move individual di Odoo.
-                    </p>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
-                      <div style={{ padding: '10px 12px', background: 'var(--bg-page)', borderRadius: '8px', border: '1px solid var(--border-default)' }}>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Kebutuhan Kain</div>
-                        <div className="mono-num" style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
-                          {order?.qty_kebutuhan_kain || 0} {order?.unit_kain || 'Meter'}
-                        </div>
-                      </div>
-                      <div style={{ padding: '10px 12px', background: 'var(--bg-page)', borderRadius: '8px', border: '1px solid var(--border-default)' }}>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Kain dari Gudang</div>
-                        <div className="mono-num" style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--brand-gold)', marginTop: '2px' }}>
-                          {order?.kain_dari_gudang || 0} {order?.unit_kain || 'Meter'}
-                        </div>
-                      </div>
-                      <div style={{ padding: '10px 12px', background: 'var(--bg-page)', borderRadius: '8px', border: '1px solid var(--border-default)' }}>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Status Kebutuhan</div>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: (order?.status_kebutuhan_kain || '').includes('Kurang') ? 'var(--status-rose)' : 'var(--status-emerald)', marginTop: '2px' }}>
-                          {order?.status_kebutuhan_kain || 'Normal'}
-                        </div>
-                      </div>
-                      <div style={{ padding: '10px 12px', background: 'var(--bg-page)', borderRadius: '8px', border: '1px solid var(--border-default)' }}>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Aksesoris Gudang</div>
-                        <div className="mono-num" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginTop: '2px' }}>
-                          {order?.accessories_dari_gudang || '-'}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ==================================================================
-            TAB 4: DOKUMEN TRANSFER ODOO TERTAUT (FEATURE 3)
+            TAB 3: DOKUMEN TRANSFER ODOO TERTAUT
             ================================================================== */}
         {activeTab === 'transfer' && (() => {
           const getCategoryBadge = (category) => {
@@ -2661,56 +2022,7 @@ function OrderDetailContent() {
         })()}
       </main>
 
-      {/* UNLOCK MODAL (MASTER ADMIN ONLY) */}
-      {unlockModal.open && (
-        <div className="modal-backdrop">
-          <div className="modal-content">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-              <ShieldAlert size={24} color="var(--status-rose)" />
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>
-                Konfirmasi Buka Kunci {unlockModal.type.toUpperCase()}
-              </h3>
-            </div>
 
-            <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
-              Tindakan ini akan mengizinkan pengubahan ulang data. Alasan wajib diisi dan akan dicatat di <strong>Audit Trail</strong>.
-            </p>
-
-            <div style={{ marginBottom: '18px' }}>
-              <label className="form-label">Alasan Buka Kunci (Wajib)</label>
-              <textarea
-                rows={3}
-                required
-                placeholder="Contoh: Koreksi berat fisik timbangan roll..."
-                className="input-field"
-                value={unlockModal.reason}
-                onChange={(e) => setUnlockModal((m) => ({ ...m, reason: e.target.value }))}
-                style={{ resize: 'none' }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={() => setUnlockModal({ open: false, type: '', reason: '' })}
-                className="btn btn-secondary"
-                style={{ flex: 1, borderRadius: '10px' }}
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                disabled={saving || !unlockModal.reason.trim()}
-                onClick={handleUnlock}
-                className="btn btn-danger"
-                style={{ flex: 1, borderRadius: '10px' }}
-              >
-                {saving ? 'Membuka...' : 'Buka Kunci'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* SAFETY CONFIRMATION & EXTREME DEVIATION MODAL */}
       {safetyModal.open && (
