@@ -1,0 +1,173 @@
+'use client';
+
+import { Zap, Check } from 'lucide-react';
+import { getLineUom } from '@/lib/utils/formatters';
+
+export default function AccessoryLinesSection({
+  accessoryLines = [],
+  order,
+  canEditCutting,
+  saving,
+  penerimaanQtys = {},
+  rollWeights = {},
+  handleFillAllAccessories,
+  handlePenerimaanChange,
+  handleFillCuttingFromPenerimaan,
+  handleWeightChange
+}) {
+  if (accessoryLines.length === 0) return null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 2px', flexWrap: 'wrap', gap: '8px' }}>
+        <span style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          🏷️ Aksesoris & Bahan Pelengkap ({accessoryLines.length} item)
+        </span>
+        {canEditCutting && (
+          <button
+            type="button"
+            onClick={handleFillAllAccessories}
+            className="quick-action-pill quick-action-pill-amber"
+            style={{ fontSize: '0.74rem' }}
+            title="Isi semua baris aksesoris sekaligus sesuai Qty Penerimaan"
+          >
+            <Zap size={12} />
+            <span>Sesuai Penerimaan Semua</span>
+          </button>
+        )}
+      </div>
+
+      {accessoryLines.map((line, idx) => {
+        const lineUom = getLineUom(line, order?.unit_kain);
+        const currentPenerimaan =
+          penerimaanQtys[line.id] !== undefined
+            ? penerimaanQtys[line.id]
+            : line.qty_penerimaan !== undefined && line.qty_penerimaan !== null
+            ? line.qty_penerimaan
+            : line.qty || '';
+
+        return (
+          <div
+            key={line.id}
+            className="card roll-card"
+            style={{ borderLeft: '4px solid var(--status-sky)' }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                <span className="badge badge-slate mono-num" style={{ fontSize: '0.7rem' }}>#{idx + 1}</span>
+                <span className="mono-num" style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
+                  {line.kode_lot || 'Aksesoris'}
+                </span>
+                <span className="badge badge-sky mono-num" style={{ fontSize: '0.68rem' }}>{lineUom}</span>
+              </div>
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '2px' }}>
+                {line.nama_item}
+              </div>
+              <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                Surat Jalan Transfer: <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>{line.qty || 0} {lineUom}</strong>
+              </div>
+            </div>
+
+            <div className="roll-input-row" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {/* INPUT 1: QTY PENERIMAAN */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--status-sky)', textTransform: 'uppercase' }}>
+                    📦 Terima:
+                  </label>
+                  {canEditCutting && line.qty > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handlePenerimaanChange(line.id, line.qty)}
+                      className={`quick-action-pill ${parseFloat(penerimaanQtys[line.id]) === parseFloat(line.qty) ? 'quick-action-pill-emerald' : ''}`}
+                      style={{ fontSize: '0.65rem', padding: '1px 5px' }}
+                      title="Sesuai Surat Jalan Odoo"
+                    >
+                      {parseFloat(penerimaanQtys[line.id]) === parseFloat(line.qty) ? (
+                        <>
+                          <Check size={10} />
+                          <span>SJ</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap size={10} />
+                          <span>SJ ({line.qty})</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+                <div style={{ width: '120px' }}>
+                  <div className="input-addon-group" style={{ height: '38px', borderColor: 'var(--border-strong)' }}>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      disabled={!canEditCutting || saving}
+                      placeholder={line.qty ? String(line.qty) : '0'}
+                      value={currentPenerimaan}
+                      onChange={(e) => handlePenerimaanChange(line.id, e.target.value)}
+                      className="input-addon-field"
+                      style={{ fontSize: '0.95rem', fontWeight: 700 }}
+                    />
+                    <span className="input-addon-label" style={{ fontSize: '0.68rem', padding: '0 6px' }}>
+                      {lineUom}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* INPUT 2: QTY CUTTING / TERPAKAI */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--status-sky)', textTransform: 'uppercase' }}>
+                    ✂️ Terpakai:
+                  </label>
+                  {canEditCutting && (
+                    <button
+                      type="button"
+                      onClick={() => handleFillCuttingFromPenerimaan(line.id)}
+                      className={`quick-action-pill ${parseFloat(rollWeights[line.id]) === parseFloat(currentPenerimaan) ? 'quick-action-pill-emerald' : ''}`}
+                      style={{ fontSize: '0.65rem', padding: '1px 5px' }}
+                      title="Gunakan nilai Qty Terima"
+                    >
+                      {parseFloat(rollWeights[line.id]) === parseFloat(currentPenerimaan) ? (
+                        <>
+                          <Check size={10} />
+                          <span>Pas</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap size={10} />
+                          <span>Pakai</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+                <div style={{ width: '120px' }}>
+                  <div className="input-addon-group" style={{ height: '38px', borderColor: rollWeights[line.id] ? 'var(--status-sky)' : 'var(--border-strong)' }}>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      disabled={!canEditCutting || saving}
+                      placeholder={line.qty ? String(line.qty) : '0'}
+                      value={rollWeights[line.id] !== undefined ? rollWeights[line.id] : ''}
+                      onChange={(e) => handleWeightChange(line.id, e.target.value)}
+                      className="input-addon-field"
+                      style={{ fontSize: '0.95rem', fontWeight: 800 }}
+                    />
+                    <span className="input-addon-label" style={{ fontSize: '0.68rem', padding: '0 6px' }}>
+                      {lineUom}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
