@@ -30,7 +30,7 @@ export class TransferService {
         'id', 'name', 'origin', 'picking_type_id', 'sale_id',
         'x_studio_manufacturing_order', 'x_studio_sales_order', 'move_ids',
         'company_id', 'state', 'location_id', 'location_dest_id', 'partner_id',
-        'scheduled_date', 'date_deadline', 'move_type'
+        'scheduled_date', 'date_deadline', 'move_type', 'create_uid'
       ]
     ]);
 
@@ -176,9 +176,15 @@ export class TransferService {
         resolvedMo = { id: firstEntry.moId, name: firstEntry.moName };
       }
 
+      const isMasterAdmin = picking.create_uid && (
+        Array.isArray(picking.create_uid) ? picking.create_uid[0] === 7 : picking.create_uid === 7
+      );
+
       const canAutoSplit =
         isMatchedType &&
         movesByMo.size > 1 &&
+        pMoves.length > 1 &&
+        !isMasterAdmin &&
         !['done', 'cancel'].includes(picking.state);
 
       pickingPlans.push({
@@ -321,6 +327,10 @@ export class TransferService {
 
           for (let i = 1; i < moGroups.length; i++) {
             const moGroup = moGroups[i];
+            if (!moGroup.moveIds || moGroup.moveIds.length === 0) {
+              console.log(`[Transfer Auto-Split] Skipping MO ${moGroup.moName} because it has 0 moves.`);
+              continue;
+            }
             const moInfo = moMap.get(moGroup.moId) || {};
             const moSo = (moInfo.x_studio_sales_order && moInfo.x_studio_sales_order[0])
               ? { id: moInfo.x_studio_sales_order[0], name: moInfo.x_studio_sales_order[1] }
@@ -332,7 +342,7 @@ export class TransferService {
               location_dest_id: picking.location_dest_id[0],
               move_type: picking.move_type || 'direct',
               partner_id: picking.partner_id ? picking.partner_id[0] : false,
-              origin: picking.origin || moGroup.moName,
+              origin: moGroup.moName || picking.origin,
               scheduled_date: picking.scheduled_date,
               date_deadline: picking.date_deadline,
               company_id: picking.company_id ? picking.company_id[0] : false,
@@ -381,6 +391,7 @@ export class TransferService {
             : resolvedSo;
 
           const origVals = {
+            origin: firstMoGroup.moName || picking.origin,
             x_studio_manufacturing_order: firstMoGroup.moId
           };
           if (firstMoSo) {

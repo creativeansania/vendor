@@ -4,6 +4,10 @@ import { transferService } from '@/lib/services/transferService';
 
 export const maxDuration = 60;
 
+// In-memory debounce & lock cache to prevent concurrent race condition loops
+const activeTransferLocks = new Map();
+const LOCK_TTL_MS = 25000; // 25 seconds
+
 export async function POST(req) {
   try {
     let payload = {};
@@ -51,10 +55,40 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
+    // Clean up expired locks
+    const now = Date.now();
+    for (const [lockId, lockTime] of activeTransferLocks.entries()) {
+      if (now - lockTime > LOCK_TTL_MS) {
+        activeTransferLocks.delete(lockId);
+      }
+    }
+
+    // Filter out IDs that are currently locked / recently processed
+    const pendingIds = ids.filter(id => {
+      if (activeTransferLocks.has(id)) {
+        console.log(`[Transfer Webhook] Picking #${id} is currently locked/debounced. Skipping to prevent loop.`);
+        return false;
+      }
+      return true;
+    });
+
+    if (pendingIds.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: 'All requested transfer IDs are already locked or in cooldown (feedback loop prevented).',
+        skippedIds: ids
+      });
+    }
+
+    // Acquire lock for pending IDs
+    for (const id of pendingIds) {
+      activeTransferLocks.set(id, now);
+    }
+
     const isSync = Boolean(payload.sync || searchParams.get('sync'));
 
     if (isSync) {
-      const result = await transferService.resolveTransferMoAndSo(ids);
+      const result = await transferService.resolveTransferMoAndSo(pendingIds);
       return NextResponse.json({
         success: true,
         message: `Successfully resolved MO/SO for ${result.count} transfer(s)`,
@@ -66,18 +100,18 @@ export async function POST(req) {
     // Use Next.js after() to keep Vercel serverless context alive
     after(async () => {
       try {
-        console.log(`[Transfer Webhook] Processing transfers: [${ids.join(', ')}]`);
-        await transferService.resolveTransferMoAndSo(ids);
-        console.log(`[Transfer Webhook] Successfully processed transfers: [${ids.join(', ')}]`);
+        console.log(`[Transfer Webhook] Processing transfers: [${pendingIds.join(', ')}]`);
+        await transferService.resolveTransferMoAndSo(pendingIds);
+        console.log(`[Transfer Webhook] Successfully processed transfers: [${pendingIds.join(', ')}]`);
       } catch (err) {
-        console.error(`[Transfer Webhook] Error resolving MO/SO for IDs [${ids.join(', ')}]:`, err.message);
+        console.error(`[Transfer Webhook] Error resolving MO/SO for IDs [${pendingIds.join(', ')}]:`, err.message);
       }
     });
 
     return NextResponse.json({
       success: true,
-      message: `Webhook received for stock.picking (ID: [${ids.join(', ')}]). Enqueued for background processing.`,
-      targetIds: ids
+      message: `Webhook received for stock.picking (ID: [${pendingIds.join(', ')}]). Enqueued for background processing.`,
+      targetIds: pendingIds
     });
   } catch (err) {
     console.error('[Transfer Webhook] Handler error:', err.message);
