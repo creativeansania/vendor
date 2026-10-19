@@ -102,8 +102,8 @@ export default function InstallPwaPrompt() {
           className="card"
           style={{
             padding: '14px 18px',
-            background: 'linear-gradient(135deg, #fffdf5 0%, #fefce8 100%)',
-            border: '1.5px solid #fde68a',
+            background: 'var(--brand-gold-light)',
+            border: '1.5px solid var(--brand-gold-border)',
             borderRadius: '16px',
             boxShadow: 'var(--shadow-card)',
             display: 'flex',
@@ -154,7 +154,7 @@ export default function InstallPwaPrompt() {
               type="button"
               onClick={() => setShowGuideModal(true)}
               className="quick-action-pill"
-              style={{ height: '36px', fontSize: '0.78rem', background: '#ffffff', borderColor: '#cbd5e1' }}
+              style={{ height: '36px', fontSize: '0.78rem', background: 'var(--bg-card)', borderColor: 'var(--border-default)', color: 'var(--text-secondary)' }}
               title="Lihat petunjuk langkah demi langkah"
             >
               <span>Cara Pasang</span>

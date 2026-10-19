@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root {
+  color-scheme: light;
   /* Clean White Palette - Maximum Contrast & High Legibility for Older Users */
   --bg-canvas: #f8fafc;        /* Glare-free, clean, crisp soft white background */
   --bg-card: #ffffff;          /* Pure white card */
@@ -67,6 +68,7 @@
    Executive Dark Mode Palette - Deep Contrast, Zero Glare, High Legibility
    ========================================================================== */
 [data-theme="dark"], html.dark {
+  color-scheme: dark;
   /* Slate Midnight Canvas & Cards */
   --bg-canvas: #0b0f19;        /* Deep charcoal canvas */
   --bg-card: #131b2e;          /* Rich slate navy card */
@@ -397,6 +399,11 @@ h1, h2, h3, h4, .font-heading {
   box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.18);
 }
 
+.select-field option {
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+}
+
 /* Attached Unit Input Group (Zero Clipping) */
 .input-addon-group {
   display: flex;
@@ -496,15 +503,15 @@ h1, h2, h3, h4, .font-heading {
 }
 
 .badge-slate {
-  background: #f1f5f9;
-  color: #334155;
-  border: 1px solid #e2e8f0;
+  background: var(--bg-card-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
 }
 
 .badge-gold {
-  background: #fffbeb;
-  color: #b45309;
-  border: 1px solid #fde68a;
+  background: var(--brand-gold-light);
+  color: var(--brand-gold);
+  border: 1px solid var(--brand-gold-border);
 }
 
 /* Pulsing Real-time Status Dot */

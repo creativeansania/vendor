@@ -144,7 +144,7 @@ export default function LoginPage() {
             >
               {loading ? (
                 <>
-                  <div className="spinner" style={{ width: '16px', height: '16px', borderWidth: '2px', borderColor: '#000', borderTopColor: 'transparent' }}></div>
+                  <div className="spinner" style={{ width: '16px', height: '16px', borderWidth: '2px', borderColor: 'currentColor', borderTopColor: 'transparent' }}></div>
                   <span>Memverifikasi...</span>
                 </>
               ) : (

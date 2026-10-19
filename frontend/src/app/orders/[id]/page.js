@@ -613,10 +613,7 @@ function OrderDetailContent() {
                   style={{
                     fontSize: '0.65rem',
                     padding: '1px 6px',
-                    fontWeight: 600,
-                    background: '#f1f5f9',
-                    color: '#475569',
-                    border: '1px solid #cbd5e1'
+                    fontWeight: 600
                   }}
                   title="Make-to-Stock (Pemenuhan Stok Gudang)"
                 >
@@ -634,11 +631,8 @@ function OrderDetailContent() {
             type="button"
             onClick={handleForceSyncOdoo}
             disabled={syncingOdoo || loading}
-            className="btn"
+            className="btn btn-secondary"
             style={{
-              background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-              color: '#ffffff',
-              border: '1px solid #334155',
               fontSize: '0.8rem',
               fontWeight: 700,
               padding: '7px 12px',
@@ -652,7 +646,7 @@ function OrderDetailContent() {
             }}
             title="Tarik & sinkronkan data terbaru langsung dari Odoo ERP"
           >
-            <RefreshCw size={14} className={syncingOdoo ? 'spinner' : ''} style={{ color: '#38bdf8' }} />
+            <RefreshCw size={14} className={syncingOdoo ? 'spinner' : ''} style={{ color: 'var(--status-sky)' }} />
             <span className="hide-on-mobile">{syncingOdoo ? 'Menyinkronkan...' : 'Tarik Data Odoo'}</span>
           </button>
 
@@ -797,7 +791,7 @@ function OrderDetailContent() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', color: order.status_produksi === 'Selesai' ? 'var(--status-emerald)' : 'var(--status-sky)' }}>
                 <span
                   className="pulse-dot"
-                  style={{ background: order.status_produksi === 'Selesai' ? '#059669' : '#0284c7' }}
+                  style={{ background: order.status_produksi === 'Selesai' ? 'var(--status-emerald)' : 'var(--status-sky)' }}
                 />
                 <span>Status Produksi</span>
               </div>
@@ -864,7 +858,7 @@ function OrderDetailContent() {
                 {Number(order.total_harga || 0) > 0 && (
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Total Biaya SFP Masuk:</div>
-                    <div className="mono-num" style={{ fontSize: '1.05rem', fontWeight: 800, color: '#059669' }}>
+                    <div className="mono-num" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--status-emerald)' }}>
                       Rp {Number(order.total_harga).toLocaleString('id-ID')}
                     </div>
                   </div>
@@ -880,8 +874,8 @@ function OrderDetailContent() {
                     padding: '6px 12px',
                     borderRadius: '10px',
                     gap: '6px',
-                    border: '1px solid #fde68a',
-                    background: '#fffdf5',
+                    border: '1px solid var(--brand-gold-border)',
+                    background: 'var(--brand-gold-light)',
                     color: 'var(--brand-gold)',
                     fontWeight: 700
                   }}
@@ -893,7 +887,7 @@ function OrderDetailContent() {
               </div>
             </div>
             {Number(order.harga_vendor || 0) === 0 && (
-              <div style={{ fontSize: '0.73rem', color: 'var(--text-secondary)', background: '#fffbeb', padding: '6px 10px', borderRadius: '8px', border: '1px dashed #fcd34d' }}>
+              <div style={{ fontSize: '0.73rem', color: 'var(--text-secondary)', background: 'var(--brand-gold-light)', padding: '6px 10px', borderRadius: '8px', border: '1px dashed var(--brand-gold-border)' }}>
                 💡 <em>Tarif makloon belum terdaftar di Odoo. Jika admin baru saja menambahkan harga di menu <strong>Vendor Production</strong> Odoo, klik tombol <strong>&quot;Sinkronkan Tarif Odoo&quot;</strong> di atas.</em>
               </div>
             )}
@@ -1116,7 +1110,7 @@ function OrderDetailContent() {
                         {/* INPUT 1: QTY PENERIMAAN (FISIK MASUK) */}
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--status-sky, #38bdf8)', textTransform: 'uppercase' }}>
+                            <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--status-sky)', textTransform: 'uppercase' }}>
                               📦 Penerimaan:
                             </label>
                             {canEditCutting && line.qty > 0 && (
@@ -1270,7 +1264,7 @@ function OrderDetailContent() {
                         {/* INPUT 1: QTY PENERIMAAN */}
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--status-sky, #38bdf8)', textTransform: 'uppercase' }}>
+                            <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--status-sky)', textTransform: 'uppercase' }}>
                               📦 Penerimaan:
                             </label>
                             {canEditCutting && line.qty !== undefined && line.qty !== null && (

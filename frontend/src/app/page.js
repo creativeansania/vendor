@@ -367,7 +367,7 @@ export default function DashboardPage() {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span className="metric-label" style={{ fontSize: '0.68rem' }}>Semua SPK</span>
-              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'var(--status-sky-bg)', color: 'var(--status-sky)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Layers size={14} />
               </div>
             </div>
@@ -388,26 +388,26 @@ export default function DashboardPage() {
             className="card metric-card"
             style={{
               cursor: 'pointer',
-              border: status === 'cutting_pending' ? '2px solid #d97706' : '1px solid var(--border-default)',
-              boxShadow: status === 'cutting_pending' ? '0 4px 14px rgba(217, 119, 6, 0.15)' : 'none',
+              border: status === 'cutting_pending' ? '2px solid var(--brand-gold)' : '1px solid var(--border-default)',
+              boxShadow: status === 'cutting_pending' ? '0 4px 14px var(--brand-gold-glow)' : 'none',
               transform: status === 'cutting_pending' ? 'scale(1.02)' : 'none',
               transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-              background: status === 'cutting_pending' ? '#fffbeb' : 'var(--bg-card)'
+              background: status === 'cutting_pending' ? 'var(--brand-gold-light)' : 'var(--bg-card)'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="metric-label" style={{ fontSize: '0.68rem', color: '#b45309' }}>Perlu Potong</span>
-              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#fffbeb', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span className="metric-label" style={{ fontSize: '0.68rem', color: 'var(--brand-gold)' }}>Perlu Potong</span>
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'var(--brand-gold-light)', color: 'var(--brand-gold)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Scissors size={14} />
               </div>
             </div>
-            <div className="metric-value mono-num" style={{ fontSize: '1.45rem', color: '#b45309', marginTop: '4px' }}>
+            <div className="metric-value mono-num" style={{ fontSize: '1.45rem', color: 'var(--brand-gold)', marginTop: '4px' }}>
               {metrics.cutting_pending}
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
-              <span style={{ fontSize: '0.7rem', color: '#d97706' }}>Antrean Meja</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--brand-gold)' }}>Antrean Meja</span>
               {status === 'cutting_pending' && (
-                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#b45309', background: '#fef3c7', padding: '1px 6px', borderRadius: '4px' }}>Aktif</span>
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--brand-gold)', background: 'var(--brand-gold-light)', padding: '1px 6px', borderRadius: '4px' }}>Aktif</span>
               )}
             </div>
           </div>
@@ -418,26 +418,26 @@ export default function DashboardPage() {
             className="card metric-card"
             style={{
               cursor: 'pointer',
-              border: status === 'cutting_locked' ? '2px solid #0284c7' : '1px solid var(--border-default)',
-              boxShadow: status === 'cutting_locked' ? '0 4px 14px rgba(2, 132, 199, 0.15)' : 'none',
+              border: status === 'cutting_locked' ? '2px solid var(--status-sky)' : '1px solid var(--border-default)',
+              boxShadow: status === 'cutting_locked' ? '0 4px 14px rgba(14, 165, 233, 0.2)' : 'none',
               transform: status === 'cutting_locked' ? 'scale(1.02)' : 'none',
               transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-              background: status === 'cutting_locked' ? '#f0f9ff' : 'var(--bg-card)'
+              background: status === 'cutting_locked' ? 'var(--status-sky-bg)' : 'var(--bg-card)'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="metric-label" style={{ fontSize: '0.68rem', color: '#0369a1' }}>Sedang Jahit</span>
-              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#f0f9ff', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span className="metric-label" style={{ fontSize: '0.68rem', color: 'var(--status-sky)' }}>Sedang Jahit</span>
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'var(--status-sky-bg)', color: 'var(--status-sky)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Lock size={14} />
               </div>
             </div>
-            <div className="metric-value mono-num" style={{ fontSize: '1.45rem', color: '#0284c7', marginTop: '4px' }}>
+            <div className="metric-value mono-num" style={{ fontSize: '1.45rem', color: 'var(--status-sky)', marginTop: '4px' }}>
               {metrics.sewing_active}
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
-              <span style={{ fontSize: '0.7rem', color: '#0369a1' }}>Proses Sewing</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--status-sky)' }}>Proses Sewing</span>
               {status === 'cutting_locked' && (
-                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: '4px' }}>Aktif</span>
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--status-sky)', background: 'var(--status-sky-bg)', padding: '1px 6px', borderRadius: '4px' }}>Aktif</span>
               )}
             </div>
           </div>
@@ -448,26 +448,26 @@ export default function DashboardPage() {
             className="card metric-card"
             style={{
               cursor: 'pointer',
-              border: status === 'kain_kurang' ? '2px solid #ef4444' : (metrics.kain_kurang > 0 ? '1px solid #fca5a5' : '1px solid var(--border-default)'),
-              boxShadow: status === 'kain_kurang' ? '0 4px 14px rgba(239, 68, 68, 0.2)' : 'none',
+              border: status === 'kain_kurang' ? '2px solid var(--status-rose)' : (metrics.kain_kurang > 0 ? '1px solid var(--status-rose-border)' : '1px solid var(--border-default)'),
+              boxShadow: status === 'kain_kurang' ? '0 4px 14px rgba(244, 63, 94, 0.2)' : 'none',
               transform: status === 'kain_kurang' ? 'scale(1.02)' : 'none',
               transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-              background: status === 'kain_kurang' ? '#fef2f2' : (metrics.kain_kurang > 0 ? '#fff8f8' : 'var(--bg-card)')
+              background: status === 'kain_kurang' || metrics.kain_kurang > 0 ? 'var(--status-rose-bg)' : 'var(--bg-card)'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="metric-label" style={{ fontSize: '0.68rem', color: '#b91c1c' }}>Kain Kurang</span>
-              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#fee2e2', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span className="metric-label" style={{ fontSize: '0.68rem', color: 'var(--status-rose)' }}>Kain Kurang</span>
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'var(--status-rose-bg)', color: 'var(--status-rose)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <AlertTriangle size={14} />
               </div>
             </div>
-            <div className="metric-value mono-num" style={{ fontSize: '1.45rem', color: '#dc2626', marginTop: '4px' }}>
+            <div className="metric-value mono-num" style={{ fontSize: '1.45rem', color: 'var(--status-rose)', marginTop: '4px' }}>
               {metrics.kain_kurang}
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
-              <span style={{ fontSize: '0.7rem', color: '#b91c1c' }}>Perlu Solusi</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--status-rose)' }}>Perlu Solusi</span>
               {status === 'kain_kurang' && (
-                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#b91c1c', background: '#fee2e2', padding: '1px 6px', borderRadius: '4px' }}>Aktif</span>
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--status-rose)', background: 'var(--status-rose-bg)', padding: '1px 6px', borderRadius: '4px' }}>Aktif</span>
               )}
             </div>
           </div>
@@ -478,26 +478,26 @@ export default function DashboardPage() {
             className="card metric-card"
             style={{
               cursor: 'pointer',
-              border: status === 'overdue' ? '2px solid #ea580c' : (metrics.overdue > 0 ? '1px solid #fed7aa' : '1px solid var(--border-default)'),
-              boxShadow: status === 'overdue' ? '0 4px 14px rgba(234, 88, 12, 0.2)' : 'none',
+              border: status === 'overdue' ? '2px solid var(--status-amber)' : (metrics.overdue > 0 ? '1px solid var(--status-amber-border)' : '1px solid var(--border-default)'),
+              boxShadow: status === 'overdue' ? '0 4px 14px rgba(245, 158, 11, 0.2)' : 'none',
               transform: status === 'overdue' ? 'scale(1.02)' : 'none',
               transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-              background: status === 'overdue' ? '#fff7ed' : 'var(--bg-card)'
+              background: status === 'overdue' || metrics.overdue > 0 ? 'var(--status-amber-bg)' : 'var(--bg-card)'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="metric-label" style={{ fontSize: '0.68rem', color: '#c2410c' }}>Lewat Batas</span>
-              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#ffedd5', color: '#ea580c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span className="metric-label" style={{ fontSize: '0.68rem', color: 'var(--status-amber)' }}>Lewat Batas</span>
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'var(--status-amber-bg)', color: 'var(--status-amber)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Flame size={14} />
               </div>
             </div>
-            <div className="metric-value mono-num" style={{ fontSize: '1.45rem', color: '#ea580c', marginTop: '4px' }}>
+            <div className="metric-value mono-num" style={{ fontSize: '1.45rem', color: 'var(--status-amber)', marginTop: '4px' }}>
               {metrics.overdue}
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
-              <span style={{ fontSize: '0.7rem', color: '#c2410c' }}>Overdue SPK</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--status-amber)' }}>Overdue SPK</span>
               {status === 'overdue' && (
-                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#c2410c', background: '#fed7aa', padding: '1px 6px', borderRadius: '4px' }}>Aktif</span>
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--status-amber)', background: 'var(--status-amber-bg)', padding: '1px 6px', borderRadius: '4px' }}>Aktif</span>
               )}
             </div>
           </div>
@@ -508,26 +508,26 @@ export default function DashboardPage() {
             className="card metric-card"
             style={{
               cursor: 'pointer',
-              border: status === 'result_locked' ? '2px solid #059669' : '1px solid var(--border-default)',
-              boxShadow: status === 'result_locked' ? '0 4px 14px rgba(5, 150, 105, 0.15)' : 'none',
+              border: status === 'result_locked' ? '2px solid var(--status-emerald)' : '1px solid var(--border-default)',
+              boxShadow: status === 'result_locked' ? '0 4px 14px rgba(16, 185, 129, 0.2)' : 'none',
               transform: status === 'result_locked' ? 'scale(1.02)' : 'none',
               transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-              background: status === 'result_locked' ? '#ecfdf5' : 'var(--bg-card)'
+              background: status === 'result_locked' ? 'var(--status-emerald-bg)' : 'var(--bg-card)'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="metric-label" style={{ fontSize: '0.68rem', color: '#047857' }}>Selesai</span>
-              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span className="metric-label" style={{ fontSize: '0.68rem', color: 'var(--status-emerald)' }}>Selesai</span>
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'var(--status-emerald-bg)', color: 'var(--status-emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <CheckCircle2 size={14} />
               </div>
             </div>
-            <div className="metric-value mono-num" style={{ fontSize: '1.45rem', color: '#059669', marginTop: '4px' }}>
+            <div className="metric-value mono-num" style={{ fontSize: '1.45rem', color: 'var(--status-emerald)', marginTop: '4px' }}>
               {metrics.result_locked}
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
-              <span style={{ fontSize: '0.7rem', color: '#047857' }}>SJ Terbit</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--status-emerald)' }}>SJ Terbit</span>
               {status === 'result_locked' && (
-                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#047857', background: '#d1fae5', padding: '1px 6px', borderRadius: '4px' }}>Aktif</span>
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: 'var(--status-emerald)', background: 'var(--status-emerald-bg)', padding: '1px 6px', borderRadius: '4px' }}>Aktif</span>
               )}
             </div>
           </div>
@@ -565,13 +565,13 @@ export default function DashboardPage() {
                       width: '28px',
                       height: '28px',
                       borderRadius: '50%',
-                      background: '#f1f5f9',
-                      border: '1px solid #cbd5e1',
+                      background: 'var(--bg-card-hover)',
+                      border: '1px solid var(--border-default)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       cursor: 'pointer',
-                      color: '#475569',
+                      color: 'var(--text-muted)',
                       transition: 'all 0.15s ease'
                     }}
                     title="Hapus ketikan pencarian"
@@ -699,32 +699,32 @@ export default function DashboardPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                   <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Filter aktif:</span>
                   {search.trim() && (
-                    <span style={{ background: '#fff', border: '1px solid #cbd5e1', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                    <span style={{ background: 'var(--bg-card-subtle)', border: '1px solid var(--border-default)', color: 'var(--text-primary)', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
                       Cari: "{search}"
                     </span>
                   )}
                   {status !== 'all' && (
-                    <span style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                    <span style={{ background: 'var(--status-sky-bg)', border: '1px solid var(--status-sky-border)', color: 'var(--status-sky)', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
                       Status: {status}
                     </span>
                   )}
                   {selectedVendor && (
-                    <span style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', color: '#6d28d9', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                    <span style={{ background: 'var(--status-purple-bg)', border: '1px solid var(--status-purple-border)', color: 'var(--status-purple)', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
                       Vendor: {vendors.find(v => String(v.id) === String(selectedVendor))?.name || selectedVendor}
                     </span>
                   )}
                   {sort !== 'latest' && (
-                    <span style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                    <span style={{ background: 'var(--status-emerald-bg)', border: '1px solid var(--status-emerald-border)', color: 'var(--status-emerald)', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
                       Sort: {sort === 'deadline_asc' ? 'Deadline Terdekat' : sort === 'qty_desc' ? 'Qty Terbesar' : sort}
                     </span>
                   )}
                   {period && (
-                    <span style={{ background: '#fef3c7', border: '1px solid #fde68a', color: '#92400e', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                    <span style={{ background: 'var(--status-amber-bg)', border: '1px solid var(--status-amber-border)', color: 'var(--status-amber)', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
                       Periode: {period === 'this_month' ? 'Bulan Ini' : period === 'last_month' ? 'Bulan Lalu' : period}
                     </span>
                   )}
                   {backorderFilter && (
-                    <span style={{ background: '#f8fafc', border: '1px solid #cbd5e1', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                    <span style={{ background: 'var(--bg-card-subtle)', border: '1px solid var(--border-default)', color: 'var(--text-primary)', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
                       Tipe: {backorderFilter === 'regular' ? 'Reguler' : 'Backorder'}
                     </span>
                   )}
@@ -775,17 +775,17 @@ export default function DashboardPage() {
                 style={
                   status === 'kain_kurang'
                     ? {
-                        background: '#fef2f2',
-                        borderColor: '#ef4444',
-                        color: '#b91c1c',
+                        background: 'var(--status-rose-bg)',
+                        borderColor: 'var(--status-rose)',
+                        color: 'var(--status-rose)',
                         fontWeight: 800,
-                        boxShadow: '0 2px 8px rgba(239, 68, 68, 0.2)'
+                        boxShadow: '0 2px 8px rgba(244, 63, 94, 0.25)'
                       }
                     : metrics.kain_kurang > 0
                     ? {
-                        borderColor: '#fca5a5',
-                        color: '#b91c1c',
-                        background: '#fff5f5',
+                        borderColor: 'var(--status-rose-border)',
+                        color: 'var(--status-rose)',
+                        background: 'var(--status-rose-bg)',
                         fontWeight: 700
                       }
                     : {}
@@ -799,17 +799,17 @@ export default function DashboardPage() {
                 style={
                   status === 'overdue'
                     ? {
-                        background: '#fff7ed',
-                        borderColor: '#ea580c',
-                        color: '#c2410c',
+                        background: 'var(--status-amber-bg)',
+                        borderColor: 'var(--status-amber)',
+                        color: 'var(--status-amber)',
                         fontWeight: 800,
-                        boxShadow: '0 2px 8px rgba(234, 88, 12, 0.2)'
+                        boxShadow: '0 2px 8px var(--brand-gold-glow)'
                       }
                     : metrics.overdue > 0
                     ? {
-                        borderColor: '#fed7aa',
-                        color: '#c2410c',
-                        background: '#fffaf5',
+                        borderColor: 'var(--status-amber-border)',
+                        color: 'var(--status-amber)',
+                        background: 'var(--status-amber-bg)',
                         fontWeight: 600
                       }
                     : {}
@@ -848,17 +848,17 @@ export default function DashboardPage() {
               justifyContent: 'space-between',
               padding: '10px 16px',
               marginBottom: '16px',
-              background: '#fef2f2',
-              border: '1.5px solid #fecaca',
+              background: 'var(--status-rose-bg)',
+              border: '1.5px solid var(--status-rose-border)',
               borderRadius: '12px',
-              color: '#991b1b',
+              color: 'var(--status-rose)',
               fontSize: '0.86rem',
               flexWrap: 'wrap',
               gap: '8px'
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <AlertTriangle size={18} color="#dc2626" />
+              <AlertTriangle size={18} color="var(--status-rose)" />
               <span>
                 Menampilkan <strong>{totalCount} SPK</strong> dengan status <strong>Kain Kurang</strong>. Harap pastikan fisik kain sebelum memotong.
               </span>
@@ -1036,9 +1036,9 @@ export default function DashboardPage() {
                             style={{
                               fontSize: '0.68rem',
                               padding: '2px 7px',
-                              background: '#fef2f2',
-                              color: '#dc2626',
-                              border: '1px solid #fecaca',
+                              background: 'var(--status-rose-bg)',
+                              color: 'var(--status-rose)',
+                              border: '1px solid var(--status-rose-border)',
                               fontWeight: 800,
                               cursor: 'pointer'
                             }}
@@ -1085,10 +1085,7 @@ export default function DashboardPage() {
                           style={{
                             fontSize: '0.68rem',
                             padding: '2px 7px',
-                            fontWeight: 600,
-                            background: '#f1f5f9',
-                            color: '#475569',
-                            border: '1px solid #cbd5e1'
+                            fontWeight: 600
                           }}
                           title="Make-to-Stock (Pemenuhan Stok Gudang)"
                         >
@@ -1131,7 +1128,7 @@ export default function DashboardPage() {
                         style={{
                           fontSize: '0.82rem',
                           fontWeight: 800,
-                          color: o.status_kebutuhan_kain === 'Kurang' ? '#dc2626' : 'var(--status-emerald)',
+                          color: o.status_kebutuhan_kain === 'Kurang' ? 'var(--status-rose)' : 'var(--status-emerald)',
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis'
@@ -1162,16 +1159,16 @@ export default function DashboardPage() {
                           gap: '4px',
                           padding: '4px 8px',
                           borderRadius: '8px',
-                          background: '#ecfdf5',
-                          border: '1px solid #a7f3d0',
-                          color: '#059669',
+                          background: 'var(--status-emerald-bg)',
+                          border: '1px solid var(--status-emerald-border)',
+                          color: 'var(--status-emerald)',
                           fontSize: '0.72rem',
                           fontWeight: 700,
                           cursor: 'pointer'
                         }}
                         title="Tanyakan SPK ini ke WhatsApp Group"
                       >
-                        <MessageCircle size={13} color="#059669" />
+                        <MessageCircle size={13} color="var(--status-emerald)" />
                         <span>Tanya WA</span>
                       </button>
 
