@@ -727,7 +727,7 @@ export class WipService {
     if (odooMoId) {
       try {
         const mos = await adminOdooClient._callObject('mrp.production', 'read', [[odooMoId]], {
-          fields: ['id', 'name', 'state', 'qty_producing', 'product_id', 'product_uom_id', 'company_id', 'picking_type_id', 'production_group_id', 'bom_id']
+          fields: ['id', 'name', 'state', 'qty_producing', 'product_id', 'product_uom_id', 'company_id', 'picking_type_id', 'production_group_id', 'bom_id', 'x_studio_sales_order', 'product_qty']
         });
         if (mos && mos[0]) {
           parentMo = mos[0];
@@ -757,12 +757,19 @@ export class WipService {
         // Find if MO Grade B already exists
         const existingMoBs = await adminOdooClient._callObject('mrp.production', 'search_read', [
           [[ 'origin', '=', originB ]]
-        ], { fields: ['id', 'name', 'state', 'product_qty'], limit: 1 });
+        ], { fields: ['id', 'name', 'state', 'product_qty', 'x_studio_sales_order'], limit: 1 });
 
         if (existingMoBs && existingMoBs.length > 0) {
           const moB = existingMoBs[0];
+          const moBUpdates = {};
           if (!['done', 'cancel'].includes(moB.state) && parseFloat(moB.product_qty) !== bGrade) {
-            await adminOdooClient._callObject('mrp.production', 'write', [[moB.id], { product_qty: bGrade }]);
+            moBUpdates.product_qty = bGrade;
+          }
+          if (parentMo.x_studio_sales_order && !moB.x_studio_sales_order) {
+            moBUpdates.x_studio_sales_order = parentMo.x_studio_sales_order[0];
+          }
+          if (Object.keys(moBUpdates).length > 0) {
+            await adminOdooClient._callObject('mrp.production', 'write', [[moB.id], moBUpdates]);
           }
           wipUpdateVals.x_studio_nama_mo_grade_b = moB.name;
         } else {
@@ -800,6 +807,9 @@ export class WipService {
           if (parentMo.bom_id) {
             moPayload.bom_id = parentMo.bom_id[0];
           }
+          if (parentMo.x_studio_sales_order) {
+            moPayload.x_studio_sales_order = parentMo.x_studio_sales_order[0];
+          }
 
           const newMoBId = await adminOdooClient._callObject('mrp.production', 'create', [moPayload]);
           const readMoB = await adminOdooClient._callObject('mrp.production', 'read', [[newMoBId]], { fields: ['name'] });
@@ -830,10 +840,11 @@ export class WipService {
             const soName = currentWip.x_studio_sales_order ? (Array.isArray(currentWip.x_studio_sales_order) ? currentWip.x_studio_sales_order[1] : currentWip.x_studio_sales_order) : '';
             const prefix = `Sisa Makloon - ${currentWip.x_name || parentMo.name} |`;
             const originM = soName ? `${prefix} SO ${soName}` : `${prefix} MO ${parentMo.name}`;
+            const soId = parentMo.x_studio_sales_order ? parentMo.x_studio_sales_order[0] : (currentWip?.x_studio_sales_order ? currentWip.x_studio_sales_order[0] : false);
 
             const existingPicks = await adminOdooClient._callObject('stock.picking', 'search_read', [
               [['origin', '=like', `${prefix}%`]]
-            ], { fields: ['id', 'name', 'state', 'move_ids'], limit: 1 });
+            ], { fields: ['id', 'name', 'state', 'move_ids', 'x_studio_sales_order'], limit: 1 });
 
             const pick = existingPicks && existingPicks.length > 0 ? existingPicks[0] : null;
 
@@ -867,6 +878,9 @@ export class WipService {
                         await adminOdooClient._callObject('stock.move', 'write', [[bsklMove.id], { product_uom_qty: sisaKg }]);
                       }
                     }
+                    if (soId && !pick.x_studio_sales_order) {
+                      await adminOdooClient._callObject('stock.picking', 'write', [[pick.id], { x_studio_sales_order: soId }]);
+                    }
                   }
                   wipUpdateVals.x_studio_nama_transfer_makloon = pick.name;
                 } else {
@@ -889,6 +903,15 @@ export class WipService {
                       company_id: parentMo.company_id[0],
                       note: `Sisa bahan makloon dari MO ${parentMo.name}`
                     };
+                    if (soId) {
+                      pickPayload.x_studio_sales_order = soId;
+                    }
+                    if (parentMo.product_id) {
+                      pickPayload.x_studio_product_mo = parentMo.product_id[0];
+                    }
+                    if (parentMo.product_qty) {
+                      pickPayload.x_studio_quantity_mo = parentMo.product_qty;
+                    }
 
                     const newPickId = await adminOdooClient._callObject('stock.picking', 'create', [pickPayload]);
 
