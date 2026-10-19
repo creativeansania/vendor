@@ -452,10 +452,6 @@ export class WipService {
   async submitCuttingRolls({ user, orderId, rollUpdates = [], actualCutting }) {
     const { order } = await this.getOrderDetails({ user, orderId, includeRawMoves: false });
 
-    if (order.cutting_locked_at) {
-      throw new Error('Tahap potong kain sudah dikunci. Hubungi Master Admin untuk unlock.');
-    }
-
     // 1. Process roll updates
     let sumRollWeights = 0;
     const formattedRollUpdates = [];
@@ -589,10 +585,6 @@ export class WipService {
    */
   async submitProductionResult({ user, orderId, qtyGradeA, qtyGradeB, sisaMakloonKg, noSuratJalan }) {
     const { order } = await this.getOrderDetails({ user, orderId, includeRawMoves: false });
-
-    if (order.result_locked_at) {
-      throw new Error('Laporan hasil jahit sudah terkunci. Hubungi Master Admin untuk unlock.');
-    }
 
     const aGrade = Math.max(0, Number(qtyGradeA || 0));
     const bGrade = Math.max(0, Number(qtyGradeB || 0));

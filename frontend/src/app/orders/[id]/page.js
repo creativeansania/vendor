@@ -393,15 +393,15 @@ function OrderDetailContent() {
       stage: 'cutting',
       isExtreme,
       deviationPct: devPct,
-      title: isExtreme ? 'Peringatan: Selisih Hasil Potong Ekstrem' : 'Konfirmasi Kunci Hasil Potong',
+      title: isExtreme ? 'Peringatan: Selisih Hasil Potong Ekstrem' : (isCuttingLocked ? 'Konfirmasi Simpan Perubahan' : 'Konfirmasi Simpan Hasil Potong'),
       targetVal: targetRef > 0 ? `${targetRef.toLocaleString('id-ID')} ${order?.unit_kain || 'pcs'}` : '-',
       actualVal: `${effectiveActual.toLocaleString('id-ID')} ${order?.unit_kain || 'pcs'}`,
       diffVal: targetRef > 0
         ? `${effectiveActual - targetRef > 0 ? '+' : ''}${(effectiveActual - targetRef).toFixed(2)} ${order?.unit_kain || 'pcs'}`
         : '0',
       warningMessage: isExtreme
-        ? `Angka hasil potong yang Anda masukkan (${effectiveActual.toLocaleString('id-ID')}) berselisih ${devPct.toFixed(0)}% dari ${targetLabel} (${targetRef.toLocaleString('id-ID')}). Mohon periksa kembali apakah ada kesalahan ketik (contoh: kelebihan angka 0 atau salah kolom). Setelah dikunci, data ini langsung terkirim ke Odoo dan tidak dapat diubah oleh vendor.`
-        : 'Pastikan seluruh input fisik sudah dicek. Setelah dikunci, data hasil potong akan tersimpan permanen di Odoo dan tahap jahit dapat dimulai.',
+        ? `Angka hasil potong yang Anda masukkan (${effectiveActual.toLocaleString('id-ID')}) berselisih ${devPct.toFixed(0)}% dari ${targetLabel} (${targetRef.toLocaleString('id-ID')}). Mohon periksa kembali apakah ada kesalahan ketik. Data ini akan langsung dikirim dan disinkronkan ke Odoo.`
+        : 'Data hasil potong akan disimpan dan disinkronkan langsung ke Odoo ERP. Anda tetap dapat mengedit data ini kapan saja.',
       onConfirm: () => executeSubmitCutting(effectiveActual, rolls)
     });
   };
@@ -470,15 +470,15 @@ function OrderDetailContent() {
       stage: 'production',
       isExtreme,
       deviationPct: devPct,
-      title: isExtreme ? 'Peringatan: Selisih Hasil Jahit Ekstrem' : 'Konfirmasi Kunci Hasil Jahit',
+      title: isExtreme ? 'Peringatan: Selisih Hasil Jahit Ekstrem' : (isResultLocked ? 'Konfirmasi Simpan Perubahan Hasil Jahit' : 'Konfirmasi Simpan Hasil Jahit'),
       targetVal: `${targetRef.toLocaleString('id-ID')} pcs`,
       actualVal: `${totalYield.toLocaleString('id-ID')} pcs (Grade A: ${valA}, Grade B: ${valB})`,
       diffVal: `${totalYield - targetRef > 0 ? '+' : ''}${(totalYield - targetRef).toFixed(0)} pcs`,
       warningMessage: isExtreme
         ? (valB > valA
-            ? `Perhatian: Jumlah Grade B / BS (${valB} pcs) lebih banyak dari Grade A (${valA} pcs). Mohon periksa apakah kolom tertukar sebelum mengunci SPK menjadi Selesai.`
-            : `Total hasil jahit (${totalYield} pcs) berselisih ${devPct.toFixed(0)}% dari target SPK (${targetRef} pcs). Pastikan bukan salah ketik sebelum data dikunci permanen ke Odoo.`)
-        : 'Pastikan seluruh jumlah fisik sudah sesuai dengan surat jalan. Setelah dikunci, status SPK akan menjadi Selesai dan tidak dapat diubah sendiri.',
+            ? `Perhatian: Jumlah Grade B / BS (${valB} pcs) lebih banyak dari Grade A (${valA} pcs). Mohon periksa apakah kolom tertukar sebelum menyimpan SPK.`
+            : `Total hasil jahit (${totalYield} pcs) berselisih ${devPct.toFixed(0)}% dari target SPK (${targetRef} pcs). Pastikan bukan salah ketik sebelum data dikirim ke Odoo.`)
+        : 'Pastikan seluruh jumlah fisik sudah sesuai dengan surat jalan. Data akan disimpan dan disinkronkan langsung ke Odoo ERP.',
       onConfirm: executeSubmitProduction
     });
   };
@@ -653,11 +653,11 @@ function OrderDetailContent() {
   }
 
   const isBackorder = Boolean(order.is_backorder);
-  const isCuttingLocked = Boolean(order.cutting_locked_at) || isBackorder;
+  const isCuttingLocked = Boolean(order.cutting_locked_at);
   const isResultLocked = Boolean(order.result_locked_at);
   const isMasterAdmin = user?.role === 'master_admin';
-  const canEditCutting = !isCuttingLocked && ['master_admin', 'master_vendor', 'admin_vendor'].includes(user?.role);
-  const canEditResult = isCuttingLocked && !isResultLocked && ['master_admin', 'master_vendor', 'admin_vendor'].includes(user?.role);
+  const canEditCutting = ['master_admin', 'master_vendor', 'admin_vendor'].includes(user?.role);
+  const canEditResult = ['master_admin', 'master_vendor', 'admin_vendor'].includes(user?.role);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', overflowX: 'hidden' }}>
@@ -976,11 +976,11 @@ function OrderDetailContent() {
                 </div>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 800, fontSize: '0.94rem', color: 'var(--text-primary)' }}>
-                    {isCuttingLocked ? 'Tahap Hasil Potong Terkunci' : 'Tahap 1: Verifikasi Hasil Potong & Bahan'}
+                    {isCuttingLocked ? 'Tahap Hasil Potong Tersimpan' : 'Tahap 1: Verifikasi Hasil Potong & Bahan'}
                   </div>
                   <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
                     {isCuttingLocked
-                      ? `Tersinkron ke Odoo: ${order.cutting_locked_at ? new Date(order.cutting_locked_at).toLocaleString('id-ID') : 'Otomatis'}`
+                      ? `Tersinkron ke Odoo: ${order.cutting_locked_at ? new Date(order.cutting_locked_at).toLocaleString('id-ID') : 'Otomatis'}. Data tetap dapat diedit & diperbarui kapan saja.`
                       : 'Input fisik hasil potong dan verifikasi bahan baku sebelum masuk proses jahit.'}
                   </div>
                 </div>
@@ -1719,8 +1719,8 @@ function OrderDetailContent() {
                   className="btn btn-primary"
                   style={{ width: '100%', padding: '14px 20px', fontSize: '1rem', borderRadius: '14px' }}
                 >
-                  <Lock size={18} />
-                  <span>{saving ? 'Mengunci...' : 'Kunci & Simpan Hasil Potong'}</span>
+                  <Save size={18} />
+                  <span>{saving ? 'Menyimpan...' : (isCuttingLocked ? 'Simpan Perubahan Hasil Potong' : 'Simpan Hasil Potong')}</span>
                 </button>
               </div>
             )}
@@ -2016,7 +2016,7 @@ function OrderDetailContent() {
                     style={{ width: '100%', padding: '14px 20px', fontSize: '1rem', borderRadius: '14px' }}
                   >
                     <CheckCircle2 size={18} />
-                    <span>{saving ? 'Menyimpan...' : 'Kunci & Selesaikan Hasil Jahit'}</span>
+                    <span>{saving ? 'Menyimpan...' : (isResultLocked ? 'Simpan Perubahan Hasil Jahit' : 'Simpan Hasil Jahit')}</span>
                   </button>
                 </div>
               )}
