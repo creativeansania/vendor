@@ -367,7 +367,7 @@ function OrderDetailContent() {
     });
 
     if (inputActual === null && rolls.length === 0) {
-      setFeedback({ text: 'Harap isi hasil potong aktual atau rincian bahan fisik terlebih dahulu.', type: 'error' });
+      setFeedback({ text: 'Harap isi hasil potong atau rincian bahan kain terlebih dahulu.', type: 'error' });
       return;
     }
 
@@ -387,15 +387,15 @@ function OrderDetailContent() {
       stage: 'cutting',
       isExtreme,
       deviationPct: devPct,
-      title: isExtreme ? 'Peringatan: Selisih Hasil Potong Ekstrem' : 'Konfirmasi Simpan Hasil Potong',
+      title: isExtreme ? 'Perhatian: Cek Jumlah Hasil Potong' : 'Konfirmasi Simpan Hasil Potong',
       targetVal: targetRef > 0 ? `${targetRef.toLocaleString('id-ID')} pcs` : '-',
       actualVal: `${effectiveActual.toLocaleString('id-ID')} pcs`,
       diffVal: targetRef > 0
         ? `${effectiveActual - targetRef > 0 ? '+' : ''}${(effectiveActual - targetRef).toLocaleString('id-ID')} pcs`
         : '0',
       warningMessage: isExtreme
-        ? `Angka hasil potong yang Anda masukkan (${effectiveActual.toLocaleString('id-ID')} pcs) berselisih ${devPct.toFixed(0)}% dari ${targetLabel} (${targetRef.toLocaleString('id-ID')} pcs). Mohon periksa kembali apakah ada kesalahan ketik.`
-        : 'Data hasil potong akan disimpan dan disinkronkan langsung ke Odoo ERP.',
+        ? `Jumlah hasil potong (${effectiveActual.toLocaleString('id-ID')} pcs) selisih ${devPct.toFixed(0)}% dari target SPK (${targetRef.toLocaleString('id-ID')} pcs). Cek lagi apakah ada salah ketik sebelum disimpan.`
+        : 'Data hasil potong akan disimpan dan disinkronkan langsung ke Odoo.',
       onConfirm: () => executeSubmitCutting(effectiveActual, rolls)
     });
   };
@@ -464,15 +464,15 @@ function OrderDetailContent() {
       stage: 'production',
       isExtreme,
       deviationPct: devPct,
-      title: isExtreme ? 'Peringatan: Selisih Hasil Jahit Ekstrem' : 'Konfirmasi Simpan Hasil Jahit',
+      title: isExtreme ? 'Perhatian: Cek Jumlah Hasil Jahit' : 'Konfirmasi Simpan Hasil Jahit',
       targetVal: `${targetRef.toLocaleString('id-ID')} pcs`,
       actualVal: `${totalYield.toLocaleString('id-ID')} pcs (Grade A: ${valA}, Grade B: ${valB})`,
       diffVal: `${totalYield - targetRef > 0 ? '+' : ''}${(totalYield - targetRef).toFixed(0)} pcs`,
       warningMessage: isExtreme
         ? (valB > valA
-            ? `Perhatian: Jumlah Grade B / BS (${valB} pcs) lebih banyak dari Grade A (${valA} pcs). Mohon periksa apakah kolom tertukar sebelum menyimpan SPK.`
-            : `Total hasil jahit (${totalYield} pcs) berselisih ${devPct.toFixed(0)}% dari target SPK (${targetRef} pcs). Pastikan bukan salah ketik sebelum data dikirim ke Odoo.`)
-        : 'Pastikan seluruh jumlah fisik sudah sesuai dengan surat jalan. Data akan disimpan dan disinkronkan langsung ke Odoo ERP.',
+            ? `Perhatian: Jumlah Grade B / Reject (${valB} pcs) lebih banyak dari Grade A (${valA} pcs). Cek apakah angkanya tertukar sebelum disimpan.`
+            : `Total hasil jahit (${totalYield} pcs) selisih ${devPct.toFixed(0)}% dari target SPK (${targetRef} pcs). Cek lagi apakah ada salah ketik sebelum data dikirim ke Odoo.`)
+        : 'Pastikan jumlah fisik sudah sesuai dengan surat jalan. Data akan disimpan dan disinkronkan langsung ke Odoo.',
       onConfirm: executeSubmitProduction
     });
   };
@@ -564,7 +564,7 @@ function OrderDetailContent() {
     return (
       <div style={{ padding: '80px 20px', textAlign: 'center' }}>
         <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
-        <p style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>Memuat detail operasional SPK...</p>
+        <p style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>Memuat data SPK...</p>
       </div>
     );
   }
@@ -837,7 +837,7 @@ function OrderDetailContent() {
                 </div>
                 <div>
                   <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--brand-gold)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Tarif Jasa Makloon
+                    Tarif Makloon
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span className="mono-num" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>
@@ -857,7 +857,7 @@ function OrderDetailContent() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
                 {Number(order.total_harga || 0) > 0 && (
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Total Biaya SFP Masuk:</div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Total Biaya Makloon:</div>
                     <div className="mono-num" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--status-emerald)' }}>
                       Rp {Number(order.total_harga).toLocaleString('id-ID')}
                     </div>
@@ -879,7 +879,7 @@ function OrderDetailContent() {
                     color: 'var(--brand-gold)',
                     fontWeight: 700
                   }}
-                  title="Periksa & sinkronkan tarif terbaru langsung dari tabel Vendor Production Odoo"
+                  title="Cek tarif terbaru dari Odoo"
                 >
                   <RefreshCw size={13} className={syncingOdoo ? 'spin-icon' : ''} />
                   <span>{syncingOdoo ? 'Mengecek...' : 'Sinkronkan Tarif Odoo'}</span>
@@ -888,7 +888,7 @@ function OrderDetailContent() {
             </div>
             {Number(order.harga_vendor || 0) === 0 && (
               <div style={{ fontSize: '0.73rem', color: 'var(--text-secondary)', background: 'var(--brand-gold-light)', padding: '6px 10px', borderRadius: '8px', border: '1px dashed var(--brand-gold-border)' }}>
-                💡 <em>Tarif makloon belum terdaftar di Odoo. Jika admin baru saja menambahkan harga di menu <strong>Vendor Production</strong> Odoo, klik tombol <strong>&quot;Sinkronkan Tarif Odoo&quot;</strong> di atas.</em>
+                💡 <em>Tarif makloon belum ada di Odoo. Klik tombol <strong>Sinkronkan Tarif Odoo</strong> di atas jika harga baru saja diinput di Odoo.</em>
               </div>
             )}
           </div>
@@ -932,29 +932,33 @@ function OrderDetailContent() {
         {activeTab === 'timbang' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-            {/* HERO CARD: HASIL CUTTING (POTONG) AKTUAL */}
+            {/* CARD 1: HASIL POTONG */}
             <div className="card" style={{ padding: '18px 20px', borderRadius: '16px' }}>
               {/* Header Bar */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div
                     style={{
-                      width: '32px',
-                      height: '32px',
-                      borderRadius: '8px',
-                      background: 'rgba(217, 119, 6, 0.12)',
+                      width: '34px',
+                      height: '34px',
+                      borderRadius: '10px',
+                      background: 'var(--brand-gold-light)',
                       color: 'var(--brand-gold)',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center'
+                      justifyContent: 'center',
+                      flexShrink: 0
                     }}
                   >
                     <Scissors size={18} />
                   </div>
                   <div>
-                    <span style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)' }}>
-                      Hasil Cutting (Potong) Aktual
-                    </span>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+                      Hasil Potong
+                    </h3>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                      Jumlah kain yang selesai dipotong di meja potong
+                    </div>
                   </div>
                 </div>
                 <span className="badge badge-gold mono-num" style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700 }}>
@@ -962,22 +966,22 @@ function OrderDetailContent() {
                 </span>
               </div>
 
-              {/* 3 Human Metric Tiles Grid */}
+              {/* 3 Metric Tiles: Target SPK, Hasil Potong, Selisih */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
                 {/* 1. Target SPK */}
                 <div className="hero-tile">
-                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>🎯 Target SPK</div>
+                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>Target SPK</div>
                   <div className="mono-num" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.2 }}>
                     {targetSpkQty.toLocaleString('id-ID')} <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>pcs</span>
                   </div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                    Pesanan Produksi
+                    Target dari SPK
                   </div>
                 </div>
 
                 {/* 2. Hasil Potong Fisik Input */}
                 <div className="hero-tile" style={{ background: 'var(--brand-gold-light)', borderColor: 'var(--brand-gold-border)' }}>
-                  <div className="metric-label" style={{ fontSize: '0.7rem', color: 'var(--brand-gold)' }}>✂️ Hasil Potong Fisik</div>
+                  <div className="metric-label" style={{ fontSize: '0.7rem', color: 'var(--brand-gold)' }}>Hasil Potong</div>
                   {canEditCutting ? (
                     <div>
                       <div className="input-addon-group" style={{ height: '42px', borderColor: actualCutting ? 'var(--brand-gold)' : 'var(--border-strong)' }}>
@@ -1002,10 +1006,10 @@ function OrderDetailContent() {
                           onClick={handleFillCuttingWithTargetSpk}
                           className="quick-action-pill quick-action-pill-amber"
                           style={{ marginTop: '6px', width: '100%', fontSize: '0.7rem' }}
-                          title="Isi otomatis dengan Target SPK"
+                          title="Samakan dengan Target SPK"
                         >
                           <Zap size={11} />
-                          <span>Sesuai Target SPK ({targetSpkQty})</span>
+                          <span>Samakan Target SPK ({targetSpkQty})</span>
                         </button>
                       )}
                     </div>
@@ -1016,13 +1020,13 @@ function OrderDetailContent() {
                     </div>
                   )}
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                    Output riil meja potong
+                    Kain yang sudah dipotong
                   </div>
                 </div>
 
                 {/* 3. Selisih vs Target SPK */}
                 <div className="hero-tile">
-                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>⚖️ Selisih vs Target SPK</div>
+                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>Selisih vs Target</div>
                   <div className="mono-num" style={{
                     fontSize: '1.35rem',
                     fontWeight: 800,
@@ -1036,13 +1040,13 @@ function OrderDetailContent() {
                   </div>
                   <div style={{ marginTop: '2px' }}>
                     {currentActualCutting === 0 ? (
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Belum input potong</span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Belum diisi</span>
                     ) : selisihCutting === 0 ? (
-                      <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '2px 8px' }}>✓ Sesuai Target SPK</span>
+                      <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '2px 8px' }}>Pas</span>
                     ) : selisihCutting > 0 ? (
-                      <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '2px 8px' }}>▲ Hasil Potong Lebih</span>
+                      <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '2px 8px' }}>Lebih {selisihCutting}</span>
                     ) : (
-                      <span className="badge badge-amber" style={{ fontSize: '0.68rem', padding: '2px 8px' }}>▼ Hasil Potong Kurang</span>
+                      <span className="badge badge-amber" style={{ fontSize: '0.68rem', padding: '2px 8px' }}>Kurang {Math.abs(selisihCutting)}</span>
                     )}
                   </div>
                 </div>
@@ -1366,9 +1370,9 @@ function OrderDetailContent() {
             {/* EMPTY STATE IF NO LINES AT ALL */}
             {fabricLines.length === 0 && accessoryLines.length === 0 && (
               <div className="card" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                SPK ini tidak memiliki rincian bahan terpisah.
+                SPK ini tidak memiliki rincian bahan kain terpisah.
                 <br />
-                Silakan langsung isi <strong>Hasil Cutting (Potong) Aktual</strong> pada kartu di atas.
+                Silakan langsung isi <strong>Hasil Potong</strong> pada kartu di atas.
               </div>
             )}
 
@@ -1396,64 +1400,159 @@ function OrderDetailContent() {
         {activeTab === 'hasil' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-            {/* Ringkasan Produksi Jahit */}
-            <div className="card" style={{ padding: '16px 18px', borderRadius: '16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', textAlign: 'center' }}>
-                <div className="hero-tile">
-                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>🎯 Target SPK</div>
-                  <div className="mono-num" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                    {targetSpkQty.toLocaleString('id-ID')} <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>pcs</span>
+            {/* CARD 1: HASIL JAHIT (MATCHING TAB 1 LAYOUT EXACTLY) */}
+            <div className="card" style={{ padding: '18px 20px', borderRadius: '16px' }}>
+              {/* Header Bar */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div
+                    style={{
+                      width: '34px',
+                      height: '34px',
+                      borderRadius: '10px',
+                      background: 'var(--brand-gold-light)',
+                      color: 'var(--brand-gold)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}
+                  >
+                    <Package size={18} />
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Target Pesanan</div>
-                </div>
-                <div className="hero-tile">
-                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>✂️ Hasil Potong</div>
-                  <div className="mono-num" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                    {(parseFloat(order.actual_cutting) || currentActualCutting || 0).toLocaleString('id-ID')} <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>pcs</span>
+                  <div>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+                      Hasil Jahit
+                    </h3>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                      Total baju jadi yang selesai dijahit (Grade A + Grade B)
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Potongan Meja</div>
                 </div>
+                <span className="badge badge-gold mono-num" style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700 }}>
+                  Satuan: PCS
+                </span>
+              </div>
+
+              {/* 3 Metric Tiles (IDENTICAL TO TAB 1): Target SPK, Hasil Jahit, Selisih */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
+                {/* 1. Target SPK */}
+                <div className="hero-tile">
+                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>Target SPK</div>
+                  <div className="mono-num" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.2 }}>
+                    {targetSpkQty.toLocaleString('id-ID')} <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>pcs</span>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    Hasil potong: {(parseFloat(order.actual_cutting) || currentActualCutting || 0).toLocaleString('id-ID')} pcs
+                  </div>
+                </div>
+
+                {/* 2. Total Hasil Jahit */}
                 <div className="hero-tile" style={{ background: 'var(--brand-gold-light)', borderColor: 'var(--brand-gold-border)' }}>
-                  <div className="metric-label" style={{ fontSize: '0.7rem', color: 'var(--brand-gold)' }}>🧵 Total Hasil Jahit</div>
-                  <div className="mono-num" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--brand-gold)' }}>
-                    {totalYieldPcs.toLocaleString('id-ID')} <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>pcs</span>
+                  <div className="metric-label" style={{ fontSize: '0.7rem', color: 'var(--brand-gold)' }}>Total Hasil Jahit</div>
+                  <div className="mono-num" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--brand-gold)', lineHeight: 1.2 }}>
+                    {totalYieldPcs.toLocaleString('id-ID')} <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>pcs</span>
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Grade A + Grade B</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    Grade A: {parseFloat(gradeA) || 0} + Grade B: {parseFloat(gradeB) || 0}
+                  </div>
+                </div>
+
+                {/* 3. Selisih vs Target */}
+                <div className="hero-tile">
+                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>Selisih vs Target</div>
+                  <div className="mono-num" style={{
+                    fontSize: '1.35rem',
+                    fontWeight: 800,
+                    lineHeight: 1.2,
+                    color: totalYieldPcs - targetSpkQty > 0
+                      ? 'var(--status-emerald)'
+                      : totalYieldPcs - targetSpkQty < 0
+                      ? 'var(--status-rose)'
+                      : 'var(--text-primary)'
+                  }}>
+                    {totalYieldPcs > 0
+                      ? (totalYieldPcs - targetSpkQty > 0 ? `+${(totalYieldPcs - targetSpkQty).toLocaleString('id-ID')}` : (totalYieldPcs - targetSpkQty).toLocaleString('id-ID'))
+                      : '0'}{' '}
+                    <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>pcs</span>
+                  </div>
+                  <div style={{ marginTop: '2px' }}>
+                    {totalYieldPcs === 0 ? (
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Belum diisi</span>
+                    ) : totalYieldPcs - targetSpkQty === 0 ? (
+                      <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '2px 8px' }}>Pas</span>
+                    ) : totalYieldPcs - targetSpkQty > 0 ? (
+                      <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '2px 8px' }}>Lebih {totalYieldPcs - targetSpkQty}</span>
+                    ) : (
+                      <span className="badge badge-amber" style={{ fontSize: '0.68rem', padding: '2px 8px' }}>Kurang {Math.abs(totalYieldPcs - targetSpkQty)}</span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Production Result Form */}
-            <div className="card" style={{ padding: '20px 18px', borderRadius: '16px' }}>
+            {/* CARD 2: INPUT RINCIAN JAHIT */}
+            <div className="card" style={{ padding: '18px 20px', borderRadius: '16px' }}>
+              {/* Header Bar */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div
+                    style={{
+                      width: '34px',
+                      height: '34px',
+                      borderRadius: '10px',
+                      background: 'var(--status-emerald-bg)',
+                      color: 'var(--status-emerald)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}
+                  >
+                    <CheckCircle2 size={18} />
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+                      Rincian Baju & Sisa Kain
+                    </h3>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                      Input jumlah baju bagus (Grade A), reject (Grade B), dan sisa kain
+                    </div>
+                  </div>
+                </div>
+                {canEditResult && targetSpkQty > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPresetGradeA(targetSpkQty)}
+                    className="quick-action-pill quick-action-pill-emerald"
+                    style={{ fontSize: '0.72rem' }}
+                    title="Samakan dengan Target SPK"
+                  >
+                    <Zap size={11} />
+                    <span>Samakan SPK ({targetSpkQty})</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Form Input Rows */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '14px' }}>
                 {/* Grade A with Steppers */}
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '4px' }}>
-                    <label className="form-label" style={{ margin: 0, fontWeight: 700 }}>Grade A (Pcs)</label>
-                    {canEditResult && targetSpkQty > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setPresetGradeA(targetSpkQty)}
-                        className="quick-action-pill quick-action-pill-emerald"
-                        style={{ fontSize: '0.68rem', padding: '2px 8px' }}
-                        title="Set Grade A = 100% Target SPK"
-                      >
-                        <Zap size={11} />
-                        <span>100% SPK ({targetSpkQty})</span>
-                      </button>
-                    )}
+                  <label className="form-label" style={{ marginBottom: '6px', fontWeight: 700 }}>Grade A (Bagus)</label>
+                  <div className="input-addon-group" style={{ height: '42px', borderColor: gradeA ? 'var(--status-emerald)' : 'var(--border-strong)' }}>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      disabled={!canEditResult || saving}
+                      placeholder="0"
+                      value={gradeA}
+                      onChange={(e) => setGradeA(e.target.value)}
+                      className="input-addon-field"
+                      style={{ fontSize: '1.25rem', fontWeight: 800 }}
+                    />
+                    <span className="input-addon-label">PCS</span>
                   </div>
-                  <input
-                    type="number"
-                    step="1"
-                    min="0"
-                    disabled={!canEditResult || saving}
-                    placeholder="0"
-                    value={gradeA}
-                    onChange={(e) => setGradeA(e.target.value)}
-                    className="input-field mono-num"
-                    style={{ fontSize: '1.25rem', fontWeight: 800, height: '46px', textAlign: 'right' }}
-                  />
                   {canEditResult && (
                     <div style={{ display: 'flex', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
                       <button type="button" onClick={() => adjustQty(setGradeA, gradeA, -5)} className="stepper-btn" title="Kurangi 5">-5</button>
@@ -1467,18 +1566,21 @@ function OrderDetailContent() {
 
                 {/* Grade B with Steppers */}
                 <div>
-                  <label className="form-label" style={{ marginBottom: '6px', fontWeight: 700 }}>Grade B / BS (Pcs)</label>
-                  <input
-                    type="number"
-                    step="1"
-                    min="0"
-                    disabled={!canEditResult || saving}
-                    placeholder="0"
-                    value={gradeB}
-                    onChange={(e) => setGradeB(e.target.value)}
-                    className="input-field mono-num"
-                    style={{ fontSize: '1.25rem', fontWeight: 800, height: '46px', textAlign: 'right' }}
-                  />
+                  <label className="form-label" style={{ marginBottom: '6px', fontWeight: 700 }}>Grade B (Reject / BS)</label>
+                  <div className="input-addon-group" style={{ height: '42px', borderColor: parseFloat(gradeB) > 0 ? 'var(--status-rose)' : 'var(--border-strong)' }}>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      disabled={!canEditResult || saving}
+                      placeholder="0"
+                      value={gradeB}
+                      onChange={(e) => setGradeB(e.target.value)}
+                      className="input-addon-field"
+                      style={{ fontSize: '1.25rem', fontWeight: 800 }}
+                    />
+                    <span className="input-addon-label">PCS</span>
+                  </div>
                   {canEditResult && (
                     <div style={{ display: 'flex', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
                       <button type="button" onClick={() => setGradeB('0')} className="stepper-btn stepper-btn-primary" title="Nol Grade B">0</button>
@@ -1490,79 +1592,42 @@ function OrderDetailContent() {
                   )}
                 </div>
 
-                {/* Sisa Kain (BSKL) with Steppers */}
+                {/* Sisa Kain (BSKL / Kg) with Steppers */}
                 <div>
-                  <label className="form-label" style={{ marginBottom: '6px', fontWeight: 700 }}>Sisa Kain (BSKL / Kg)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    disabled={!canEditResult || saving}
-                    placeholder="0.00"
-                    value={sisaKg}
-                    onChange={(e) => setSisaKg(e.target.value)}
-                    className="input-field mono-num"
-                    style={{ fontSize: '1.25rem', fontWeight: 800, height: '46px', textAlign: 'right' }}
-                  />
+                  <label className="form-label" style={{ marginBottom: '6px', fontWeight: 700 }}>Sisa Kain (BSKL)</label>
+                  <div className="input-addon-group" style={{ height: '42px' }}>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      disabled={!canEditResult || saving}
+                      placeholder="0.00"
+                      value={sisaKg}
+                      onChange={(e) => setSisaKg(e.target.value)}
+                      className="input-addon-field"
+                      style={{ fontSize: '1.25rem', fontWeight: 800 }}
+                    />
+                    <span className="input-addon-label">KG</span>
+                  </div>
                   {canEditResult && (
                     <div style={{ display: 'flex', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
-                      <button type="button" onClick={() => setSisaKg('0')} className="stepper-btn" style={{ fontSize: '0.68rem' }}>0.0</button>
+                      <button type="button" onClick={() => setSisaKg('0')} className="stepper-btn" style={{ fontSize: '0.68rem' }}>0</button>
                       <button type="button" onClick={() => adjustQty(setSisaKg, sisaKg, +0.5)} className="stepper-btn">+0.5</button>
                       <button type="button" onClick={() => adjustQty(setSisaKg, sisaKg, +1.0)} className="stepper-btn">+1.0</button>
                     </div>
                   )}
                 </div>
 
-                {/* Live Balance Summary Bar */}
-                <div
-                  style={{
-                    gridColumn: '1 / -1',
-                    padding: '10px 14px',
-                    borderRadius: '12px',
-                    background: 'var(--bg-card-subtle)',
-                    border: '1px solid var(--border-default)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    fontSize: '0.84rem',
-                    flexWrap: 'wrap',
-                    gap: '8px'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Total Input:</span>
-                    <strong className="mono-num" style={{ fontSize: '1rem', color: 'var(--brand-gold)', fontWeight: 800 }}>
-                      {totalYieldPcs} pcs
-                    </strong>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.76rem' }}>
-                      (A: {parseFloat(gradeA) || 0} + B: {parseFloat(gradeB) || 0})
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ color: 'var(--text-secondary)' }}>Selisih vs Target: </span>
-                    <strong className="mono-num" style={{
-                      fontWeight: 800,
-                      color: totalYieldPcs - targetSpkQty === 0
-                        ? 'var(--status-emerald)'
-                        : totalYieldPcs - targetSpkQty > 0
-                        ? 'var(--status-emerald)'
-                        : 'var(--status-rose)'
-                    }}>
-                      {totalYieldPcs - targetSpkQty > 0 ? `+${totalYieldPcs - targetSpkQty}` : totalYieldPcs - targetSpkQty} pcs
-                    </strong>
-                  </div>
-                </div>
-
                 <div style={{ gridColumn: '1 / -1' }}>
-                  <label className="form-label">Nomor Surat Jalan Vendor</label>
+                  <label className="form-label" style={{ marginBottom: '6px', fontWeight: 700 }}>No. Surat Jalan Vendor</label>
                   <input
                     type="text"
                     disabled={!canEditResult || saving}
-                    placeholder="Contoh: SJ/VDKWS/2026/001"
+                    placeholder="Contoh: SJ/001/2026"
                     value={noSuratJalan}
                     onChange={(e) => setNoSuratJalan(e.target.value)}
                     className="input-field"
-                    style={{ fontSize: '0.92rem', height: '44px' }}
+                    style={{ fontSize: '0.92rem', height: '42px' }}
                   />
                 </div>
               </div>
@@ -1679,10 +1744,10 @@ function OrderDetailContent() {
                     </div>
                     <div>
                       <h3 style={{ fontSize: '1.02rem', margin: 0, fontWeight: 800, color: 'var(--text-primary)' }}>
-                        Dokumen Transfer Odoo ERP
+                        Dokumen Transfer & Surat Jalan
                       </h3>
                       <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        Daftar transfer resmi gudang & surat jalan tertaut MO #{order?.mo_name || order?.id}
+                        Daftar transfer bahan dan surat jalan untuk SPK #{order?.mo_name || order?.id}
                       </div>
                     </div>
                   </div>
@@ -1829,7 +1894,7 @@ function OrderDetailContent() {
                             borderTop: '1px dashed var(--border-default)'
                           }}>
                             <div>
-                              <span style={{ color: 'var(--text-muted)' }}>Dokumen Rujukan:</span>{' '}
+                              <span style={{ color: 'var(--text-muted)' }}>No. Referensi / Asal:</span>{' '}
                               <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>
                                 {t.origin || '-'}
                               </strong>
@@ -1878,10 +1943,10 @@ function OrderDetailContent() {
                       <Truck size={24} />
                     </div>
                     <div style={{ fontSize: '0.94rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                      Tidak Ada Dokumen Transfer Odoo
+                      Belum Ada Dokumen Transfer
                     </div>
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', maxWidth: '420px', margin: '0 auto 14px', lineHeight: 1.5 }}>
-                      SPK ini belum memiliki catatan transfer resmi stock.picking di Odoo ERP, atau dokumen transfer belum selesai dibuat di Gudang Pusat.
+                      Belum ada dokumen transfer atau surat jalan yang tercatat untuk SPK ini di Odoo.
                     </p>
                     <button
                       type="button"
@@ -1975,7 +2040,7 @@ function OrderDetailContent() {
               {safetyModal.isExtreme && (
                 <div style={{ fontWeight: 800, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '5px' }}>
                   <AlertTriangle size={15} />
-                  <span>PERINGATAN SELISIH EKSTREM</span>
+                  <span>PERIKSA KEMBALI ANGKA INPUT</span>
                 </div>
               )}
               <p style={{ margin: 0 }}>{safetyModal.warningMessage}</p>
@@ -1989,7 +2054,7 @@ function OrderDetailContent() {
                 className="btn btn-secondary"
                 style={{ flex: 1, height: '44px', borderRadius: '12px', fontWeight: 700 }}
               >
-                Periksa Lagi
+                Cek Lagi
               </button>
               <button
                 type="button"
@@ -2000,7 +2065,7 @@ function OrderDetailContent() {
                 className={`btn ${safetyModal.isExtreme ? 'btn-danger' : 'btn-primary'}`}
                 style={{ flex: 1.2, height: '44px', borderRadius: '12px', fontWeight: 800, fontSize: '0.88rem' }}
               >
-                {saving ? 'Menyimpan...' : (safetyModal.isExtreme ? 'Ya, Simpan Data Ini' : 'Ya, Simpan Perubahan')}
+                {saving ? 'Menyimpan...' : (safetyModal.isExtreme ? 'Ya, Sudah Benar & Simpan' : 'Ya, Simpan')}
               </button>
             </div>
           </div>
