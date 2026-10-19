@@ -219,6 +219,38 @@ class WipRepository {
       }
     }
   }
+
+  async updateWipPricingByOdooId(odooWipId, { harga_vendor, total_harga }) {
+    if (!odooWipId) return;
+    const { error } = await supabaseServer
+      .from('wip_orders')
+      .update({
+        harga_vendor: Number(harga_vendor || 0),
+        total_harga: Number(total_harga || 0),
+        updated_at: new Date().toISOString()
+      })
+      .eq('odoo_wip_id', odooWipId);
+
+    if (error) {
+      console.warn(`[WipRepo] updateWipPricingByOdooId error: ${error.message}`);
+    }
+  }
+
+  async updateWipPricingById(orderId, { harga_vendor, total_harga }) {
+    if (!orderId) return;
+    const { error } = await supabaseServer
+      .from('wip_orders')
+      .update({
+        harga_vendor: Number(harga_vendor || 0),
+        total_harga: Number(total_harga || 0),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId);
+
+    if (error) {
+      console.warn(`[WipRepo] updateWipPricingById error: ${error.message}`);
+    }
+  }
 }
 
 export const wipRepo = new WipRepository();

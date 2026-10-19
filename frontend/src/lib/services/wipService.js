@@ -276,6 +276,45 @@ export class WipService {
       }
     }
 
+    // Lazy fetch vendor price from Odoo if missing or 0
+    if (showPrice && Number(order.harga_vendor || 0) === 0 && order.odoo_wip_id) {
+      try {
+        await adminOdooClient.authenticate();
+        const wipData = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'read', [[order.odoo_wip_id]], {
+          fields: ['x_studio_product', 'x_studio_warehouse', 'x_studio_qty_masuk_sfp', 'x_studio_many2many_field_869_1k3jdrdl1']
+        });
+        if (wipData && wipData[0] && wipData[0].x_studio_product) {
+          const w = wipData[0];
+          const prodId = w.x_studio_product[0];
+          const whId = w.x_studio_warehouse ? w.x_studio_warehouse[0] : order.odoo_warehouse_id;
+          const sfpQty = parseFloat(w.x_studio_qty_masuk_sfp) || Number(order.qty_masuk_sfp || 0);
+          const wcIds = w.x_studio_many2many_field_869_1k3jdrdl1 || [];
+
+          const freshPrice = await this.fetchVendorPriceFromOdoo(whId, prodId, wcIds);
+          if (freshPrice > 0) {
+            const freshTotal = freshPrice * sfpQty;
+            order.harga_vendor = freshPrice;
+            order.total_harga = freshTotal;
+
+            // Update Odoo
+            await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [
+              [order.odoo_wip_id],
+              { x_studio_harga: freshPrice, x_studio_total_harga: freshTotal }
+            ], { context: { tracking_disable: true, no_automation: true } });
+
+            // Update Supabase
+            await wipRepo.updateWipPricingById(order.id, {
+              harga_vendor: freshPrice,
+              total_harga: freshTotal
+            });
+            console.log(`[WipService] Lazy auto-resolved price for order #${order.id}: Rp ${freshPrice} (Total: Rp ${freshTotal})`);
+          }
+        }
+      } catch (errPrice) {
+        console.warn(`[WipService] Lazy price fetch warning: ${errPrice.message}`);
+      }
+    }
+
     // Fetch roll lines
     const { data: rollLines } = await supabaseServer
       .from('wip_roll_lines')
@@ -1052,6 +1091,32 @@ export class WipService {
 
     const whId = w.x_studio_warehouse ? w.x_studio_warehouse[0] : null;
     const whName = w.x_studio_warehouse ? w.x_studio_warehouse[1] : 'Unknown';
+    const prodId = w.x_studio_product ? w.x_studio_product[0] : null;
+
+    let hargaVendor = Number(w.x_studio_harga || 0);
+    let totalHarga = Number(w.x_studio_total_harga || 0);
+    const qtyMasukSfp = Number(w.x_studio_qty_masuk_sfp || 0);
+
+    // Auto-check pricing from Odoo if currently 0
+    if (hargaVendor === 0 && whId && prodId) {
+      try {
+        const freshPrice = await this.fetchVendorPriceFromOdoo(whId, prodId);
+        if (freshPrice > 0) {
+          hargaVendor = freshPrice;
+          totalHarga = hargaVendor * qtyMasukSfp;
+          await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [
+            [w.id],
+            {
+              x_studio_harga: hargaVendor,
+              x_studio_total_harga: totalHarga
+            }
+          ], { context: { tracking_disable: true, no_automation: true } });
+          console.log(`[WIP Sync] Auto-resolved vendor price for WIP #${w.id}: Rp ${hargaVendor} (Total: Rp ${totalHarga})`);
+        }
+      } catch (errPrice) {
+        console.warn(`[WIP Sync] Note on auto-fetching vendor price: ${errPrice.message}`);
+      }
+    }
 
     await wipRepo.upsertWipOrder({
       odoo_wip_id: w.id,
@@ -1080,9 +1145,9 @@ export class WipService {
       sisa_makloon_kg: Number(w.x_studio_sisa_makloon_kg || 0),
       no_surat_jalan_sfp: w.x_studio_no_surat_jalan_sfp || null,
       tanggal_sfp: w.x_studio_tanggal_sfp || null,
-      qty_masuk_sfp: Number(w.x_studio_qty_masuk_sfp || 0),
-      harga_vendor: Number(w.x_studio_harga || 0),
-      total_harga: Number(w.x_studio_total_harga || 0),
+      qty_masuk_sfp: qtyMasukSfp,
+      harga_vendor: hargaVendor,
+      total_harga: totalHarga,
       status_produksi: w.x_studio_status_produksi || 'Proses',
       odoo_write_date: w.write_date
     });
@@ -1822,6 +1887,147 @@ export class WipService {
         updated: true
       };
     });
+  }
+
+  /**
+   * Helper: Fetch current pricing from x_vendor_production in Odoo
+   */
+  async fetchVendorPriceFromOdoo(warehouseId, productId, workcenterIds = []) {
+    await adminOdooClient.authenticate();
+    if (!warehouseId || !productId) return 0.0;
+
+    try {
+      const vendorPrices = await adminOdooClient._callObject('x_vendor_production', 'search_read', [
+        [
+          ['x_studio_warehouse', '=', warehouseId],
+          ['x_studio_product', '=', productId]
+        ]
+      ], { fields: ['id', 'x_studio_value', 'x_studio_many2many_field_7h1_1k3jdkeub'], order: 'id desc' });
+
+      if (!vendorPrices || vendorPrices.length === 0) return 0.0;
+
+      if (workcenterIds.length > 0) {
+        const targetWcSet = new Set(workcenterIds);
+        const matched = vendorPrices.find(vp => {
+          const vpWcIds = vp.x_studio_many2many_field_7h1_1k3jdkeub || [];
+          if (vpWcIds.length !== targetWcSet.size) return false;
+          return vpWcIds.every(id => targetWcSet.has(id));
+        });
+        if (matched && matched.x_studio_value !== undefined) {
+          return parseFloat(matched.x_studio_value) || 0.0;
+        }
+      }
+
+      return parseFloat(vendorPrices[0].x_studio_value) || 0.0;
+    } catch (err) {
+      console.warn(`[WIP Service] fetchVendorPriceFromOdoo error: ${err.message}`);
+      return 0.0;
+    }
+  }
+
+  /**
+   * 4. Triggered when Vendor Pricing (x_vendor_production) is created or updated in Odoo
+   */
+  async onVendorPriceUpdated(vendorPriceId) {
+    await adminOdooClient.authenticate();
+    const id = Number(vendorPriceId);
+    if (!id || isNaN(id)) {
+      throw new Error(`Invalid Vendor Price ID: ${vendorPriceId}`);
+    }
+
+    console.log(`[WIP Service] Handling Vendor Price Updated for ID #${id}...`);
+
+    const records = await adminOdooClient._callObject('x_vendor_production', 'read', [[id]], {
+      fields: ['id', 'x_studio_warehouse', 'x_studio_product', 'x_studio_value', 'x_studio_many2many_field_7h1_1k3jdkeub']
+    });
+
+    if (!records || records.length === 0) {
+      console.warn(`[WIP Service] Vendor Price record #${id} not found in Odoo.`);
+      return { success: false, notFound: true };
+    }
+
+    const vp = records[0];
+    const warehouseId = vp.x_studio_warehouse ? vp.x_studio_warehouse[0] : null;
+    const productId = vp.x_studio_product ? vp.x_studio_product[0] : null;
+    const newPrice = parseFloat(vp.x_studio_value) || 0.0;
+    const vpWorkcenterIds = vp.x_studio_many2many_field_7h1_1k3jdkeub || [];
+
+    if (!warehouseId || !productId) {
+      console.warn(`[WIP Service] Vendor Price #${id} missing warehouse or product.`);
+      return { success: false, reason: 'Missing warehouse or product' };
+    }
+
+    console.log(`[WIP Service] Price record #${id}: Warehouse: ${warehouseId}, Product: ${productId}, Price: Rp ${newPrice}`);
+
+    // Search for all active WIP records with matching warehouse and product
+    const wips = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'search_read', [
+      [
+        ['x_studio_warehouse', '=', warehouseId],
+        ['x_studio_product', '=', productId]
+      ]
+    ], {
+      fields: [
+        'id', 'x_name', 'x_studio_harga', 'x_studio_total_harga',
+        'x_studio_qty_masuk_sfp', 'x_studio_manufacturing_order',
+        'x_studio_many2many_field_869_1k3jdrdl1'
+      ],
+      order: 'id desc'
+    });
+
+    console.log(`[WIP Service] Found ${wips.length} WIP record(s) matching Warehouse ${warehouseId} & Product ${productId}`);
+
+    const updatedWips = [];
+
+    for (const w of wips) {
+      if (vpWorkcenterIds.length > 0 && w.x_studio_many2many_field_869_1k3jdrdl1 && w.x_studio_many2many_field_869_1k3jdrdl1.length > 0) {
+        const wipWcSet = new Set(w.x_studio_many2many_field_869_1k3jdrdl1);
+        const matchesWc = vpWorkcenterIds.every(cid => wipWcSet.has(cid));
+        if (!matchesWc) {
+          continue;
+        }
+      }
+
+      const sfpQty = parseFloat(w.x_studio_qty_masuk_sfp) || 0.0;
+      const totalHarga = newPrice * sfpQty;
+
+      // Update Odoo
+      await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [
+        [w.id],
+        {
+          x_studio_harga: newPrice,
+          x_studio_total_harga: totalHarga
+        }
+      ], {
+        context: { tracking_disable: true, no_automation: true }
+      });
+
+      // Update Supabase
+      try {
+        await wipRepo.updateWipPricingByOdooId(w.id, {
+          harga_vendor: newPrice,
+          total_harga: totalHarga
+        });
+      } catch (errDb) {
+        console.warn(`[WIP Service] Note on updating Supabase pricing for WIP #${w.id}: ${errDb.message}`);
+      }
+
+      updatedWips.push({
+        wipId: w.id,
+        moName: w.x_name,
+        hargaVendor: newPrice,
+        sfpQty,
+        totalHarga
+      });
+    }
+
+    console.log(`[WIP Service] Successfully updated pricing for ${updatedWips.length} WIP orders.`);
+    return {
+      success: true,
+      priceId: id,
+      newPrice,
+      updatedCount: updatedWips.length,
+      updatedWips
+    };
   }
 }
 

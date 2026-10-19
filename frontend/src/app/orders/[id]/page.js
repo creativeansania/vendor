@@ -898,6 +898,95 @@ function OrderDetailContent() {
           </div>
         </div>
 
+        {/* Master Vendor & Admin: Biaya & Tarif Makloon Card */}
+        {user?.role !== 'admin_vendor' && (
+          <div
+            className="card"
+            style={{
+              padding: '14px 18px',
+              borderRadius: '16px',
+              background: 'linear-gradient(135deg, #fffdfa 0%, #ffffff 100%)',
+              border: '1px solid #fde68a',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '10px',
+                    background: '#fef3c7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}
+                >
+                  <Tag size={18} color="var(--brand-gold)" />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--brand-gold)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Tarif Jasa Makloon
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className="mono-num" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      {Number(order.harga_vendor || 0) > 0
+                        ? `Rp ${Number(order.harga_vendor).toLocaleString('id-ID')} / pcs`
+                        : 'Rp 0.00'}
+                    </span>
+                    {Number(order.harga_vendor || 0) === 0 && (
+                      <span className="badge badge-amber" style={{ fontSize: '0.65rem', padding: '2px 6px' }}>
+                        Belum Diinput di Odoo
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                {Number(order.total_harga || 0) > 0 && (
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Total Biaya SFP Masuk:</div>
+                    <div className="mono-num" style={{ fontSize: '1.05rem', fontWeight: 800, color: '#059669' }}>
+                      Rp {Number(order.total_harga).toLocaleString('id-ID')}
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleForceSyncOdoo}
+                  disabled={syncingOdoo}
+                  className="btn btn-secondary"
+                  style={{
+                    fontSize: '0.74rem',
+                    padding: '6px 12px',
+                    borderRadius: '10px',
+                    gap: '6px',
+                    border: '1px solid #fde68a',
+                    background: '#fffdf5',
+                    color: 'var(--brand-gold)',
+                    fontWeight: 700
+                  }}
+                  title="Periksa & sinkronkan tarif terbaru langsung dari tabel Vendor Production Odoo"
+                >
+                  <RefreshCw size={13} className={syncingOdoo ? 'spin-icon' : ''} />
+                  <span>{syncingOdoo ? 'Mengecek...' : 'Sinkronkan Tarif Odoo'}</span>
+                </button>
+              </div>
+            </div>
+            {Number(order.harga_vendor || 0) === 0 && (
+              <div style={{ fontSize: '0.73rem', color: 'var(--text-secondary)', background: '#fffbeb', padding: '6px 10px', borderRadius: '8px', border: '1px dashed #fcd34d' }}>
+                💡 <em>Tarif makloon belum terdaftar di Odoo. Jika admin baru saja menambahkan harga di menu <strong>Vendor Production</strong> Odoo, klik tombol <strong>&quot;Sinkronkan Tarif Odoo&quot;</strong> di atas.</em>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Operational Segmented Tabs (Apple / Linear Pill Style) */}
         <div className="segmented-tabs-wrapper">
           <button
