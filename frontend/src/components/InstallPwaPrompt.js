@@ -120,7 +120,7 @@ export default function InstallPwaPrompt() {
                 height: '42px',
                 borderRadius: '12px',
                 background: 'var(--brand-gold)',
-                color: '#ffffff',
+                color: 'var(--text-inverted)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -220,7 +220,7 @@ export default function InstallPwaPrompt() {
               /* iOS Safari Instructions */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', margin: '14px 0' }}>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px', background: 'var(--bg-card-subtle)', borderRadius: '10px' }}>
-                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--brand-gold)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800, flexShrink: 0 }}>
+                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--brand-gold)', color: 'var(--text-inverted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800, flexShrink: 0 }}>
                     1
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
@@ -229,7 +229,7 @@ export default function InstallPwaPrompt() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px', background: 'var(--bg-card-subtle)', borderRadius: '10px' }}>
-                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--brand-gold)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800, flexShrink: 0 }}>
+                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--brand-gold)', color: 'var(--text-inverted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800, flexShrink: 0 }}>
                     2
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
@@ -238,7 +238,7 @@ export default function InstallPwaPrompt() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px', background: 'var(--bg-card-subtle)', borderRadius: '10px' }}>
-                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--brand-gold)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800, flexShrink: 0 }}>
+                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--brand-gold)', color: 'var(--text-inverted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800, flexShrink: 0 }}>
                     3
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
@@ -250,7 +250,7 @@ export default function InstallPwaPrompt() {
               /* Android Chrome Instructions */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', margin: '14px 0' }}>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px', background: 'var(--bg-card-subtle)', borderRadius: '10px' }}>
-                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--brand-gold)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800, flexShrink: 0 }}>
+                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--brand-gold)', color: 'var(--text-inverted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800, flexShrink: 0 }}>
                     1
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
@@ -259,7 +259,7 @@ export default function InstallPwaPrompt() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px', background: 'var(--bg-card-subtle)', borderRadius: '10px' }}>
-                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--brand-gold)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800, flexShrink: 0 }}>
+                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--brand-gold)', color: 'var(--text-inverted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800, flexShrink: 0 }}>
                     2
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
@@ -268,7 +268,7 @@ export default function InstallPwaPrompt() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px', background: 'var(--bg-card-subtle)', borderRadius: '10px' }}>
-                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--brand-gold)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800, flexShrink: 0 }}>
+                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--brand-gold)', color: 'var(--text-inverted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800, flexShrink: 0 }}>
                     3
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>

@@ -656,7 +656,7 @@ function OrderDetailContent() {
             className="btn"
             style={{
               background: '#25D366',
-              color: '#ffffff',
+              color: 'var(--text-inverted)',
               border: 'none',
               fontSize: '0.8rem',
               fontWeight: 700,
