@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchApi, getCurrentUser, logout } from '@/lib/api';
 import InstallPwaPrompt from '@/components/InstallPwaPrompt';
+import ThemeToggle from '@/components/ThemeToggle';
 import {
   Search,
   Filter,
@@ -326,6 +327,8 @@ export default function DashboardPage() {
             <Smartphone size={15} color="var(--brand-gold)" />
             <span className="hide-on-mobile">Pasang di HP</span>
           </button>
+
+          <ThemeToggle />
 
           <button
             onClick={logout}
@@ -733,9 +736,9 @@ export default function DashboardPage() {
                   className="quick-action-pill"
                   style={{
                     fontSize: '0.74rem',
-                    background: '#ffffff',
-                    borderColor: '#cbd5e1',
-                    color: '#475569',
+                    background: 'var(--bg-card)',
+                    borderColor: 'var(--border-strong)',
+                    color: 'var(--text-secondary)',
                     height: '28px'
                   }}
                   title="Kembalikan semua filter ke awal"
@@ -864,7 +867,7 @@ export default function DashboardPage() {
               type="button"
               onClick={() => { setStatus('all'); setPage(1); }}
               className="quick-action-pill"
-              style={{ fontSize: '0.74rem', background: '#ffffff', borderColor: '#fca5a5', color: '#b91c1c', height: '28px' }}
+              style={{ fontSize: '0.74rem', background: 'var(--bg-card)', borderColor: 'var(--status-rose-border)', color: 'var(--status-rose)', height: '28px' }}
             >
               Lihat Semua SPK
             </button>
@@ -879,17 +882,17 @@ export default function DashboardPage() {
               justifyContent: 'space-between',
               padding: '10px 16px',
               marginBottom: '16px',
-              background: '#fff7ed',
-              border: '1.5px solid #fed7aa',
+              background: 'var(--status-amber-bg)',
+              border: '1.5px solid var(--status-amber-border)',
               borderRadius: '12px',
-              color: '#9a3412',
+              color: 'var(--status-amber)',
               fontSize: '0.86rem',
               flexWrap: 'wrap',
               gap: '8px'
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Flame size={18} color="#ea580c" />
+              <Flame size={18} color="var(--brand-gold)" />
               <span>
                 Menampilkan <strong>{totalCount} SPK</strong> yang <strong>Lewat Batas Deadline (Overdue)</strong>. Mohon percepat proses potong & jahit!
               </span>
@@ -898,7 +901,7 @@ export default function DashboardPage() {
               type="button"
               onClick={() => { setStatus('all'); setPage(1); }}
               className="quick-action-pill"
-              style={{ fontSize: '0.74rem', background: '#ffffff', borderColor: '#fdba74', color: '#c2410c', height: '28px' }}
+              style={{ fontSize: '0.74rem', background: 'var(--bg-card)', borderColor: 'var(--status-amber-border)', color: 'var(--status-amber)', height: '28px' }}
             >
               Lihat Semua SPK
             </button>
@@ -913,17 +916,17 @@ export default function DashboardPage() {
               justifyContent: 'space-between',
               padding: '10px 16px',
               marginBottom: '16px',
-              background: '#f0f9ff',
-              border: '1.5px solid #bae6fd',
+              background: 'var(--status-sky-bg)',
+              border: '1.5px solid var(--status-sky-border)',
               borderRadius: '12px',
-              color: '#075985',
+              color: 'var(--status-sky)',
               fontSize: '0.86rem',
               flexWrap: 'wrap',
               gap: '8px'
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Clock size={18} color="#0284c7" />
+              <Clock size={18} color="var(--status-sky)" />
               <span>
                 Menampilkan <strong>{totalCount} SPK</strong> dengan batas deadline dalam <strong>7 hari ke depan</strong>.
               </span>
@@ -932,7 +935,7 @@ export default function DashboardPage() {
               type="button"
               onClick={() => { setStatus('all'); setPage(1); }}
               className="quick-action-pill"
-              style={{ fontSize: '0.74rem', background: '#ffffff', borderColor: '#7dd3fc', color: '#0369a1', height: '28px' }}
+              style={{ fontSize: '0.74rem', background: 'var(--bg-card)', borderColor: 'var(--status-sky-border)', color: 'var(--status-sky)', height: '28px' }}
             >
               Lihat Semua SPK
             </button>

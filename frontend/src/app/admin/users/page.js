@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchApi, getCurrentUser } from '@/lib/api';
+import ThemeToggle from '@/components/ThemeToggle';
 import {
   ArrowLeft,
   Users,
@@ -191,14 +192,17 @@ export default function AdminUsersPage() {
           </div>
         </div>
 
-        <button
-          onClick={() => setCreateModal(true)}
-          className="btn btn-primary"
-          style={{ fontSize: '0.8rem', padding: '7px 12px', flexShrink: 0 }}
-        >
-          <UserPlus size={15} />
-          <span>+ Tambah</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          <ThemeToggle />
+          <button
+            onClick={() => setCreateModal(true)}
+            className="btn btn-primary"
+            style={{ fontSize: '0.8rem', padding: '7px 12px' }}
+          >
+            <UserPlus size={15} />
+            <span>+ Tambah</span>
+          </button>
+        </div>
       </header>
 
       {/* Main Content */}

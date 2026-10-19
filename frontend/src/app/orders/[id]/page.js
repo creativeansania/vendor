@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { fetchApi, getCurrentUser } from '@/lib/api';
+import ThemeToggle from '@/components/ThemeToggle';
 import {
   ArrowLeft,
   Lock,
@@ -295,10 +296,10 @@ function OrderDetailContent() {
     });
   };
 
-  // Quick-Fill Cutting Actual with Estimasi SPB
-  const handleFillCuttingWithSpb = () => {
-    if (estimasiSpb > 0) {
-      setActualCutting(String(estimasiSpb));
+  // Quick-Fill Cutting Actual with Target SPK
+  const handleFillCuttingWithTargetSpk = () => {
+    if (targetSpkQty > 0) {
+      setActualCutting(String(targetSpkQty));
     }
   };
 
@@ -371,8 +372,8 @@ function OrderDetailContent() {
     }
 
     const effectiveActual = inputActual !== null ? inputActual : totalPhysicalFabric;
-    const targetRef = estimasiSpb > 0 ? estimasiSpb : targetSpkQty;
-    const targetLabel = estimasiSpb > 0 ? 'target SPB' : 'target SPK';
+    const targetRef = targetSpkQty > 0 ? targetSpkQty : 0;
+    const targetLabel = 'Target SPK';
     let isExtreme = false;
     let devPct = 0;
 
@@ -387,14 +388,14 @@ function OrderDetailContent() {
       isExtreme,
       deviationPct: devPct,
       title: isExtreme ? 'Peringatan: Selisih Hasil Potong Ekstrem' : 'Konfirmasi Simpan Hasil Potong',
-      targetVal: targetRef > 0 ? `${targetRef.toLocaleString('id-ID')} ${order?.unit_kain || 'pcs'}` : '-',
-      actualVal: `${effectiveActual.toLocaleString('id-ID')} ${order?.unit_kain || 'pcs'}`,
+      targetVal: targetRef > 0 ? `${targetRef.toLocaleString('id-ID')} pcs` : '-',
+      actualVal: `${effectiveActual.toLocaleString('id-ID')} pcs`,
       diffVal: targetRef > 0
-        ? `${effectiveActual - targetRef > 0 ? '+' : ''}${(effectiveActual - targetRef).toFixed(2)} ${order?.unit_kain || 'pcs'}`
+        ? `${effectiveActual - targetRef > 0 ? '+' : ''}${(effectiveActual - targetRef).toLocaleString('id-ID')} pcs`
         : '0',
       warningMessage: isExtreme
-        ? `Angka hasil potong yang Anda masukkan (${effectiveActual.toLocaleString('id-ID')}) berselisih ${devPct.toFixed(0)}% dari ${targetLabel} (${targetRef.toLocaleString('id-ID')}). Mohon periksa kembali apakah ada kesalahan ketik. Data ini akan langsung dikirim dan disinkronkan ke Odoo.`
-        : 'Data hasil potong akan disimpan dan disinkronkan langsung ke Odoo ERP. Anda tetap dapat mengedit data ini kapan saja.',
+        ? `Angka hasil potong yang Anda masukkan (${effectiveActual.toLocaleString('id-ID')} pcs) berselisih ${devPct.toFixed(0)}% dari ${targetLabel} (${targetRef.toLocaleString('id-ID')} pcs). Mohon periksa kembali apakah ada kesalahan ketik.`
+        : 'Data hasil potong akan disimpan dan disinkronkan langsung ke Odoo ERP.',
       onConfirm: () => executeSubmitCutting(effectiveActual, rolls)
     });
   };
@@ -508,7 +509,9 @@ function OrderDetailContent() {
     }, 0);
   }, [fabricLines, rollWeights]);
 
-  const estimasiSpb = parseFloat(order?.estimasi_dari_spb || 0);
+  const targetSpkQty = useMemo(() => {
+    return Number(order?.qty_target || order?.qty_spk || 0);
+  }, [order]);
 
   const currentActualCutting = useMemo(() => {
     if (actualCutting !== '' && actualCutting !== null && actualCutting !== undefined) {
@@ -524,15 +527,8 @@ function OrderDetailContent() {
   }, [actualCutting, order, totalPhysicalFabric]);
 
   const selisihCutting = useMemo(() => {
-    return currentActualCutting - estimasiSpb;
-  }, [currentActualCutting, estimasiSpb]);
-
-  const cuttingRatio = useMemo(() => {
-    if (!estimasiSpb || estimasiSpb <= 0) return null;
-    return Math.round((currentActualCutting / estimasiSpb) * 100);
-  }, [currentActualCutting, estimasiSpb]);
-
-
+    return currentActualCutting - targetSpkQty;
+  }, [currentActualCutting, targetSpkQty]);
 
   // Filtered transfers for Tab 4 (Feature 3)
   const filteredTransfers = useMemo(() => {
@@ -553,15 +549,6 @@ function OrderDetailContent() {
   const totalYieldPcs = useMemo(() => {
     return (parseFloat(gradeA) || 0) + (parseFloat(gradeB) || 0);
   }, [gradeA, gradeB]);
-
-  const targetSpkQty = useMemo(() => {
-    return Number(order?.qty_target || order?.qty_spk || 0);
-  }, [order]);
-
-  const yieldPercentage = useMemo(() => {
-    if (!targetSpkQty || targetSpkQty <= 0) return '0.0';
-    return ((totalYieldPcs / targetSpkQty) * 100).toFixed(1);
-  }, [targetSpkQty, totalYieldPcs]);
 
   // Product name & SKU parsing
   const { skuCode, cleanProductName } = useMemo(() => {
@@ -693,6 +680,8 @@ function OrderDetailContent() {
             <span className="hide-on-mobile">Tanya di WA</span>
           </button>
 
+          <ThemeToggle />
+
           <button
             onClick={loadData}
             className="btn btn-secondary btn-icon"
@@ -775,7 +764,7 @@ function OrderDetailContent() {
           {/* 3 Executive Highlight Tiles */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
             {/* Tile 1: Target SPK */}
-            <div className="hero-tile" style={{ background: '#fffdf7', borderColor: '#fde68a' }}>
+            <div className="hero-tile" style={{ background: 'var(--brand-gold-light)', borderColor: 'var(--brand-gold-border)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.7rem', fontWeight: 700, color: 'var(--brand-gold)', textTransform: 'uppercase' }}>
                 <span>🎯 Target SPK</span>
               </div>
@@ -783,7 +772,7 @@ function OrderDetailContent() {
                 {targetSpkQty.toLocaleString('id-ID')} <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>pcs</span>
               </div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                Target output garmen
+                Target Pesanan SPK
               </div>
             </div>
 
@@ -800,23 +789,23 @@ function OrderDetailContent() {
               </div>
             </div>
 
-            {/* Tile 3: Kecukupan Kain */}
+            {/* Tile 3: Status Produksi */}
             <div className="hero-tile" style={{
-              background: order.status_kebutuhan_kain === 'Cukup' ? 'var(--status-emerald-bg)' : 'var(--status-amber-bg)',
-              borderColor: order.status_kebutuhan_kain === 'Cukup' ? 'var(--status-emerald-border)' : 'var(--status-amber-border)'
+              background: order.status_produksi === 'Selesai' ? 'var(--status-emerald-bg)' : 'var(--status-sky-bg)',
+              borderColor: order.status_produksi === 'Selesai' ? 'var(--status-emerald-border)' : 'var(--status-sky-border)'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', color: order.status_kebutuhan_kain === 'Cukup' ? 'var(--status-emerald)' : 'var(--status-amber)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', color: order.status_produksi === 'Selesai' ? 'var(--status-emerald)' : 'var(--status-sky)' }}>
                 <span
                   className="pulse-dot"
-                  style={{ background: order.status_kebutuhan_kain === 'Cukup' ? '#059669' : '#d97706' }}
+                  style={{ background: order.status_produksi === 'Selesai' ? '#059669' : '#0284c7' }}
                 />
-                <span>Kecukupan Kain</span>
+                <span>Status Produksi</span>
               </div>
-              <div style={{ fontSize: '1.15rem', fontWeight: 800, color: order.status_kebutuhan_kain === 'Cukup' ? 'var(--status-emerald)' : 'var(--status-amber)', lineHeight: 1.1 }}>
-                {order.status_kebutuhan_kain || 'Cukup'}
+              <div style={{ fontSize: '1.15rem', fontWeight: 800, color: order.status_produksi === 'Selesai' ? 'var(--status-emerald)' : 'var(--status-sky)', lineHeight: 1.1 }}>
+                {order.status_produksi || 'Proses'}
               </div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
-                {order.status_kebutuhan_kain === 'Cukup' ? 'Stok kain aman' : 'Periksa fisik bahan'}
+                Tahap Pengerjaan
               </div>
             </div>
           </div>
@@ -829,8 +818,8 @@ function OrderDetailContent() {
             style={{
               padding: '14px 18px',
               borderRadius: '16px',
-              background: 'linear-gradient(135deg, #fffdfa 0%, #ffffff 100%)',
-              border: '1px solid #fde68a',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-default)',
               display: 'flex',
               flexDirection: 'column',
               gap: '10px'
@@ -843,7 +832,7 @@ function OrderDetailContent() {
                     width: '36px',
                     height: '36px',
                     borderRadius: '10px',
-                    background: '#fef3c7',
+                    background: 'var(--brand-gold-light)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -979,120 +968,57 @@ function OrderDetailContent() {
                 </span>
               </div>
 
-              {/* Alert Banner if Status Kebutuhan Kain Kurang */}
-              {order.status_kebutuhan_kain === 'Kurang' && (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    padding: '12px 16px',
-                    marginBottom: '16px',
-                    background: '#fef2f2',
-                    border: '1.5px solid #fca5a5',
-                    borderRadius: '12px',
-                    color: '#991b1b'
-                  }}
-                >
-                  <div
-                    style={{
-                      width: '32px',
-                      height: '32px',
-                      borderRadius: '8px',
-                      background: '#fee2e2',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                      color: '#dc2626'
-                    }}
-                  >
-                    <AlertCircle size={20} />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0, fontSize: '0.86rem', lineHeight: 1.4 }}>
-                    <strong>Perhatian: Total Kain Diterima Kurang!</strong>
-                    <div style={{ fontSize: '0.8rem', color: '#b91c1c', marginTop: '2px' }}>
-                      Kain diterima: <strong>{Number(order.kain_dari_gudang || 0).toLocaleString('id-ID')} {order.unit_kain || 'kg'}</strong> (Kebutuhan standar SPK: <strong>{Number(order.qty_kebutuhan_kain || 0).toLocaleString('id-ID')} {order.unit_kain || 'kg'}</strong>). Harap periksa fisik kain sebelum memotong.
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleAskWaKainKurang}
-                    className="btn"
-                    style={{
-                      background: '#25D366',
-                      color: '#ffffff',
-                      border: 'none',
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      padding: '8px 12px',
-                      borderRadius: '10px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      flexShrink: 0,
-                      boxShadow: '0 2px 6px rgba(37, 211, 102, 0.35)',
-                      cursor: 'pointer'
-                    }}
-                    title="Laporkan kendala kain kurang ke WhatsApp Group"
-                  >
-                    <MessageCircle size={15} />
-                    <span>Tanya di WA</span>
-                  </button>
-                </div>
-              )}
-
-              {/* 3 Metric Tiles Grid */}
+              {/* 3 Human Metric Tiles Grid */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
-                {/* 1. Estimasi SPB */}
+                {/* 1. Target SPK */}
                 <div className="hero-tile">
-                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>🎯 Estimasi dari SPB</div>
+                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>🎯 Target SPK</div>
                   <div className="mono-num" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.2 }}>
-                    {estimasiSpb.toLocaleString('id-ID')} <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>{order.unit_kain || 'pcs'}</span>
+                    {targetSpkQty.toLocaleString('id-ID')} <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>pcs</span>
                   </div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                    Target rujukan SPB
+                    Pesanan Produksi
                   </div>
                 </div>
 
-                {/* 2. Hasil Cutting Aktual Input */}
-                <div className="hero-tile" style={{ background: '#fffdf7', borderColor: '#fde68a' }}>
+                {/* 2. Hasil Potong Fisik Input */}
+                <div className="hero-tile" style={{ background: 'var(--brand-gold-light)', borderColor: 'var(--brand-gold-border)' }}>
                   <div className="metric-label" style={{ fontSize: '0.7rem', color: 'var(--brand-gold)' }}>✂️ Hasil Potong Fisik</div>
                   {canEditCutting ? (
                     <div>
                       <div className="input-addon-group" style={{ height: '42px', borderColor: actualCutting ? 'var(--brand-gold)' : 'var(--border-strong)' }}>
                         <input
                           type="number"
-                          step="0.01"
+                          step="1"
                           min="0"
                           disabled={saving}
-                          placeholder={estimasiSpb > 0 ? String(estimasiSpb) : '0'}
+                          placeholder={targetSpkQty > 0 ? String(targetSpkQty) : '0'}
                           value={actualCutting}
                           onChange={(e) => setActualCutting(e.target.value)}
                           className="input-addon-field"
                           style={{ fontSize: '1.25rem', fontWeight: 800 }}
                         />
                         <span className="input-addon-label">
-                          {order.unit_kain || 'PCS'}
+                          PCS
                         </span>
                       </div>
-                      {estimasiSpb > 0 && actualCutting === '' && (
+                      {targetSpkQty > 0 && actualCutting === '' && (
                         <button
                           type="button"
-                          onClick={handleFillCuttingWithSpb}
+                          onClick={handleFillCuttingWithTargetSpk}
                           className="quick-action-pill quick-action-pill-amber"
                           style={{ marginTop: '6px', width: '100%', fontSize: '0.7rem' }}
-                          title="Isi otomatis dengan target SPB"
+                          title="Isi otomatis dengan Target SPK"
                         >
                           <Zap size={11} />
-                          <span>Pakai Target SPB ({estimasiSpb})</span>
+                          <span>Sesuai Target SPK ({targetSpkQty})</span>
                         </button>
                       )}
                     </div>
                   ) : (
                     <div className="mono-num" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--brand-gold)', lineHeight: 1.2 }}>
                       {(parseFloat(order.actual_cutting) || currentActualCutting).toLocaleString('id-ID')}{' '}
-                      <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>{order.unit_kain || 'pcs'}</span>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>pcs</span>
                     </div>
                   )}
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
@@ -1100,21 +1026,25 @@ function OrderDetailContent() {
                   </div>
                 </div>
 
-                {/* 3. Selisih Hasil Potong */}
+                {/* 3. Selisih vs Target SPK */}
                 <div className="hero-tile">
-                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>⚖️ Selisih Output</div>
+                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>⚖️ Selisih vs Target SPK</div>
                   <div className="mono-num" style={{
                     fontSize: '1.35rem',
                     fontWeight: 800,
                     lineHeight: 1.2,
                     color: selisihCutting > 0 ? 'var(--status-emerald)' : selisihCutting < 0 ? 'var(--status-rose)' : 'var(--text-primary)'
                   }}>
-                    {selisihCutting > 0 ? `+${selisihCutting.toFixed(2)}` : selisihCutting.toFixed(2)}{' '}
-                    <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>{order.unit_kain || 'pcs'}</span>
+                    {currentActualCutting > 0
+                      ? (selisihCutting > 0 ? `+${selisihCutting.toLocaleString('id-ID')}` : selisihCutting.toLocaleString('id-ID'))
+                      : '0'}{' '}
+                    <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>pcs</span>
                   </div>
                   <div style={{ marginTop: '2px' }}>
-                    {selisihCutting === 0 ? (
-                      <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '2px 8px' }}>✓ Sesuai Target SPB</span>
+                    {currentActualCutting === 0 ? (
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Belum input potong</span>
+                    ) : selisihCutting === 0 ? (
+                      <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '2px 8px' }}>✓ Sesuai Target SPK</span>
                     ) : selisihCutting > 0 ? (
                       <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '2px 8px' }}>▲ Hasil Potong Lebih</span>
                     ) : (
@@ -1123,29 +1053,6 @@ function OrderDetailContent() {
                   </div>
                 </div>
               </div>
-
-              {/* Visual Progress Bar (Ratio vs Target SPB) */}
-              {cuttingRatio !== null && (
-                <div style={{ marginTop: '14px', padding: '10px 14px', background: 'var(--bg-card-subtle)', borderRadius: '12px', border: '1px solid var(--border-default)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '0.78rem' }}>
-                    <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Rasio Pemenuhan Potong vs Target:</span>
-                    <strong className="mono-num" style={{ color: cuttingRatio >= 100 ? 'var(--status-emerald)' : 'var(--brand-gold)', fontSize: '0.85rem' }}>
-                      {cuttingRatio}%
-                    </strong>
-                  </div>
-                  <div style={{ width: '100%', height: '8px', background: '#e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
-                    <div
-                      style={{
-                        width: `${Math.min(100, Math.max(0, cuttingRatio))}%`,
-                        height: '100%',
-                        background: cuttingRatio >= 100 ? 'linear-gradient(90deg, #10b981, #059669)' : 'linear-gradient(90deg, #f59e0b, #d97706)',
-                        borderRadius: '10px',
-                        transition: 'width 0.4s ease'
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
             </div>
 
 
@@ -1495,51 +1402,29 @@ function OrderDetailContent() {
         {activeTab === 'hasil' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-            {/* Yield Summary Calculator */}
+            {/* Ringkasan Produksi Jahit */}
             <div className="card" style={{ padding: '16px 18px', borderRadius: '16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', textAlign: 'center' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', textAlign: 'center' }}>
                 <div className="hero-tile">
-                  <div className="metric-label" style={{ fontSize: '0.68rem' }}>Target SPK</div>
+                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>🎯 Target SPK</div>
                   <div className="mono-num" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)' }}>
                     {targetSpkQty.toLocaleString('id-ID')} <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>pcs</span>
                   </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Target Pesanan</div>
                 </div>
-                <div className="hero-tile" style={{ background: '#fffdf7', borderColor: '#fde68a' }}>
-                  <div className="metric-label" style={{ fontSize: '0.68rem', color: 'var(--brand-gold)' }}>Total Hasil Jahit</div>
+                <div className="hero-tile">
+                  <div className="metric-label" style={{ fontSize: '0.7rem' }}>✂️ Hasil Potong</div>
+                  <div className="mono-num" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    {(parseFloat(order.actual_cutting) || currentActualCutting || 0).toLocaleString('id-ID')} <span style={{ fontSize: '0.75rem', fontWeight: 400 }}>pcs</span>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Potongan Meja</div>
+                </div>
+                <div className="hero-tile" style={{ background: 'var(--brand-gold-light)', borderColor: 'var(--brand-gold-border)' }}>
+                  <div className="metric-label" style={{ fontSize: '0.7rem', color: 'var(--brand-gold)' }}>🧵 Total Hasil Jahit</div>
                   <div className="mono-num" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--brand-gold)' }}>
                     {totalYieldPcs.toLocaleString('id-ID')} <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>pcs</span>
                   </div>
-                </div>
-                <div className="hero-tile">
-                  <div className="metric-label" style={{ fontSize: '0.68rem' }}>Rasio Yield</div>
-                  <div className="mono-num" style={{
-                    fontSize: '1.35rem',
-                    fontWeight: 800,
-                    color: parseFloat(yieldPercentage) >= 95 ? 'var(--status-emerald)' : 'var(--brand-gold)'
-                  }}>
-                    {yieldPercentage}%
-                  </div>
-                </div>
-              </div>
-
-              {/* Yield Progress Bar */}
-              <div style={{ marginTop: '14px', padding: '10px 14px', background: 'var(--bg-card-subtle)', borderRadius: '12px', border: '1px solid var(--border-default)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '0.78rem' }}>
-                  <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Status Efisiensi Jahit:</span>
-                  <span className={`badge ${parseFloat(yieldPercentage) >= 95 ? 'badge-emerald' : 'badge-amber'}`}>
-                    {parseFloat(yieldPercentage) >= 95 ? '✓ Target Tercapai' : 'Perlu Dioptimalkan'}
-                  </span>
-                </div>
-                <div style={{ width: '100%', height: '8px', background: '#e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
-                  <div
-                    style={{
-                      width: `${Math.min(100, Math.max(0, parseFloat(yieldPercentage)))}%`,
-                      height: '100%',
-                      background: parseFloat(yieldPercentage) >= 95 ? 'linear-gradient(90deg, #10b981, #059669)' : 'linear-gradient(90deg, #f59e0b, #d97706)',
-                      borderRadius: '10px',
-                      transition: 'width 0.4s ease'
-                    }}
-                  />
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Grade A + Grade B</div>
                 </div>
               </div>
             </div>
@@ -1611,9 +1496,9 @@ function OrderDetailContent() {
                   )}
                 </div>
 
-                {/* Sisa Makloon with Steppers */}
+                {/* Sisa Kain (BSKL) with Steppers */}
                 <div>
-                  <label className="form-label" style={{ marginBottom: '6px', fontWeight: 700 }}>Sisa Makloon (Kg)</label>
+                  <label className="form-label" style={{ marginBottom: '6px', fontWeight: 700 }}>Sisa Kain (BSKL / Kg)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -2058,10 +1943,10 @@ function OrderDetailContent() {
             {/* Comparison Metrics Grid */}
             <div className="comparison-card">
               <div className="comparison-box">
-                <span className="comparison-box-label">Target Rujukan</span>
+                <span className="comparison-box-label">Target SPK</span>
                 <span className="comparison-box-value" style={{ fontSize: '1.05rem' }}>{safetyModal.targetVal}</span>
               </div>
-              <div className="comparison-box" style={{ background: '#ffffff', borderRadius: '8px', padding: '4px' }}>
+              <div className="comparison-box" style={{ background: 'var(--bg-card)', borderRadius: '8px', padding: '4px' }}>
                 <span className="comparison-box-label" style={{ color: safetyModal.isExtreme ? 'var(--status-rose)' : 'var(--brand-gold)' }}>
                   Input Anda
                 </span>
@@ -2085,11 +1970,11 @@ function OrderDetailContent() {
               style={{
                 padding: '12px 14px',
                 borderRadius: '12px',
-                background: safetyModal.isExtreme ? '#fff1f2' : '#f8fafc',
-                border: `1px solid ${safetyModal.isExtreme ? '#fecdd3' : '#e2e8f0'}`,
+                background: safetyModal.isExtreme ? 'var(--status-rose-bg)' : 'var(--bg-card-subtle)',
+                border: `1px solid ${safetyModal.isExtreme ? 'var(--status-rose-border)' : 'var(--border-default)'}`,
                 fontSize: '0.82rem',
                 lineHeight: 1.5,
-                color: safetyModal.isExtreme ? '#9f1239' : 'var(--text-secondary)',
+                color: safetyModal.isExtreme ? 'var(--status-rose)' : 'var(--text-secondary)',
                 marginBottom: '18px'
               }}
             >
