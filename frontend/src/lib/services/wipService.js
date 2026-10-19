@@ -811,7 +811,115 @@ export class WipService {
       }
     }
 
-    // 3. Write all values to Monitoring WIP Vendor
+    // 3. Sisa Makloon (kg) -> Create / update Internal Transfer for BSKL
+    if (odooWipId && parentMo) {
+      try {
+        const wips = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'read', [[odooWipId]], {
+          fields: ['x_name', 'x_studio_warehouse', 'x_studio_sales_order']
+        });
+        const currentWip = wips && wips[0] ? wips[0] : null;
+        const whId = currentWip?.x_studio_warehouse ? currentWip.x_studio_warehouse[0] : null;
+
+        if (whId) {
+          const warehouses = await adminOdooClient._callObject('stock.warehouse', 'read', [[whId]], {
+            fields: ['id', 'name', 'lot_stock_id']
+          });
+          const wh = warehouses && warehouses[0] ? warehouses[0] : null;
+
+          if (wh && wh.lot_stock_id) {
+            const soName = currentWip.x_studio_sales_order ? (Array.isArray(currentWip.x_studio_sales_order) ? currentWip.x_studio_sales_order[1] : currentWip.x_studio_sales_order) : '';
+            const prefix = `Sisa Makloon - ${currentWip.x_name || parentMo.name} |`;
+            const originM = soName ? `${prefix} SO ${soName}` : `${prefix} MO ${parentMo.name}`;
+
+            const existingPicks = await adminOdooClient._callObject('stock.picking', 'search_read', [
+              [['origin', '=like', `${prefix}%`]]
+            ], { fields: ['id', 'name', 'state', 'move_ids'], limit: 1 });
+
+            const pick = existingPicks && existingPicks.length > 0 ? existingPicks[0] : null;
+
+            if (sisaKg > 0) {
+              const bsklProds = await adminOdooClient._callObject('product.product', 'search_read', [
+                [['name', '=', 'BSKL']]
+              ], { fields: ['id', 'name', 'uom_id'], limit: 1 });
+
+              const destLocs = await adminOdooClient._callObject('stock.location', 'search_read', [
+                [
+                  ['complete_name', 'ilike', 'WHGB/Stock'],
+                  ['usage', '=', 'internal'],
+                  ['company_id', 'in', [parentMo.company_id[0], false]]
+                ]
+              ], { fields: ['id'], limit: 1 });
+
+              if (bsklProds && bsklProds.length > 0 && destLocs && destLocs.length > 0) {
+                const bskl = bsklProds[0];
+                const destId = destLocs[0].id;
+                const srcId = wh.lot_stock_id[0];
+
+                if (pick) {
+                  if (!['done', 'cancel'].includes(pick.state)) {
+                    if (pick.move_ids && pick.move_ids.length > 0) {
+                      const moves = await adminOdooClient._callObject('stock.move', 'read', [
+                        pick.move_ids,
+                        ['id', 'product_id', 'product_uom_qty']
+                      ]);
+                      const bsklMove = moves.find(m => m.product_id && m.product_id[0] === bskl.id);
+                      if (bsklMove && parseFloat(bsklMove.product_uom_qty) !== sisaKg) {
+                        await adminOdooClient._callObject('stock.move', 'write', [[bsklMove.id], { product_uom_qty: sisaKg }]);
+                      }
+                    }
+                  }
+                  wipUpdateVals.x_studio_nama_transfer_makloon = pick.name;
+                } else {
+                  const ptypes = await adminOdooClient._callObject('stock.picking.type', 'search_read', [
+                    [
+                      ['code', '=', 'internal'],
+                      '|',
+                      ['warehouse_id', '=', wh.id],
+                      ['company_id', '=', parentMo.company_id[0]]
+                    ]
+                  ], { fields: ['id', 'warehouse_id'], limit: 5 });
+
+                  if (ptypes && ptypes.length > 0) {
+                    const chosenPtype = ptypes.find(p => p.warehouse_id && p.warehouse_id[0] === wh.id) || ptypes[0];
+                    const pickPayload = {
+                      picking_type_id: chosenPtype.id,
+                      location_id: srcId,
+                      location_dest_id: destId,
+                      origin: originM,
+                      company_id: parentMo.company_id[0],
+                      note: `Sisa bahan makloon dari MO ${parentMo.name}`
+                    };
+
+                    const newPickId = await adminOdooClient._callObject('stock.picking', 'create', [pickPayload]);
+
+                    await adminOdooClient._callObject('stock.move', 'create', [{
+                      product_id: bskl.id,
+                      product_uom_qty: sisaKg,
+                      product_uom: bskl.uom_id ? bskl.uom_id[0] : 12,
+                      picking_id: newPickId,
+                      location_id: srcId,
+                      location_dest_id: destId,
+                      company_id: parentMo.company_id[0]
+                    }]);
+
+                    const readPick = await adminOdooClient._callObject('stock.picking', 'read', [[newPickId]], { fields: ['name'] });
+                    const pickName = readPick && readPick[0] ? readPick[0].name : `PICK#${newPickId}`;
+                    wipUpdateVals.x_studio_nama_transfer_makloon = pickName;
+                  }
+                }
+              }
+            } else if (pick && !['done', 'cancel'].includes(pick.state)) {
+              await adminOdooClient._callObject('stock.picking', 'action_cancel', [[pick.id]]);
+              wipUpdateVals.x_studio_nama_transfer_makloon = false;
+            }
+          }
+        }
+      } catch (sisaErr) {
+        console.warn(`[WipService] Transfer Makloon creation error:`, sisaErr.message);
+      }
+    }
+
+    // 4. Write all values to Monitoring WIP Vendor
     if (odooWipId) {
       await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [[odooWipId], wipUpdateVals], {
         context: { tracking_disable: true, no_automation: true }
