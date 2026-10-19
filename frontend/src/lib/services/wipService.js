@@ -53,8 +53,7 @@ export class WipService {
         harga_vendor, total_harga, status_produksi,
         cutting_locked_at, cutting_locked_by, result_locked_at, result_locked_by,
         is_active, parent_wip_order_id, updated_at,
-        vendors ( id, name ),
-        parent:wip_orders!wip_orders_parent_wip_order_id_fkey ( id, sales_order )
+        vendors ( id, name )
       `, { count: 'exact' })
       .eq('is_active', true);
 
@@ -220,14 +219,26 @@ export class WipService {
       .from('wip_orders')
       .select(`
         *,
-        vendors ( id, name ),
-        parent:wip_orders!wip_orders_parent_wip_order_id_fkey ( id, sales_order )
+        vendors ( id, name )
       `)
       .eq('id', Number(orderId))
       .single();
 
     if (error || !order) {
       throw new Error(`Order #${orderId} tidak ditemukan.`);
+    }
+
+    if (order.parent_wip_order_id) {
+      try {
+        const { data: parent } = await supabaseServer
+          .from('wip_orders')
+          .select('id, sales_order')
+          .eq('id', order.parent_wip_order_id)
+          .single();
+        order.parent = parent || null;
+      } catch (parentErr) {
+        order.parent = null;
+      }
     }
 
     const isVendorRole = ['master_vendor', 'admin_vendor'].includes(user.role);
