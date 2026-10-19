@@ -32,7 +32,8 @@ import {
   Calculator,
   Copy,
   Percent,
-  ExternalLink
+  ExternalLink,
+  Save
 } from 'lucide-react';
 
 function OrderDetailContent() {
