@@ -8,6 +8,7 @@ export default function CuttingSubmitBar({
   actualCutting,
   totalPhysicalFabric,
   rollWeights = {},
+  label = 'Simpan Hasil Potong',
   onSubmit
 }) {
   if (!canEditCutting) return null;
@@ -26,7 +27,7 @@ export default function CuttingSubmitBar({
         style={{ width: '100%', padding: '14px 20px', fontSize: '1rem', borderRadius: '14px' }}
       >
         <Save size={18} />
-        <span>{saving ? 'Menyimpan...' : 'Simpan Hasil Potong'}</span>
+        <span>{saving ? 'Menyimpan...' : label}</span>
       </button>
     </div>
   );

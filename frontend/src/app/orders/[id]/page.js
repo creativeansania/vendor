@@ -8,7 +8,8 @@ import OrderBanner from '@/components/orders/OrderBanner';
 import OrderSpecCard from '@/components/orders/OrderSpecCard';
 import TarifMakloonCard from '@/components/orders/TarifMakloonCard';
 import OrderTabsNav from '@/components/orders/OrderTabsNav';
-import CuttingTab from '@/components/orders/tabs/CuttingTab';
+import FabricTab from '@/components/orders/tabs/FabricTab';
+import AccessoryTab from '@/components/orders/tabs/AccessoryTab';
 import SewingTab from '@/components/orders/tabs/SewingTab';
 import TransferTab from '@/components/orders/tabs/TransferTab';
 import SafetyConfirmationModal from '@/components/orders/SafetyConfirmationModal';
@@ -66,13 +67,14 @@ function OrderDetailContent() {
         <OrderTabsNav
           activeTab={detail.activeTab}
           setActiveTab={detail.setActiveTab}
-          rollLinesCount={detail.rollLines?.length || 0}
+          fabricLinesCount={detail.fabricLines?.length || 0}
+          accessoryLinesCount={detail.accessoryLines?.length || 0}
           transfersCount={detail.transfers?.length || 0}
         />
 
-        {/* TAB 1: HASIL POTONG & BAHAN */}
-        {detail.activeTab === 'timbang' && (
-          <CuttingTab
+        {/* TAB 1: KAIN (BAHAN KAIN) */}
+        {(detail.activeTab === 'kain' || detail.activeTab === 'timbang') && (
+          <FabricTab
             order={detail.order}
             targetSpkQty={detail.targetSpkQty}
             currentActualCutting={detail.currentActualCutting}
@@ -85,12 +87,29 @@ function OrderDetailContent() {
             canEditCutting={detail.canEditCutting}
             saving={detail.saving}
             fabricLines={detail.fabricLines}
-            accessoryLines={detail.accessoryLines}
             penerimaanQtys={detail.penerimaanQtys}
             rollWeights={detail.rollWeights}
             totalPhysicalFabric={detail.totalPhysicalFabric}
             handleFillAllFabricFromSj={detail.handleFillAllFabricFromSj}
             handleFillAllFabricFromPenerimaan={detail.handleFillAllFabricFromPenerimaan}
+            handlePenerimaanChange={detail.handlePenerimaanChange}
+            handleFillCuttingFromPenerimaan={detail.handleFillCuttingFromPenerimaan}
+            handleWeightChange={detail.handleWeightChange}
+            handleRequestSubmitCutting={detail.handleRequestSubmitCutting}
+          />
+        )}
+
+        {/* TAB 2: AKSESORIS (BAHAN PELENGKAP) */}
+        {detail.activeTab === 'aksesoris' && (
+          <AccessoryTab
+            order={detail.order}
+            canEditCutting={detail.canEditCutting}
+            saving={detail.saving}
+            accessoryLines={detail.accessoryLines}
+            penerimaanQtys={detail.penerimaanQtys}
+            rollWeights={detail.rollWeights}
+            actualCutting={detail.actualCutting}
+            totalPhysicalFabric={detail.totalPhysicalFabric}
             handleFillAllAccessoriesFromSj={detail.handleFillAllAccessoriesFromSj}
             handleFillAllAccessories={detail.handleFillAllAccessories}
             handlePenerimaanChange={detail.handlePenerimaanChange}
@@ -100,8 +119,8 @@ function OrderDetailContent() {
           />
         )}
 
-        {/* TAB 2: INPUT HASIL JAHIT */}
-        {detail.activeTab === 'hasil' && (
+        {/* TAB 3: INPUT HASIL JAHIT */}
+        {(detail.activeTab === 'jahit' || detail.activeTab === 'hasil') && (
           <SewingTab
             order={detail.order}
             targetSpkQty={detail.targetSpkQty}
@@ -129,7 +148,7 @@ function OrderDetailContent() {
           />
         )}
 
-        {/* TAB 3: DOKUMEN TRANSFER ODOO */}
+        {/* TAB 4: DOKUMEN TRANSFER ODOO */}
         {detail.activeTab === 'transfer' && (
           <TransferTab
             order={detail.order}

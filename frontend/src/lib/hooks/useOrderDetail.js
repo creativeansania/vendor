@@ -12,7 +12,7 @@ export function useOrderDetail(orderId) {
   const [order, setOrder] = useState(null);
   const [rollLines, setRollLines] = useState([]);
   const [rawMoves, setRawMoves] = useState([]);
-  const [activeTab, setActiveTab] = useState('timbang'); // 'timbang', 'hasil', 'transfer'
+  const [activeTab, setActiveTab] = useState('kain'); // 'kain', 'aksesoris', 'jahit', 'transfer'
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState({ text: '', type: '' });
