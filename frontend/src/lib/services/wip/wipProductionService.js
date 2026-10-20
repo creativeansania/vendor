@@ -123,6 +123,123 @@ export async function submitProductionResult({
 }
 
 /**
+ * Resolves the corresponding Grade B product variant for a given product.
+ * If the product has attributes (e.g. POLICY / GRADE with values like 'A (GRADE A)', 'B (GRADE B)', and WARNA / COLOR),
+ * it finds the matching variant with the same color/attributes but with Grade B.
+ * If no Grade B variant exists, it cleanly falls back to parentProductId.
+ */
+export async function findMatchingGradeBVariant(parentProductId) {
+  if (!parentProductId) return parentProductId;
+  try {
+    const [parentProd] = await adminOdooClient._callObject('product.product', 'read', [
+      [parentProductId],
+      ['id', 'name', 'display_name', 'product_tmpl_id', 'product_template_attribute_value_ids']
+    ]);
+
+    if (!parentProd || !parentProd.product_tmpl_id) {
+      return parentProductId;
+    }
+
+    const parentPtavIds = parentProd.product_template_attribute_value_ids || [];
+    if (parentPtavIds.length === 0) {
+      // Plain product without variant attributes, return same product as fallback
+      return parentProductId;
+    }
+
+    const tmplId = parentProd.product_tmpl_id[0];
+
+    // Fetch all variants under this template
+    const allVariants = await adminOdooClient._callObject('product.product', 'search_read', [
+      [['product_tmpl_id', '=', tmplId]],
+      ['id', 'display_name', 'product_template_attribute_value_ids']
+    ]);
+
+    if (!allVariants || allVariants.length <= 1) {
+      return parentProductId;
+    }
+
+    // Fetch PTAV details
+    const allPtavIds = [...new Set(allVariants.flatMap(v => v.product_template_attribute_value_ids || []))];
+    const ptavRecords = await adminOdooClient._callObject('product.template.attribute.value', 'read', [
+      allPtavIds,
+      ['id', 'name', 'attribute_id']
+    ]);
+
+    const ptavMap = new Map();
+    for (const p of ptavRecords) {
+      ptavMap.set(p.id, {
+        id: p.id,
+        name: p.name,
+        attributeId: p.attribute_id[0],
+        attributeName: p.attribute_id[1]
+      });
+    }
+
+    const isGradeBPtav = (p) => {
+      const valName = (p.name || '').trim().toLowerCase();
+      const attrName = (p.attribute_id ? p.attribute_id[1] : '').toLowerCase();
+      if (valName.includes('grade b') || valName === 'b' || valName.startsWith('b (')) return true;
+      if (attrName.includes('grade') && (valName === 'b' || valName.includes('b'))) return true;
+      return false;
+    };
+
+    const gradeBPtavs = ptavRecords.filter(isGradeBPtav);
+    if (gradeBPtavs.length === 0) {
+      const matchByDisplay = allVariants.find(v => (v.display_name || '').toLowerCase().includes('grade b'));
+      return matchByDisplay ? matchByDisplay.id : parentProductId;
+    }
+
+    const gradeBPtavIds = new Set(gradeBPtavs.map(p => p.id));
+    const gradeAttributeIds = new Set(gradeBPtavs.map(p => p.attribute_id[0]));
+
+    // Parent product's non-grade PTAVs (e.g. Color, Size)
+    const parentNonGradePtavIds = parentPtavIds.filter(id => {
+      const info = ptavMap.get(id);
+      return info && !gradeAttributeIds.has(info.attributeId);
+    });
+
+    let bestVariant = null;
+    let maxMatch = -1;
+
+    for (const variant of allVariants) {
+      const vPtavs = variant.product_template_attribute_value_ids || [];
+      const hasGradeB = vPtavs.some(id => gradeBPtavIds.has(id));
+      if (!hasGradeB) continue;
+
+      const vNonGradePtavs = vPtavs.filter(id => {
+        const info = ptavMap.get(id);
+        return info && !gradeAttributeIds.has(info.attributeId);
+      });
+
+      const isExactNonGradeMatch =
+        parentNonGradePtavIds.length === vNonGradePtavs.length &&
+        parentNonGradePtavIds.every(id => vNonGradePtavs.includes(id));
+
+      if (isExactNonGradeMatch) {
+        bestVariant = variant;
+        break;
+      }
+
+      const commonCount = parentNonGradePtavIds.filter(id => vNonGradePtavs.includes(id)).length;
+      if (commonCount > maxMatch) {
+        maxMatch = commonCount;
+        bestVariant = variant;
+      }
+    }
+
+    if (bestVariant) {
+      console.log(`[findMatchingGradeBVariant] Resolved Grade B variant for ${parentProductId} -> ${bestVariant.id} (${bestVariant.display_name})`);
+      return bestVariant.id;
+    }
+
+    return parentProductId;
+  } catch (err) {
+    console.warn(`[findMatchingGradeBVariant] Error resolving Grade B variant:`, err.message);
+    return parentProductId;
+  }
+}
+
+/**
  * Push production result changes to Odoo ERP
  */
 export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg, categories = {}) {
@@ -197,30 +314,44 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
         if (parentMo.x_studio_sales_order && !moB.x_studio_sales_order) {
           moBUpdates.x_studio_sales_order = parentMo.x_studio_sales_order[0];
         }
+        // Update product to Grade B variant if still in draft
+        if (moB.state === 'draft' && parentMo.product_id) {
+          try {
+            const targetProdBId = await findMatchingGradeBVariant(parentMo.product_id[0]);
+            if (targetProdBId && moB.product_id && moB.product_id[0] !== targetProdBId) {
+              moBUpdates.product_id = targetProdBId;
+            }
+          } catch (e) {}
+        }
         if (Object.keys(moBUpdates).length > 0) {
           await adminOdooClient._callObject('mrp.production', 'write', [[moB.id], moBUpdates]);
         }
         wipUpdateVals.x_studio_nama_mo_grade_b = moB.name;
       } else {
-        // Search for a Grade B product variant, or fallback to the parent product
-        let targetProdBId = parentMo.product_id[0];
-        try {
-          const prods = await adminOdooClient._callObject('product.product', 'read', [[parentMo.product_id[0]]], {
-            fields: ['product_tmpl_id']
-          });
-          const tmplId = prods && prods[0] && prods[0].product_tmpl_id ? prods[0].product_tmpl_id[0] : null;
-          if (tmplId) {
-            const prodBs = await adminOdooClient._callObject('product.product', 'search_read', [
-              [
-                ['product_tmpl_id', '=', tmplId],
-                ['name', 'ilike', 'GRADE B']
-              ]
-            ], { fields: ['id', 'name', 'uom_id'], limit: 1 });
-            if (prodBs && prodBs.length > 0) {
-              targetProdBId = prodBs[0].id;
-            }
+        // Resolve Grade B product variant, or cleanly fallback to parent product
+        let targetProdBId = parentMo.product_id ? parentMo.product_id[0] : null;
+        if (targetProdBId) {
+          try {
+            targetProdBId = await findMatchingGradeBVariant(targetProdBId);
+          } catch (resErr) {
+            console.warn(`[WipProductionService] Fallback to parent product for Grade B:`, resErr.message);
           }
-        } catch (e) {}
+        }
+
+        // Find matching BOM for Grade B variant if available
+        let targetBomId = parentMo.bom_id ? parentMo.bom_id[0] : false;
+        if (targetProdBId && targetProdBId !== parentMo.product_id[0]) {
+          try {
+            const boms = await adminOdooClient._callObject('mrp.bom', 'search_read', [
+              [['product_id', '=', targetProdBId]],
+              ['id'],
+              { limit: 1 }
+            ]);
+            if (boms && boms.length > 0) {
+              targetBomId = boms[0].id;
+            }
+          } catch (bomErr) {}
+        }
 
         const moPayload = {
           product_id: targetProdBId,
@@ -233,8 +364,8 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
         if (parentMo.production_group_id) {
           moPayload.production_group_id = parentMo.production_group_id[0];
         }
-        if (parentMo.bom_id) {
-          moPayload.bom_id = parentMo.bom_id[0];
+        if (targetBomId) {
+          moPayload.bom_id = targetBomId;
         }
         if (parentMo.x_studio_sales_order) {
           moPayload.x_studio_sales_order = parentMo.x_studio_sales_order[0];
