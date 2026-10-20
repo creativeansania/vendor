@@ -323,11 +323,11 @@ export async function ensureDedicatedComponentPickings(moId) {
     for (const pick of pickings) {
       if (pick.state === 'done' || pick.state === 'cancel') continue;
       const pName = (pick.name || '').toUpperCase();
-      if (!pName.includes('/PC/') && !pName.includes('/SPB/')) continue;
+      if (!pName.includes('/PC/') && !pName.includes('/SPB/') && !pName.includes('/SFP/')) continue;
       if (!pick.move_ids || pick.move_ids.length === 0) continue;
 
       const moves = await adminOdooClient._callObject('stock.move', 'read', [pick.move_ids], {
-        fields: ['id', 'product_id', 'product_uom_qty', 'state', 'production_group_id', 'raw_material_production_id', 'move_line_ids']
+        fields: ['id', 'product_id', 'product_uom_qty', 'state', 'production_group_id', 'raw_material_production_id', 'move_line_ids', 'origin']
       });
 
       // Find all distinct production groups across the moves
@@ -352,6 +352,12 @@ export async function ensureDedicatedComponentPickings(moId) {
           const g = prodGroupMap.get(m.production_group_id[0]);
           if (g && g.production_ids && g.production_ids.length > 0) {
             mMoId = typeof g.production_ids[0] === 'object' ? g.production_ids[0].id : g.production_ids[0];
+          }
+        }
+        if (!mMoId && m.origin) {
+          const origMo = m.origin.trim();
+          if (origMo === mo.name) {
+            mMoId = id;
           }
         }
 
@@ -617,11 +623,12 @@ export async function onTransferDone(pickingId) {
 
   let moIds = [];
   if (pickingName.includes('/SFP/') && picking.origin) {
+    const origins = picking.origin.split(',').map(s => s.trim()).filter(Boolean);
     const mos = await adminOdooClient._callObject('mrp.production', 'search_read', [
-      [['name', '=', picking.origin.trim()]]
-    ], { fields: ['id', 'name'], limit: 1 });
+      [['name', 'in', origins]]
+    ], { fields: ['id', 'name'] });
     if (mos && mos.length > 0) {
-      moIds.push(mos[0].id);
+      moIds.push(...mos.map(m => m.id));
     }
   }
 
@@ -744,14 +751,21 @@ export async function syncWipFromPickings(wipId, moId) {
       .filter(p => {
         const name = p.name || '';
         if (name.includes('/PC/') || name.includes('/SPB/')) return true;
-        if (name.includes('/SFP/') && p.origin === moName) return true;
+        if (name.includes('/SFP/')) {
+          const origins = (p.origin || '').split(',').map(s => s.trim());
+          if (origins.includes(moName)) return true;
+        }
         return false;
       })
       .map(p => p.id);
 
     const donePickings = allPickings.filter(p => p.state === 'done');
     const donePcSpb = donePickings.filter(p => (p.name || '').includes('/PC/') || (p.name || '').includes('/SPB/'));
-    const doneSfp = donePickings.filter(p => (p.name || '').includes('/SFP/') && p.origin === moName).sort((a, b) => new Date(a.date_done || 0) - new Date(b.date_done || 0));
+    const doneSfp = donePickings.filter(p => {
+      if (!(p.name || '').includes('/SFP/')) return false;
+      const origins = (p.origin || '').split(',').map(s => s.trim());
+      return origins.includes(moName);
+    }).sort((a, b) => new Date(a.date_done || 0) - new Date(b.date_done || 0));
 
     const pcMoveLineIds = [...new Set(donePcSpb.flatMap(p => p.move_line_ids || []))];
     let kainQty = 0.0;
@@ -889,9 +903,13 @@ export async function syncWipFromPickings(wipId, moId) {
       if (latestSfp.move_line_ids && latestSfp.move_line_ids.length > 0) {
         const sfpLines = await adminOdooClient._callObject('stock.move.line', 'read', [
           latestSfp.move_line_ids,
-          ['quantity']
+          ['quantity', 'product_id']
         ]);
-        sfpLineQty = sfpLines.reduce((sum, l) => sum + (parseFloat(l.quantity) || 0.0), 0.0);
+        const moProdId = mo.product_id ? mo.product_id[0] : null;
+        const relevantLines = moProdId
+          ? sfpLines.filter(l => l.product_id && l.product_id[0] === moProdId)
+          : sfpLines;
+        sfpLineQty = (relevantLines.length > 0 ? relevantLines : sfpLines).reduce((sum, l) => sum + (parseFloat(l.quantity) || 0.0), 0.0);
       }
       sfpQtyMasuk = sfpLineQty;
       sfpVals = {
