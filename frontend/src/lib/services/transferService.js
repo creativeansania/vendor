@@ -8,7 +8,10 @@ export class TransferService {
   /**
    * Resolve and link Manufacturing Order (x_studio_manufacturing_order) and
    * Sales Order (sale_id / x_studio_sales_order) on stock.picking (Transfer).
-   * Supports operation types: PC (Pick Component), SFP (Store Finished Product), INT (Internal Transfer), etc.
+   * Supports operation types:
+   *  - Factory Internal: PC (Pick Component), SPB (Surat Pengantar Bahan), SFP (Store Finished Product), INT (Internal Transfer)
+   *  - Delivery: PICK (Pick), OUT (Delivery Orders)
+   *  - Other: IN (Receipts)
    */
   async resolveTransferMoAndSo(pickingIds) {
     let ids = [];
@@ -45,12 +48,17 @@ export class TransferService {
     const allMoveIds = [...new Set(pickings.flatMap(p => p.move_ids || []))];
     const movesMap = new Map();
     const destMovesMap = new Map();
+    const origMovesMap = new Map();
 
     if (allMoveIds.length > 0) {
       try {
         const moves = await this.odoo._callObject('stock.move', 'read', [
           allMoveIds,
-          ['id', 'raw_material_production_id', 'production_id', 'move_dest_ids', 'production_group_id', 'move_line_ids', 'origin']
+          [
+            'id', 'raw_material_production_id', 'production_id',
+            'move_dest_ids', 'move_orig_ids', 'production_group_id',
+            'move_line_ids', 'origin', 'sale_line_id'
+          ]
         ]);
         moves.forEach(m => movesMap.set(m.id, m));
 
@@ -59,9 +67,19 @@ export class TransferService {
         if (allDestMoveIds.length > 0) {
           const destMoves = await this.odoo._callObject('stock.move', 'read', [
             allDestMoveIds,
-            ['id', 'raw_material_production_id', 'production_id', 'production_group_id']
+            ['id', 'raw_material_production_id', 'production_id', 'production_group_id', 'sale_line_id']
           ]);
           destMoves.forEach(dm => destMovesMap.set(dm.id, dm));
+        }
+
+        // Batch Prefetch 2b: Origin moves (crucial for PICK / OUT / INT that produce from an MO)
+        const allOrigMoveIds = [...new Set(moves.flatMap(m => m.move_orig_ids || []))];
+        if (allOrigMoveIds.length > 0) {
+          const origMoves = await this.odoo._callObject('stock.move', 'read', [
+            allOrigMoveIds,
+            ['id', 'raw_material_production_id', 'production_id', 'production_group_id', 'sale_line_id']
+          ]);
+          origMoves.forEach(om => origMovesMap.set(om.id, om));
         }
       } catch (errMoves) {
         console.warn(`[Transfer MO/SO] Warning during bulk prefetch of moves: ${errMoves.message}`);
@@ -72,7 +90,8 @@ export class TransferService {
     const allProdGroupIds = [
       ...new Set([
         ...Array.from(movesMap.values()).filter(m => m.production_group_id && m.production_group_id[0]).map(m => m.production_group_id[0]),
-        ...Array.from(destMovesMap.values()).filter(dm => dm.production_group_id && dm.production_group_id[0]).map(dm => dm.production_group_id[0])
+        ...Array.from(destMovesMap.values()).filter(dm => dm.production_group_id && dm.production_group_id[0]).map(dm => dm.production_group_id[0]),
+        ...Array.from(origMovesMap.values()).filter(om => om.production_group_id && om.production_group_id[0]).map(om => om.production_group_id[0])
       ])
     ];
     const prodGroupMap = new Map();
@@ -91,6 +110,16 @@ export class TransferService {
     // Helper: Resolve which MO a given stock.move belongs to
     const getMoRefForMove = (m) => {
       if (!m) return null;
+
+      // 1. Direct MO link on the move
+      if (m.raw_material_production_id) {
+        return { id: m.raw_material_production_id[0], name: m.raw_material_production_id[1] };
+      }
+      if (m.production_id) {
+        return { id: m.production_id[0], name: m.production_id[1] };
+      }
+
+      // 2. Destination moves
       for (const dmid of (m.move_dest_ids || [])) {
         const dm = destMovesMap.get(dmid);
         if (dm && dm.raw_material_production_id) {
@@ -108,13 +137,25 @@ export class TransferService {
         }
       }
 
-      if (m.raw_material_production_id) {
-        return { id: m.raw_material_production_id[0], name: m.raw_material_production_id[1] };
-      }
-      if (m.production_id) {
-        return { id: m.production_id[0], name: m.production_id[1] };
+      // 3. Origin moves
+      for (const omid of (m.move_orig_ids || [])) {
+        const om = origMovesMap.get(omid);
+        if (om && om.production_id) {
+          return { id: om.production_id[0], name: om.production_id[1] };
+        }
+        if (om && om.raw_material_production_id) {
+          return { id: om.raw_material_production_id[0], name: om.raw_material_production_id[1] };
+        }
+        if (om && om.production_group_id) {
+          const g = prodGroupMap.get(om.production_group_id[0]);
+          if (g && g.production_ids && g.production_ids.length > 0) {
+            const pId = typeof g.production_ids[0] === 'object' ? g.production_ids[0].id : g.production_ids[0];
+            return { id: pId, name: g.name };
+          }
+        }
       }
 
+      // 4. Production group directly on the move
       if (m.production_group_id) {
         const g = prodGroupMap.get(m.production_group_id[0]);
         if (g && g.production_ids && g.production_ids.length > 0) {
@@ -133,17 +174,24 @@ export class TransferService {
       let seqCode = '';
       const upperName = pickingName.toUpperCase();
       if (upperName.includes('/PC/')) seqCode = 'PC';
+      else if (upperName.includes('/SPB/')) seqCode = 'SPB';
       else if (upperName.includes('/SFP/')) seqCode = 'SFP';
       else if (upperName.includes('/INT/')) seqCode = 'INT';
       else if (upperName.includes('/PICK/')) seqCode = 'PICK';
       else if (upperName.includes('/OUT/')) seqCode = 'OUT';
       else if (upperName.includes('/IN/')) seqCode = 'IN';
 
-      const isMatchedType =
-        ['PC', 'SFP', 'INT'].includes(seqCode) ||
+      const isFactoryInternal =
+        ['PC', 'SPB', 'SFP', 'INT'].includes(seqCode) ||
         upperName.includes('/PC/') ||
+        upperName.includes('/SPB/') ||
         upperName.includes('/SFP/') ||
         upperName.includes('/INT/');
+
+      const isDeliveryType =
+        ['PICK', 'OUT'].includes(seqCode) ||
+        upperName.includes('/PICK/') ||
+        upperName.includes('/OUT/');
 
       const originClean = picking.origin ? picking.origin.split(',')[0].trim() : '';
       const namePrefix = pickingName.includes('/') ? pickingName.split('/')[0].trim() : '';
@@ -180,8 +228,9 @@ export class TransferService {
         Array.isArray(picking.create_uid) ? picking.create_uid[0] === 7 : picking.create_uid === 7
       );
 
+      // Auto-split applies to factory internal component transfers (PC, SPB, SFP, INT)
       const canAutoSplit =
-        isMatchedType &&
+        isFactoryInternal &&
         movesByMo.size > 1 &&
         pMoves.length > 1 &&
         !isMasterAdmin &&
@@ -191,9 +240,11 @@ export class TransferService {
         picking,
         pickingName,
         seqCode,
-        isMatchedType,
+        isFactoryInternal,
+        isDeliveryType,
         originClean,
         namePrefix,
+        pMoves,
         movesByMo,
         canAutoSplit,
         resolvedMo,
@@ -213,7 +264,7 @@ export class TransferService {
       try {
         const moList = await this.odoo._callObject('mrp.production', 'read', [
           moIdsToRead,
-          ['id', 'name', 'x_studio_sales_order', 'origin']
+          ['id', 'name', 'x_studio_sales_order', 'origin', 'sale_line_id']
         ]);
         moList.forEach(m => moMap.set(m.id, m));
       } catch (errMoRead) {
@@ -221,12 +272,24 @@ export class TransferService {
       }
     }
 
-    // Prefetch Sales Orders in bulk
+    // Prefetch Sales Orders in bulk from picking origins & native sale_ids
     const potentialSoOrigins = [
       ...new Set(
-        pickingPlans
-          .map(p => p.originClean)
-          .filter(orig => orig && !orig.includes('/MO/'))
+        pickingPlans.flatMap(p => {
+          const tokens = [];
+          if (p.picking.sale_id && p.picking.sale_id[1]) {
+            tokens.push(p.picking.sale_id[1]);
+          }
+          if (p.picking.origin) {
+            p.picking.origin.split(/[,|]/).forEach(tok => {
+              const clean = tok.replace(/^(?:SO\s+|Sisa\s+Makloon\s+-\s+)/i, '').trim();
+              if (clean && !clean.includes('/MO/')) {
+                tokens.push(clean);
+              }
+            });
+          }
+          return tokens;
+        })
       )
     ];
     const soMap = new Map();
@@ -249,12 +312,38 @@ export class TransferService {
     }
 
     for (const plan of pickingPlans) {
+      const { picking, pickingName, seqCode, isFactoryInternal, isDeliveryType, originClean, namePrefix, pMoves, movesByMo, canAutoSplit } = plan;
       try {
-        const { picking, pickingName, seqCode, isMatchedType, originClean, namePrefix, movesByMo, canAutoSplit } = plan;
         let resolvedMo = plan.resolvedMo;
         let resolvedSo = null;
 
-        // Fallback for MO: Origin Match
+        // Fallback for MO: Check regex patterns in picking.origin (e.g. Sisa Makloon - VDKWS/MO/05358 | MO VDKWS/MO/05358)
+        if (!resolvedMo && picking.origin) {
+          const moMatches = picking.origin.match(/([A-Z0-9]+(?:\/[A-Z0-9]+)+\/\d+(?:-\d+)?)/g);
+          if (moMatches && moMatches.length > 0) {
+            for (const moName of moMatches) {
+              try {
+                const foundMos = await this.odoo._callObject('mrp.production', 'search_read', [
+                  [['name', '=', moName]]
+                ], {
+                  fields: ['id', 'name', 'x_studio_sales_order', 'origin', 'sale_line_id'],
+                  limit: 1
+                });
+                if (foundMos && foundMos.length > 0) {
+                  resolvedMo = {
+                    id: foundMos[0].id,
+                    name: foundMos[0].name,
+                    salesOrder: foundMos[0].x_studio_sales_order
+                  };
+                  moMap.set(foundMos[0].id, foundMos[0]);
+                  break;
+                }
+              } catch (errMoMatch) {}
+            }
+          }
+        }
+
+        // Fallback for MO: Search by originClean
         if (!resolvedMo && originClean && movesByMo.size === 0) {
           const domainsToTry = [];
           if (namePrefix) {
@@ -283,7 +372,7 @@ export class TransferService {
           for (const d of domainsToTry) {
             try {
               const foundMos = await this.odoo._callObject('mrp.production', 'search_read', [d], {
-                fields: ['id', 'name', 'x_studio_sales_order', 'origin'],
+                fields: ['id', 'name', 'x_studio_sales_order', 'origin', 'sale_line_id'],
                 limit: 1
               });
               if (foundMos && foundMos.length > 0) {
@@ -301,20 +390,85 @@ export class TransferService {
           }
         }
 
-        // Resolve SO
-        if (resolvedMo && moMap.has(resolvedMo.id)) {
+        // Resolve SO:
+        // 1. Direct native picking.sale_id
+        if (picking.sale_id && picking.sale_id[0]) {
+          resolvedSo = {
+            id: picking.sale_id[0],
+            name: picking.sale_id[1]
+          };
+        }
+
+        // 2. Resolve from MO
+        if (!resolvedSo && resolvedMo && moMap.has(resolvedMo.id)) {
           const moData = moMap.get(resolvedMo.id);
           if (moData && moData.x_studio_sales_order && moData.x_studio_sales_order[0]) {
             resolvedSo = {
               id: moData.x_studio_sales_order[0],
               name: moData.x_studio_sales_order[1]
             };
+          } else if (moData && moData.sale_line_id && moData.sale_line_id[0]) {
+            try {
+              const sLines = await this.odoo._callObject('sale.order.line', 'read', [
+                [moData.sale_line_id[0]],
+                ['order_id']
+              ]);
+              if (sLines && sLines[0] && sLines[0].order_id) {
+                resolvedSo = { id: sLines[0].order_id[0], name: sLines[0].order_id[1] };
+              }
+            } catch (e) {}
+          } else if (moData && moData.origin && soMap.has(moData.origin.trim())) {
+            const so = soMap.get(moData.origin.trim());
+            resolvedSo = { id: so.id, name: so.name };
           }
         }
 
-        if (!resolvedSo && originClean && soMap.has(originClean)) {
-          const so = soMap.get(originClean);
-          resolvedSo = { id: so.id, name: so.name };
+        // 3. Resolve from picking origin tokens
+        if (!resolvedSo && picking.origin) {
+          const tokens = picking.origin
+            .split(/[,|]/)
+            .map(t => t.replace(/^(?:SO\s+|Sisa\s+Makloon\s+-\s+)/i, '').trim())
+            .filter(Boolean);
+          for (const tok of tokens) {
+            if (soMap.has(tok)) {
+              const so = soMap.get(tok);
+              resolvedSo = { id: so.id, name: so.name };
+              break;
+            }
+          }
+        }
+
+        // 4. Resolve from moves' sale_line_id
+        if (!resolvedSo) {
+          for (const m of pMoves) {
+            if (m.sale_line_id && m.sale_line_id[0]) {
+              try {
+                const sLines = await this.odoo._callObject('sale.order.line', 'read', [
+                  [m.sale_line_id[0]],
+                  ['order_id']
+                ]);
+                if (sLines && sLines[0] && sLines[0].order_id) {
+                  resolvedSo = { id: sLines[0].order_id[0], name: sLines[0].order_id[1] };
+                  break;
+                }
+              } catch (e) {}
+            }
+          }
+        }
+
+        // 5. If MO is missing on delivery picking, but SO is known:
+        if (!resolvedMo && resolvedSo) {
+          try {
+            const candidateMos = await this.odoo._callObject('mrp.production', 'search_read', [
+              ['|', ['x_studio_sales_order', '=', resolvedSo.id], ['origin', '=', resolvedSo.name]]
+            ], {
+              fields: ['id', 'name'],
+              limit: 2
+            });
+            if (candidateMos && candidateMos.length === 1) {
+              resolvedMo = { id: candidateMos[0].id, name: candidateMos[0].name };
+            }
+          } catch (e) {}
         }
 
         // Auto-split logic: 1 MO = 1 Transfer
@@ -397,7 +551,7 @@ export class TransferService {
           if (firstMoSo) {
             origVals.x_studio_sales_order = firstMoSo.id;
           }
-          if (picking.sale_id) {
+          if (isFactoryInternal && picking.sale_id) {
             origVals.sale_id = false;
           }
 
@@ -419,7 +573,7 @@ export class TransferService {
             pickingId: picking.id,
             pickingName,
             seqCode,
-            isMatchedType,
+            isFactoryInternal,
             action: 'auto_split',
             totalMos: moGroups.length,
             originalPickingMo: firstMoGroup.moName,
@@ -435,22 +589,28 @@ export class TransferService {
         const currentStudioSoId = picking.x_studio_sales_order ? picking.x_studio_sales_order[0] : null;
 
         const vals = {};
-        if (isMatchedType) {
-          if (resolvedMo && resolvedMo.id !== currentMoId) {
-            vals.x_studio_manufacturing_order = resolvedMo.id;
-          }
-          if (resolvedSo && resolvedSo.id !== currentStudioSoId) {
-            vals.x_studio_sales_order = resolvedSo.id;
-          }
+
+        // Always link x_studio_manufacturing_order if resolved and different
+        if (resolvedMo && resolvedMo.id !== currentMoId) {
+          vals.x_studio_manufacturing_order = resolvedMo.id;
+        }
+
+        // Always link x_studio_sales_order if resolved and different
+        if (resolvedSo && resolvedSo.id !== currentStudioSoId) {
+          vals.x_studio_sales_order = resolvedSo.id;
+        }
+
+        // Native sale_id handling:
+        if (isFactoryInternal) {
+          // Internal factory movements (PC, SPB, SFP, INT) must NEVER have native sale_id
+          // so they don't count towards the Sales Order "Delivery" button!
           if (picking.sale_id) {
             vals.sale_id = false;
           }
-        } else {
+        } else if (isDeliveryType) {
+          // Delivery transfers (PICK, OUT) should keep or populate native sale_id
           if (resolvedSo && (!picking.sale_id || picking.sale_id[0] !== resolvedSo.id)) {
             vals.sale_id = resolvedSo.id;
-          }
-          if (currentStudioSoId) {
-            vals.x_studio_sales_order = false;
           }
         }
 
@@ -471,7 +631,8 @@ export class TransferService {
           pickingId: picking.id,
           pickingName,
           seqCode,
-          isMatchedType,
+          isFactoryInternal,
+          isDeliveryType,
           resolvedMo: resolvedMo ? { id: resolvedMo.id, name: resolvedMo.name } : null,
           resolvedSo: resolvedSo ? { id: resolvedSo.id, name: resolvedSo.name } : null,
           updatedFields: Object.keys(vals),
