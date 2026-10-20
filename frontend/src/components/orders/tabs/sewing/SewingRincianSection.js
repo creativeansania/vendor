@@ -10,6 +10,13 @@ export default function SewingRincianSection({
   setGradeA,
   gradeB,
   setGradeB,
+  sisaPanjang = '',
+  setSisaPanjang,
+  sisaSedang = '',
+  setSisaSedang,
+  sisaPendek = '',
+  setSisaPendek,
+  totalSisaKg = 0,
   sisaKg,
   setSisaKg,
   noSuratJalan,
@@ -18,6 +25,10 @@ export default function SewingRincianSection({
   canEditResult,
   saving
 }) {
+  const currentTotalSisa = totalSisaKg || (
+    Number((parseFloat(sisaPanjang) || 0) + (parseFloat(sisaSedang) || 0) + (parseFloat(sisaPendek) || 0)).toFixed(2)
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 2px', flexWrap: 'wrap', gap: '8px' }}>
@@ -194,21 +205,34 @@ export default function SewingRincianSection({
         </div>
       </div>
 
-      {/* CARD 3: SISA KAIN (BSKL) */}
+      {/* SECTION HEADER: SISA KAIN POTONGAN (BSKL) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', padding: '0 2px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--brand-gold)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            ✂️ Sisa Potong Kain (BSKL)
+          </span>
+          <span className="badge badge-gold mono-num" style={{ fontSize: '0.68rem' }}>3 Kategori</span>
+        </div>
+        <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+          Total Sisa: <strong className="mono-num" style={{ color: 'var(--brand-gold)', fontWeight: 800 }}>{currentTotalSisa} KG</strong>
+        </div>
+      </div>
+
+      {/* CARD 3A: SISA POTONG PANJANG (> 1 METER) */}
       <div className="card roll-card" style={{ borderLeft: '4px solid var(--brand-gold)' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', flexWrap: 'wrap' }}>
-            <span className="badge badge-slate mono-num" style={{ fontSize: '0.7rem' }}>#3</span>
+            <span className="badge badge-slate mono-num" style={{ fontSize: '0.7rem' }}>#3A</span>
             <span className="mono-num" style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--brand-gold)' }}>
-              Sisa Kain
+              Sisa Potong Panjang
             </span>
-            <span className="badge badge-gold mono-num" style={{ fontSize: '0.68rem' }}>KG</span>
+            <span className="badge badge-gold mono-num" style={{ fontSize: '0.68rem' }}>&gt; 1 mtr</span>
           </div>
           <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '2px' }}>
-            Sisa Kain Potongan (BSKL)
+            BSKL Panjang (&gt; 1 meter)
           </div>
           <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-            Sisa bahan perca makloon yang dikembalikan
+            Sisa potongan kain utuh panjang untuk dikembalikan ke gudang
           </div>
         </div>
 
@@ -216,17 +240,17 @@ export default function SewingRincianSection({
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--brand-gold)', textTransform: 'uppercase' }}>
-                ⚖️ Sisa Kain (BSKL):
+                📏 Panjang (&gt; 1m):
               </label>
               {canEditResult && (
                 <button
                   type="button"
-                  onClick={() => setSisaKg('0')}
-                  className={`quick-action-pill ${parseFloat(sisaKg) === 0 ? 'quick-action-pill-emerald' : ''}`}
+                  onClick={() => setSisaPanjang && setSisaPanjang('0')}
+                  className={`quick-action-pill ${parseFloat(sisaPanjang) === 0 ? 'quick-action-pill-emerald' : ''}`}
                   style={{ fontSize: '0.65rem', padding: '1px 5px' }}
-                  title="Nol Sisa"
+                  title="Nol Sisa Panjang"
                 >
-                  {parseFloat(sisaKg) === 0 ? (
+                  {parseFloat(sisaPanjang) === 0 ? (
                     <>
                       <Check size={10} />
                       <span>Nol (0)</span>
@@ -246,8 +270,8 @@ export default function SewingRincianSection({
                     min="0"
                     disabled={!canEditResult || saving}
                     placeholder="0.00"
-                    value={sisaKg}
-                    onChange={(e) => setSisaKg(e.target.value)}
+                    value={sisaPanjang}
+                    onChange={(e) => setSisaPanjang && setSisaPanjang(e.target.value)}
                     className="input-addon-field"
                     style={{ fontSize: '0.95rem', fontWeight: 800 }}
                   />
@@ -258,13 +282,188 @@ export default function SewingRincianSection({
               </div>
               {canEditResult && (
                 <div style={{ display: 'flex', gap: '3px' }}>
-                  <button type="button" onClick={() => setSisaKg('0')} className="stepper-btn" style={{ padding: '0 8px', height: '38px', fontSize: '0.75rem' }}>0</button>
-                  <button type="button" onClick={() => adjustQty(setSisaKg, sisaKg, +0.5)} className="stepper-btn" style={{ padding: '0 8px', height: '38px', fontSize: '0.75rem' }}>+0.5</button>
-                  <button type="button" onClick={() => adjustQty(setSisaKg, sisaKg, +1.0)} className="stepper-btn" style={{ padding: '0 8px', height: '38px', fontSize: '0.75rem' }}>+1.0</button>
+                  <button type="button" onClick={() => setSisaPanjang && setSisaPanjang('0')} className="stepper-btn" style={{ padding: '0 8px', height: '38px', fontSize: '0.75rem' }}>0</button>
+                  <button type="button" onClick={() => adjustQty(setSisaPanjang, sisaPanjang, +0.5)} className="stepper-btn" style={{ padding: '0 8px', height: '38px', fontSize: '0.75rem' }}>+0.5</button>
+                  <button type="button" onClick={() => adjustQty(setSisaPanjang, sisaPanjang, +1.0)} className="stepper-btn" style={{ padding: '0 8px', height: '38px', fontSize: '0.75rem' }}>+1.0</button>
                 </div>
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* CARD 3B: SISA POTONG SEDANG (50 - 100 CM) */}
+      <div className="card roll-card" style={{ borderLeft: '4px solid var(--brand-gold)' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', flexWrap: 'wrap' }}>
+            <span className="badge badge-slate mono-num" style={{ fontSize: '0.7rem' }}>#3B</span>
+            <span className="mono-num" style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--brand-gold)' }}>
+              Sisa Potong Sedang
+            </span>
+            <span className="badge badge-gold mono-num" style={{ fontSize: '0.68rem' }}>50 - 100 cm</span>
+          </div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '2px' }}>
+            BSKL Sedang (50 - 100 cm)
+          </div>
+          <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+            Sisa potongan kain ukuran sedang untuk dikembalikan ke gudang
+          </div>
+        </div>
+
+        <div className="roll-input-row" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--brand-gold)', textTransform: 'uppercase' }}>
+                📐 Sedang (50-100cm):
+              </label>
+              {canEditResult && (
+                <button
+                  type="button"
+                  onClick={() => setSisaSedang && setSisaSedang('0')}
+                  className={`quick-action-pill ${parseFloat(sisaSedang) === 0 ? 'quick-action-pill-emerald' : ''}`}
+                  style={{ fontSize: '0.65rem', padding: '1px 5px' }}
+                  title="Nol Sisa Sedang"
+                >
+                  {parseFloat(sisaSedang) === 0 ? (
+                    <>
+                      <Check size={10} />
+                      <span>Nol (0)</span>
+                    </>
+                  ) : (
+                    <span>Reset 0</span>
+                  )}
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '130px' }}>
+                <div className="input-addon-group" style={{ height: '38px', borderColor: 'var(--border-strong)' }}>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    disabled={!canEditResult || saving}
+                    placeholder="0.00"
+                    value={sisaSedang}
+                    onChange={(e) => setSisaSedang && setSisaSedang(e.target.value)}
+                    className="input-addon-field"
+                    style={{ fontSize: '0.95rem', fontWeight: 800 }}
+                  />
+                  <span className="input-addon-label" style={{ fontSize: '0.68rem', padding: '0 6px' }}>
+                    KG
+                  </span>
+                </div>
+              </div>
+              {canEditResult && (
+                <div style={{ display: 'flex', gap: '3px' }}>
+                  <button type="button" onClick={() => setSisaSedang && setSisaSedang('0')} className="stepper-btn" style={{ padding: '0 8px', height: '38px', fontSize: '0.75rem' }}>0</button>
+                  <button type="button" onClick={() => adjustQty(setSisaSedang, sisaSedang, +0.5)} className="stepper-btn" style={{ padding: '0 8px', height: '38px', fontSize: '0.75rem' }}>+0.5</button>
+                  <button type="button" onClick={() => adjustQty(setSisaSedang, sisaSedang, +1.0)} className="stepper-btn" style={{ padding: '0 8px', height: '38px', fontSize: '0.75rem' }}>+1.0</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* CARD 3C: SISA POTONG PENDEK (< 50 CM) */}
+      <div className="card roll-card" style={{ borderLeft: '4px solid var(--brand-gold)' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', flexWrap: 'wrap' }}>
+            <span className="badge badge-slate mono-num" style={{ fontSize: '0.7rem' }}>#3C</span>
+            <span className="mono-num" style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--brand-gold)' }}>
+              Sisa Potong Pendek
+            </span>
+            <span className="badge badge-gold mono-num" style={{ fontSize: '0.68rem' }}>&lt; 50 cm</span>
+          </div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '2px' }}>
+            BSKL Pendek (&lt; 50 cm)
+          </div>
+          <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+            Potongan sisa perca kain kecil (&lt; 50 cm)
+          </div>
+        </div>
+
+        <div className="roll-input-row" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--brand-gold)', textTransform: 'uppercase' }}>
+                ✂️ Pendek (&lt; 50cm):
+              </label>
+              {canEditResult && (
+                <button
+                  type="button"
+                  onClick={() => setSisaPendek && setSisaPendek('0')}
+                  className={`quick-action-pill ${parseFloat(sisaPendek) === 0 ? 'quick-action-pill-emerald' : ''}`}
+                  style={{ fontSize: '0.65rem', padding: '1px 5px' }}
+                  title="Nol Sisa Pendek"
+                >
+                  {parseFloat(sisaPendek) === 0 ? (
+                    <>
+                      <Check size={10} />
+                      <span>Nol (0)</span>
+                    </>
+                  ) : (
+                    <span>Reset 0</span>
+                  )}
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '130px' }}>
+                <div className="input-addon-group" style={{ height: '38px', borderColor: 'var(--border-strong)' }}>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    disabled={!canEditResult || saving}
+                    placeholder="0.00"
+                    value={sisaPendek}
+                    onChange={(e) => setSisaPendek && setSisaPendek(e.target.value)}
+                    className="input-addon-field"
+                    style={{ fontSize: '0.95rem', fontWeight: 800 }}
+                  />
+                  <span className="input-addon-label" style={{ fontSize: '0.68rem', padding: '0 6px' }}>
+                    KG
+                  </span>
+                </div>
+              </div>
+              {canEditResult && (
+                <div style={{ display: 'flex', gap: '3px' }}>
+                  <button type="button" onClick={() => setSisaPendek && setSisaPendek('0')} className="stepper-btn" style={{ padding: '0 8px', height: '38px', fontSize: '0.75rem' }}>0</button>
+                  <button type="button" onClick={() => adjustQty(setSisaPendek, sisaPendek, +0.5)} className="stepper-btn" style={{ padding: '0 8px', height: '38px', fontSize: '0.75rem' }}>+0.5</button>
+                  <button type="button" onClick={() => adjustQty(setSisaPendek, sisaPendek, +1.0)} className="stepper-btn" style={{ padding: '0 8px', height: '38px', fontSize: '0.75rem' }}>+1.0</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* SUMMARY BANNER: BSKL TRANSFER DISPATCH INFO */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '10px 14px',
+          borderRadius: '10px',
+          background: 'var(--brand-gold-light)',
+          border: '1px solid var(--brand-gold-border)',
+          fontSize: '0.78rem',
+          color: 'var(--text-secondary)',
+          flexWrap: 'wrap',
+          gap: '8px'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '1rem' }}>📦</span>
+          <span>
+            Akan dibuatkan <strong>Transfer Makloon BSKL</strong> ke Gudang <strong>WHGB/Stock</strong> untuk item &gt; 0 kg.
+          </span>
+        </div>
+        <div style={{ fontWeight: 800, color: 'var(--brand-gold)', fontSize: '0.88rem' }} className="mono-num">
+          Akumulasi: {currentTotalSisa} KG
         </div>
       </div>
 

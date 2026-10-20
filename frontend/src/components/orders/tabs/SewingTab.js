@@ -13,6 +13,13 @@ export default function SewingTab({
   setGradeA,
   gradeB,
   setGradeB,
+  sisaPanjang,
+  setSisaPanjang,
+  sisaSedang,
+  setSisaSedang,
+  sisaPendek,
+  setSisaPendek,
+  totalSisaKg,
   sisaKg,
   setSisaKg,
   noSuratJalan,
@@ -42,6 +49,13 @@ export default function SewingTab({
         setGradeA={setGradeA}
         gradeB={gradeB}
         setGradeB={setGradeB}
+        sisaPanjang={sisaPanjang}
+        setSisaPanjang={setSisaPanjang}
+        sisaSedang={sisaSedang}
+        setSisaSedang={setSisaSedang}
+        sisaPendek={sisaPendek}
+        setSisaPendek={setSisaPendek}
+        totalSisaKg={totalSisaKg}
         sisaKg={sisaKg}
         setSisaKg={setSisaKg}
         noSuratJalan={noSuratJalan}

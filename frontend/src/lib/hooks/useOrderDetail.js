@@ -117,8 +117,21 @@ export function useOrderDetail(orderId) {
         // Prepopulate production results
         productionState.setGradeA(res.order.qty_grade_a !== null && res.order.qty_grade_a !== undefined ? String(res.order.qty_grade_a) : '');
         productionState.setGradeB(res.order.qty_grade_b !== null && res.order.qty_grade_b !== undefined ? String(res.order.qty_grade_b) : '');
-        productionState.setSisaKg(res.order.sisa_makloon_kg !== null && res.order.sisa_makloon_kg !== undefined ? String(res.order.sisa_makloon_kg) : '');
-        productionState.setNoSuratJalan(res.order.no_surat_jalan || '');
+        
+        const spPanjang = res.order.sisa_potong_panjang !== null && res.order.sisa_potong_panjang !== undefined ? String(res.order.sisa_potong_panjang) : '';
+        const spSedang = res.order.sisa_potong_sedang !== null && res.order.sisa_potong_sedang !== undefined ? String(res.order.sisa_potong_sedang) : '';
+        const spPendek = res.order.sisa_potong_pendek !== null && res.order.sisa_potong_pendek !== undefined ? String(res.order.sisa_potong_pendek) : '';
+        
+        productionState.setSisaPanjang(spPanjang);
+        productionState.setSisaSedang(spSedang);
+        productionState.setSisaPendek(spPendek);
+        
+        // Fallback for legacy single sisa_makloon_kg if categories are not yet set
+        if (!spPanjang && !spSedang && !spPendek && res.order.sisa_makloon_kg) {
+          productionState.setSisaPanjang(String(res.order.sisa_makloon_kg));
+        }
+        
+        productionState.setNoSuratJalan(res.order.no_surat_jalan || res.order.no_surat_jalan_sfp || '');
       }
     } catch (err) {
       setFeedback({ text: 'Gagal memuat SPK: ' + err.message, type: 'error' });
@@ -208,7 +221,14 @@ export function useOrderDetail(orderId) {
     setGradeA: productionState.setGradeA,
     gradeB: productionState.gradeB,
     setGradeB: productionState.setGradeB,
-    sisaKg: productionState.sisaKg,
+    sisaPanjang: productionState.sisaPanjang,
+    setSisaPanjang: productionState.setSisaPanjang,
+    sisaSedang: productionState.sisaSedang,
+    setSisaSedang: productionState.setSisaSedang,
+    sisaPendek: productionState.sisaPendek,
+    setSisaPendek: productionState.setSisaPendek,
+    totalSisaKg: productionState.totalSisaKg,
+    sisaKg: productionState.totalSisaKg,
     setSisaKg: productionState.setSisaKg,
     noSuratJalan: productionState.noSuratJalan,
     setNoSuratJalan: productionState.setNoSuratJalan,

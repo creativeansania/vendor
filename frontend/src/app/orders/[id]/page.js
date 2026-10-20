@@ -107,6 +107,13 @@ function OrderDetailContent() {
             setGradeA={detail.setGradeA}
             gradeB={detail.gradeB}
             setGradeB={detail.setGradeB}
+            sisaPanjang={detail.sisaPanjang}
+            setSisaPanjang={detail.setSisaPanjang}
+            sisaSedang={detail.sisaSedang}
+            setSisaSedang={detail.setSisaSedang}
+            sisaPendek={detail.sisaPendek}
+            setSisaPendek={detail.setSisaPendek}
+            totalSisaKg={detail.totalSisaKg}
             sisaKg={detail.sisaKg}
             setSisaKg={detail.setSisaKg}
             noSuratJalan={detail.noSuratJalan}

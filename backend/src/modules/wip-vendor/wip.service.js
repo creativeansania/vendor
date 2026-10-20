@@ -688,20 +688,28 @@ export class WipVendorService {
    * - Grade B MO created in DRAFT and in the SAME PRODUCTION GROUP
    * - Internal Transfer BSKL created in DRAFT/WAITING for physical validation
    */
-  async submitProductionResult({ wipId, qtyGradeA, qtyGradeB, sisaMakloonKg }) {
+  async submitProductionResult({ wipId, qtyGradeA, qtyGradeB, sisaPotongPanjang, sisaPotongSedang, sisaPotongPendek, sisaMakloonKg }) {
     await this._ensureAuth();
     const id = Number(wipId);
     if (!id || isNaN(id)) {
       throw new Error(`Invalid WIP ID: ${wipId}`);
     }
 
-    logger.info(`[WIP Service] Submitting production result for WIP #${id}: GradeA=${qtyGradeA}, GradeB=${qtyGradeB}, Sisa=${sisaMakloonKg}...`);
+    const pKg = Math.max(0, parseFloat(sisaPotongPanjang) || 0.0);
+    const sKg = Math.max(0, parseFloat(sisaPotongSedang) || 0.0);
+    const pdkKg = Math.max(0, parseFloat(sisaPotongPendek) || 0.0);
+    const hasCats = sisaPotongPanjang !== undefined || sisaPotongSedang !== undefined || sisaPotongPendek !== undefined;
+    const catSum = Number((pKg + sKg + pdkKg).toFixed(2));
+    const sisaKg = hasCats ? catSum : Math.max(0, parseFloat(sisaMakloonKg) || 0.0);
+
+    logger.info(`[WIP Service] Submitting production result for WIP #${id}: GradeA=${qtyGradeA}, GradeB=${qtyGradeB}, Sisa=${sisaKg} (P=${pKg}, S=${sKg}, Pdk=${pdkKg})...`);
 
     const wips = await this.odoo._callObject('x_monitoring_wip_vendo', 'read', [[id]], {
       fields: [
         'id', 'x_name', 'x_studio_manufacturing_order', 'x_studio_product',
         'x_studio_warehouse', 'x_studio_sales_order', 'x_studio_qty_kirim_a_grade',
         'x_studio_qty_kirim_b_grade', 'x_studio_sisa_makloon_kg',
+        'x_studio_sisa_potong_panjang', 'x_studio_sisa_potong_sedang', 'x_studio_sisa_potong_pendek',
         'x_studio_nama_mo_grade_b', 'x_studio_nama_transfer_makloon'
       ]
     });
@@ -809,10 +817,12 @@ export class WipVendorService {
     }
 
     // =========================================================
-    // 3. SISA MAKLOON (kg) -> buat / update / cancel Transfer BSKL
-    // (STRICT: State Draft/Waiting for physical validation)
+    // 3. SISA POTONG KAIN (BSKL) -> buat / update / cancel Transfer BSKL 3 item
     // =========================================================
-    const sisaKg = parseFloat(sisaMakloonKg) || 0.0;
+    updatedWipVals.x_studio_sisa_potong_panjang = pKg;
+    updatedWipVals.x_studio_sisa_potong_sedang = sKg;
+    updatedWipVals.x_studio_sisa_potong_pendek = pdkKg;
+    updatedWipVals.x_studio_sisa_reject = sisaKg;
     updatedWipVals.x_studio_sisa_makloon_kg = sisaKg;
 
     const whId = wip.x_studio_warehouse ? wip.x_studio_warehouse[0] : null;
@@ -834,10 +844,10 @@ export class WipVendorService {
         const pick = existingPicks && existingPicks.length > 0 ? existingPicks[0] : null;
 
         if (sisaKg > 0) {
-          // Find BSKL product & WHGB/Stock destination
+          // Find BSKL products & WHGB/Stock destination
           const bsklProds = await this.odoo._callObject('product.product', 'search_read', [
-            [['name', '=', 'BSKL']]
-          ], { fields: ['id', 'name', 'uom_id'], limit: 1 });
+            [['name', 'in', ['BSKL PANJANG', 'BSKL SEDANG', 'BSKL PENDEK', 'BSKL']]]
+          ], { fields: ['id', 'name', 'uom_id'] });
 
           const destLocs = await this.odoo._callObject('stock.location', 'search_read', [
             [
@@ -847,23 +857,71 @@ export class WipVendorService {
             ]
           ], { fields: ['id'], limit: 1 });
 
-          if (bsklProds && bsklProds.length > 0 && destLocs && destLocs.length > 0) {
-            const bskl = bsklProds[0];
+          const prodMap = {};
+          (bsklProds || []).forEach(p => {
+            prodMap[p.name] = p;
+          });
+
+          const targetItems = [];
+          if (pKg > 0) {
+            const prod = prodMap['BSKL PANJANG'] || { id: 320936, name: 'BSKL PANJANG', uom_id: [12, 'kg'] };
+            targetItems.push({ prod, qty: pKg });
+          }
+          if (sKg > 0) {
+            const prod = prodMap['BSKL SEDANG'] || { id: 320937, name: 'BSKL SEDANG', uom_id: [12, 'kg'] };
+            targetItems.push({ prod, qty: sKg });
+          }
+          if (pdkKg > 0) {
+            const prod = prodMap['BSKL PENDEK'] || { id: 320938, name: 'BSKL PENDEK', uom_id: [12, 'kg'] };
+            targetItems.push({ prod, qty: pdkKg });
+          }
+          if (targetItems.length === 0 && sisaKg > 0) {
+            const fallbackProd = prodMap['BSKL'] || { id: 312078, name: 'BSKL', uom_id: [12, 'kg'] };
+            targetItems.push({ prod: fallbackProd, qty: sisaKg });
+          }
+
+          if (destLocs && destLocs.length > 0 && targetItems.length > 0) {
             const destId = destLocs[0].id;
             const srcId = wh.lot_stock_id[0];
 
             if (pick) {
               if (!['done', 'cancel'].includes(pick.state)) {
-                // Update existing stock.move
-                if (pick.move_ids && pick.move_ids.length > 0) {
-                  const moves = await this.odoo._callObject('stock.move', 'read', [
-                    pick.move_ids,
-                    ['id', 'product_id', 'product_uom_qty']
-                  ]);
-                  const bsklMove = moves.find(m => m.product_id && m.product_id[0] === bskl.id);
-                  if (bsklMove && parseFloat(bsklMove.product_uom_qty) !== sisaKg) {
-                    await this.odoo._callObject('stock.move', 'write', [[bsklMove.id], { product_uom_qty: sisaKg }]);
-                    logger.info(`[WIP Service] Updated Transfer ${pick.name} BSKL qty to ${sisaKg} kg.`);
+                const existingMoves = pick.move_ids && pick.move_ids.length > 0
+                  ? await this.odoo._callObject('stock.move', 'read', [
+                      pick.move_ids,
+                      ['id', 'product_id', 'product_uom_qty', 'state']
+                    ])
+                  : [];
+
+                for (const item of targetItems) {
+                  const existingMove = existingMoves.find(m => m.product_id && m.product_id[0] === item.prod.id);
+                  if (existingMove) {
+                    if (parseFloat(existingMove.product_uom_qty) !== item.qty && !['done', 'cancel'].includes(existingMove.state)) {
+                      await this.odoo._callObject('stock.move', 'write', [[existingMove.id], { product_uom_qty: item.qty }]);
+                      logger.info(`[WIP Service] Updated Transfer ${pick.name} ${item.prod.name} qty to ${item.qty} kg.`);
+                    }
+                  } else {
+                    await this.odoo._callObject('stock.move', 'create', [{
+                      name: item.prod.name,
+                      product_id: item.prod.id,
+                      product_uom_qty: item.qty,
+                      product_uom: item.prod.uom_id ? item.prod.uom_id[0] : 12,
+                      picking_id: pick.id,
+                      location_id: srcId,
+                      location_dest_id: destId,
+                      company_id: mo.company_id[0]
+                    }]);
+                  }
+                }
+
+                for (const m of existingMoves) {
+                  const stillNeeded = targetItems.some(ti => ti.prod.id === m.product_id[0]);
+                  if (!stillNeeded && !['done', 'cancel'].includes(m.state)) {
+                    try {
+                      await this.odoo._callObject('stock.move', '_action_cancel', [[m.id]]);
+                    } catch (cErr) {
+                      await this.odoo._callObject('stock.move', 'write', [[m.id], { product_uom_qty: 0 }]);
+                    }
                   }
                 }
               }
@@ -877,11 +935,12 @@ export class WipVendorService {
                   ['warehouse_id', '=', wh.id],
                   ['company_id', '=', mo.company_id[0]]
                 ]
-              ], { fields: ['id'], limit: 1 });
+              ], { fields: ['id', 'warehouse_id'], limit: 5 });
 
               if (ptypes && ptypes.length > 0) {
+                const chosenPtype = ptypes.find(p => p.warehouse_id && p.warehouse_id[0] === wh.id) || ptypes[0];
                 const pickPayload = {
-                  picking_type_id: ptypes[0].id,
+                  picking_type_id: chosenPtype.id,
                   location_id: srcId,
                   location_dest_id: destId,
                   origin: originM,
@@ -895,22 +954,23 @@ export class WipVendorService {
 
                 const newPickId = await this.odoo._callObject('stock.picking', 'create', [pickPayload]);
 
-                // Create stock.move
-                await this.odoo._callObject('stock.move', 'create', [{
-                  name: 'BSKL',
-                  product_id: bskl.id,
-                  product_uom_qty: sisaKg,
-                  product_uom: bskl.uom_id[0],
-                  picking_id: newPickId,
-                  location_id: srcId,
-                  location_dest_id: destId,
-                  company_id: mo.company_id[0]
-                }]);
+                for (const item of targetItems) {
+                  await this.odoo._callObject('stock.move', 'create', [{
+                    name: item.prod.name,
+                    product_id: item.prod.id,
+                    product_uom_qty: item.qty,
+                    product_uom: item.prod.uom_id ? item.prod.uom_id[0] : 12,
+                    picking_id: newPickId,
+                    location_id: srcId,
+                    location_dest_id: destId,
+                    company_id: mo.company_id[0]
+                  }]);
+                }
 
                 const readPick = await this.odoo._callObject('stock.picking', 'read', [[newPickId]], { fields: ['name'] });
                 const pickName = readPick && readPick[0] ? readPick[0].name : `PICK#${newPickId}`;
                 updatedWipVals.x_studio_nama_transfer_makloon = pickName;
-                logger.info(`[WIP Service] ✅ Created Internal Transfer ${pickName} for BSKL (${sisaKg} kg). Waiting for physical validation.`);
+                logger.info(`[WIP Service] ✅ Created Internal Transfer ${pickName} for BSKL items (${sisaKg} kg). Waiting for physical validation.`);
               }
             }
           }

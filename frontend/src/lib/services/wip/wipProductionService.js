@@ -6,19 +6,38 @@ import { getOrderDetails } from './wipQueryService.js';
 /**
  * Submit final production results (locks result stage)
  */
-export async function submitProductionResult({ user, orderId, qtyGradeA, qtyGradeB, sisaMakloonKg, noSuratJalan }) {
+export async function submitProductionResult({
+  user,
+  orderId,
+  qtyGradeA,
+  qtyGradeB,
+  sisaPotongPanjang,
+  sisaPotongSedang,
+  sisaPotongPendek,
+  sisaMakloonKg,
+  noSuratJalan
+}) {
   const { order } = await getOrderDetails({ user, orderId, includeRawMoves: false });
 
   const aGrade = Math.max(0, Number(qtyGradeA || 0));
   const bGrade = Math.max(0, Number(qtyGradeB || 0));
-  const sisaKg = Math.max(0, Number(sisaMakloonKg || 0));
+  const panjangKg = Math.max(0, Number(sisaPotongPanjang || 0));
+  const sedangKg = Math.max(0, Number(sisaPotongSedang || 0));
+  const pendekKg = Math.max(0, Number(sisaPotongPendek || 0));
+
+  const hasCategories = sisaPotongPanjang !== undefined || sisaPotongSedang !== undefined || sisaPotongPendek !== undefined;
+  const calculatedTotal = Number((panjangKg + sedangKg + pendekKg).toFixed(2));
+  const totalSisaKg = hasCategories ? calculatedTotal : Math.max(0, Number(sisaMakloonKg || 0));
   const suratJalan = (noSuratJalan || '').trim();
 
-  // 1. Update in Supabase
+  // 1. Update in Supabase (with graceful column fallback)
   const updatePayload = {
     qty_grade_a: aGrade,
     qty_grade_b: bGrade,
-    sisa_makloon_kg: sisaKg,
+    sisa_makloon_kg: totalSisaKg,
+    sisa_potong_panjang: panjangKg,
+    sisa_potong_sedang: sedangKg,
+    sisa_potong_pendek: pendekKg,
     status_produksi: 'Selesai',
     result_locked_at: new Date().toISOString(),
     result_locked_by: user.id
@@ -27,28 +46,62 @@ export async function submitProductionResult({ user, orderId, qtyGradeA, qtyGrad
     updatePayload.no_surat_jalan_sfp = suratJalan;
   }
 
-  await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
+  const { error: updateErr } = await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
+  if (updateErr && (updateErr.message?.includes('sisa_potong') || updateErr.details?.includes('sisa_potong'))) {
+    console.warn('[WipProductionService] Fallback update without sisa_potong columns:', updateErr.message);
+    delete updatePayload.sisa_potong_panjang;
+    delete updatePayload.sisa_potong_sedang;
+    delete updatePayload.sisa_potong_pendek;
+    await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
+  }
 
   // 2. Audit log
   await supabaseServer.from('audit_logs').insert({
     user_id: user.id,
     wip_order_id: orderId,
     action: 'submit_result',
-    before_data: { qty_grade_a: order.qty_grade_a, qty_grade_b: order.qty_grade_b, sisa_makloon_kg: order.sisa_makloon_kg },
-    after_data: { qtyGradeA: aGrade, qtyGradeB: bGrade, sisaMakloonKg: sisaKg, noSuratJalan: suratJalan }
+    before_data: {
+      qty_grade_a: order.qty_grade_a,
+      qty_grade_b: order.qty_grade_b,
+      sisa_makloon_kg: order.sisa_makloon_kg,
+      sisa_potong_panjang: order.sisa_potong_panjang,
+      sisa_potong_sedang: order.sisa_potong_sedang,
+      sisa_potong_pendek: order.sisa_potong_pendek
+    },
+    after_data: {
+      qtyGradeA: aGrade,
+      qtyGradeB: bGrade,
+      sisaPotongPanjang: panjangKg,
+      sisaPotongSedang: sedangKg,
+      sisaPotongPendek: pendekKg,
+      sisaMakloonKg: totalSisaKg,
+      noSuratJalan: suratJalan
+    }
   });
 
   // 3. Enqueue to sync_outbox
   await supabaseServer.from('sync_outbox').insert({
     wip_order_id: orderId,
     action: 'production_result',
-    payload: { qtyGradeA: aGrade, qtyGradeB: bGrade, sisaMakloonKg: sisaKg, noSuratJalan: suratJalan },
+    payload: {
+      qtyGradeA: aGrade,
+      qtyGradeB: bGrade,
+      sisaPotongPanjang: panjangKg,
+      sisaPotongSedang: sedangKg,
+      sisaPotongPendek: pendekKg,
+      sisaMakloonKg: totalSisaKg,
+      noSuratJalan: suratJalan
+    },
     created_by: user.id
   });
 
   // 4. Push to Odoo
   try {
-    await syncProductionToOdoo(order, aGrade, bGrade, sisaKg);
+    await syncProductionToOdoo(order, aGrade, bGrade, totalSisaKg, {
+      sisaPanjang: panjangKg,
+      sisaSedang: sedangKg,
+      sisaPendek: pendekKg
+    });
     if (order.odoo_mo_id) {
       rawMovesCache.delete(order.odoo_mo_id);
     }
@@ -58,10 +111,13 @@ export async function submitProductionResult({ user, orderId, qtyGradeA, qtyGrad
 
   return {
     success: true,
-    message: 'Hasil jahit berhasil dilaporkan dan disinkronkan ke Odoo.',
+    message: 'Hasil jahit dan rincian sisa potong berhasil dilaporkan dan disinkronkan ke Odoo.',
     qtyGradeA: aGrade,
     qtyGradeB: bGrade,
-    sisaMakloonKg: sisaKg,
+    sisaPotongPanjang: panjangKg,
+    sisaPotongSedang: sedangKg,
+    sisaPotongPendek: pendekKg,
+    sisaMakloonKg: totalSisaKg,
     noSuratJalan: suratJalan
   };
 }
@@ -69,17 +125,31 @@ export async function submitProductionResult({ user, orderId, qtyGradeA, qtyGrad
 /**
  * Push production result changes to Odoo ERP
  */
-export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg) {
+export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg, categories = {}) {
   const odooWipId = typeof orderOrWipId === 'object' ? orderOrWipId.odoo_wip_id : orderOrWipId;
   const odooMoId = typeof orderOrWipId === 'object' ? orderOrWipId.odoo_mo_id : null;
   if (!odooWipId && !odooMoId) return;
 
   await adminOdooClient.authenticate();
 
+  let pKg = 0, sKg = 0, pdkKg = 0;
+  if (typeof categories === 'object' && categories !== null) {
+    pKg = Math.max(0, Number(categories.sisaPanjang || 0));
+    sKg = Math.max(0, Number(categories.sisaSedang || 0));
+    pdkKg = Math.max(0, Number(categories.sisaPendek || 0));
+  }
+
+  const catSum = Number((pKg + sKg + pdkKg).toFixed(2));
+  const totalSisa = catSum > 0 ? catSum : Math.max(0, Number(sisaKg || 0));
+
   const wipUpdateVals = {
     x_studio_qty_kirim_a_grade: aGrade,
     x_studio_qty_kirim_b_grade: bGrade,
-    x_studio_sisa_makloon_kg: sisaKg
+    x_studio_sisa_potong_panjang: pKg,
+    x_studio_sisa_potong_sedang: sKg,
+    x_studio_sisa_potong_pendek: pdkKg,
+    x_studio_sisa_reject: totalSisa,
+    x_studio_sisa_makloon_kg: totalSisa
   };
 
   let parentMo = null;
@@ -180,7 +250,7 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg)
     }
   }
 
-  // 3. Sisa Makloon (kg) -> Create / update Internal Transfer for BSKL
+  // 3. Sisa Potong Kain (BSKL) -> Create / update Internal Transfer for BSKL with up to 3 stock.move lines
   if (odooWipId && parentMo) {
     try {
       const wips = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'read', [[odooWipId]], {
@@ -207,11 +277,8 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg)
 
           const pick = existingPicks && existingPicks.length > 0 ? existingPicks[0] : null;
 
-          if (sisaKg > 0) {
-            const bsklProds = await adminOdooClient._callObject('product.product', 'search_read', [
-              [['name', '=', 'BSKL']]
-            ], { fields: ['id', 'name', 'uom_id'], limit: 1 });
-
+          if (totalSisa > 0) {
+            // Find destination location WHGB/Stock
             const destLocs = await adminOdooClient._callObject('stock.location', 'search_read', [
               [
                 ['complete_name', 'ilike', 'WHGB/Stock'],
@@ -220,29 +287,90 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg)
               ]
             ], { fields: ['id'], limit: 1 });
 
-            if (bsklProds && bsklProds.length > 0 && destLocs && destLocs.length > 0) {
-              const bskl = bsklProds[0];
+            // Fetch master products for BSKL categories
+            const bsklProds = await adminOdooClient._callObject('product.product', 'search_read', [
+              [['name', 'in', ['BSKL PANJANG', 'BSKL SEDANG', 'BSKL PENDEK', 'BSKL']]]
+            ], { fields: ['id', 'name', 'uom_id'] });
+
+            const prodMap = {};
+            (bsklProds || []).forEach(p => {
+              prodMap[p.name] = p;
+            });
+
+            // Prepare target item lines to transfer
+            const targetItems = [];
+            if (pKg > 0) {
+              const prod = prodMap['BSKL PANJANG'] || { id: 320936, name: 'BSKL PANJANG', uom_id: [12, 'kg'] };
+              targetItems.push({ prod, qty: pKg });
+            }
+            if (sKg > 0) {
+              const prod = prodMap['BSKL SEDANG'] || { id: 320937, name: 'BSKL SEDANG', uom_id: [12, 'kg'] };
+              targetItems.push({ prod, qty: sKg });
+            }
+            if (pdkKg > 0) {
+              const prod = prodMap['BSKL PENDEK'] || { id: 320938, name: 'BSKL PENDEK', uom_id: [12, 'kg'] };
+              targetItems.push({ prod, qty: pdkKg });
+            }
+
+            // Fallback: if categories weren't specified separately but totalSisa > 0
+            if (targetItems.length === 0 && totalSisa > 0) {
+              const fallbackProd = prodMap['BSKL'] || { id: 312078, name: 'BSKL', uom_id: [12, 'kg'] };
+              targetItems.push({ prod: fallbackProd, qty: totalSisa });
+            }
+
+            if (destLocs && destLocs.length > 0 && targetItems.length > 0) {
               const destId = destLocs[0].id;
               const srcId = wh.lot_stock_id[0];
 
               if (pick) {
                 if (!['done', 'cancel'].includes(pick.state)) {
-                  if (pick.move_ids && pick.move_ids.length > 0) {
-                    const moves = await adminOdooClient._callObject('stock.move', 'read', [
-                      pick.move_ids,
-                      ['id', 'product_id', 'product_uom_qty']
-                    ]);
-                    const bsklMove = moves.find(m => m.product_id && m.product_id[0] === bskl.id);
-                    if (bsklMove && parseFloat(bsklMove.product_uom_qty) !== sisaKg) {
-                      await adminOdooClient._callObject('stock.move', 'write', [[bsklMove.id], { product_uom_qty: sisaKg }]);
+                  const existingMoves = pick.move_ids && pick.move_ids.length > 0
+                    ? await adminOdooClient._callObject('stock.move', 'read', [
+                        pick.move_ids,
+                        ['id', 'product_id', 'product_uom_qty', 'state']
+                      ])
+                    : [];
+
+                  // Update or create move for each targetItem
+                  for (const item of targetItems) {
+                    const existingMove = existingMoves.find(m => m.product_id && m.product_id[0] === item.prod.id);
+                    if (existingMove) {
+                      if (parseFloat(existingMove.product_uom_qty) !== item.qty && !['done', 'cancel'].includes(existingMove.state)) {
+                        await adminOdooClient._callObject('stock.move', 'write', [[existingMove.id], { product_uom_qty: item.qty }]);
+                      }
+                    } else {
+                      await adminOdooClient._callObject('stock.move', 'create', [{
+                        product_id: item.prod.id,
+                        product_uom_qty: item.qty,
+                        product_uom: item.prod.uom_id ? item.prod.uom_id[0] : 12,
+                        picking_id: pick.id,
+                        name: item.prod.name,
+                        location_id: srcId,
+                        location_dest_id: destId,
+                        company_id: parentMo.company_id[0]
+                      }]);
                     }
                   }
+
+                  // Cancel moves for products no longer present
+                  for (const m of existingMoves) {
+                    const stillNeeded = targetItems.some(ti => ti.prod.id === m.product_id[0]);
+                    if (!stillNeeded && !['done', 'cancel'].includes(m.state)) {
+                      try {
+                        await adminOdooClient._callObject('stock.move', '_action_cancel', [[m.id]]);
+                      } catch (cErr) {
+                        await adminOdooClient._callObject('stock.move', 'write', [[m.id], { product_uom_qty: 0 }]);
+                      }
+                    }
+                  }
+
                   if (soId && !pick.x_studio_sales_order) {
                     await adminOdooClient._callObject('stock.picking', 'write', [[pick.id], { x_studio_sales_order: soId }]);
                   }
                 }
                 wipUpdateVals.x_studio_nama_transfer_makloon = pick.name;
               } else {
+                // Create new picking
                 const ptypes = await adminOdooClient._callObject('stock.picking.type', 'search_read', [
                   [
                     ['code', '=', 'internal'],
@@ -274,15 +402,19 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg)
 
                   const newPickId = await adminOdooClient._callObject('stock.picking', 'create', [pickPayload]);
 
-                  await adminOdooClient._callObject('stock.move', 'create', [{
-                    product_id: bskl.id,
-                    product_uom_qty: sisaKg,
-                    product_uom: bskl.uom_id ? bskl.uom_id[0] : 12,
-                    picking_id: newPickId,
-                    location_id: srcId,
-                    location_dest_id: destId,
-                    company_id: parentMo.company_id[0]
-                  }]);
+                  // Create stock.move lines for each active category
+                  for (const item of targetItems) {
+                    await adminOdooClient._callObject('stock.move', 'create', [{
+                      product_id: item.prod.id,
+                      product_uom_qty: item.qty,
+                      product_uom: item.prod.uom_id ? item.prod.uom_id[0] : 12,
+                      picking_id: newPickId,
+                      name: item.prod.name,
+                      location_id: srcId,
+                      location_dest_id: destId,
+                      company_id: parentMo.company_id[0]
+                    }]);
+                  }
 
                   const readPick = await adminOdooClient._callObject('stock.picking', 'read', [[newPickId]], { fields: ['name'] });
                   const pickName = readPick && readPick[0] ? readPick[0].name : `PICK#${newPickId}`;

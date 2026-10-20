@@ -14,6 +14,9 @@ export async function POST(req, { params }) {
 
     const qtyGradeA = body.qtyGradeA !== undefined ? body.qtyGradeA : body.qty_grade_a;
     const qtyGradeB = body.qtyGradeB !== undefined ? body.qtyGradeB : body.qty_grade_b;
+    const sisaPotongPanjang = body.sisaPotongPanjang !== undefined ? body.sisaPotongPanjang : body.sisa_potong_panjang;
+    const sisaPotongSedang = body.sisaPotongSedang !== undefined ? body.sisaPotongSedang : body.sisa_potong_sedang;
+    const sisaPotongPendek = body.sisaPotongPendek !== undefined ? body.sisaPotongPendek : body.sisa_potong_pendek;
     const sisaMakloonKg = body.sisaMakloonKg !== undefined ? body.sisaMakloonKg : body.sisa_makloon_kg;
     const noSuratJalan = body.noSuratJalan !== undefined ? body.noSuratJalan : (body.no_surat_jalan || body.no_surat_jalan_sfp);
 
@@ -22,6 +25,9 @@ export async function POST(req, { params }) {
       orderId: Number(id),
       qtyGradeA,
       qtyGradeB,
+      sisaPotongPanjang,
+      sisaPotongSedang,
+      sisaPotongPendek,
       sisaMakloonKg,
       noSuratJalan
     });

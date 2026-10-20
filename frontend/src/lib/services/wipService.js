@@ -64,8 +64,8 @@ export class WipService {
     return productionService.submitProductionResult(params);
   }
 
-  async _syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg) {
-    return productionService.syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg);
+  async _syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg, categories) {
+    return productionService.syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg, categories);
   }
 
   async unlockOrder(params) {

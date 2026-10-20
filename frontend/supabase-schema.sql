@@ -57,6 +57,9 @@ CREATE TABLE IF NOT EXISTS wip_orders (
   qty_grade_a NUMERIC(12,2) DEFAULT 0,
   qty_grade_b NUMERIC(12,2) DEFAULT 0,
   sisa_makloon_kg NUMERIC(12,2) DEFAULT 0,
+  sisa_potong_panjang NUMERIC(12,2) DEFAULT 0,
+  sisa_potong_sedang NUMERIC(12,2) DEFAULT 0,
+  sisa_potong_pendek NUMERIC(12,2) DEFAULT 0,
   no_surat_jalan_sfp VARCHAR(100) NULL,
   tanggal_sfp TIMESTAMPTZ NULL,
   qty_masuk_sfp NUMERIC(12,2) DEFAULT 0,
@@ -135,3 +138,9 @@ VALUES (
 )
 ON CONFLICT (email) DO UPDATE 
 SET password_hash = EXCLUDED.password_hash, role = 'master_admin', is_active = TRUE;
+
+-- 8. MIGRATION: 3 KATEGORI SISA POTONG KAIN (BSKL)
+ALTER TABLE wip_orders ADD COLUMN IF NOT EXISTS sisa_potong_panjang NUMERIC(12,2) DEFAULT 0;
+ALTER TABLE wip_orders ADD COLUMN IF NOT EXISTS sisa_potong_sedang NUMERIC(12,2) DEFAULT 0;
+ALTER TABLE wip_orders ADD COLUMN IF NOT EXISTS sisa_potong_pendek NUMERIC(12,2) DEFAULT 0;
+

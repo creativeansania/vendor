@@ -99,6 +99,9 @@ class WipRepository {
       qty_grade_a: Number(data.qty_grade_a || 0),
       qty_grade_b: Number(data.qty_grade_b || 0),
       sisa_makloon_kg: Number(data.sisa_makloon_kg || 0),
+      sisa_potong_panjang: data.sisa_potong_panjang !== undefined ? Number(data.sisa_potong_panjang || 0) : undefined,
+      sisa_potong_sedang: data.sisa_potong_sedang !== undefined ? Number(data.sisa_potong_sedang || 0) : undefined,
+      sisa_potong_pendek: data.sisa_potong_pendek !== undefined ? Number(data.sisa_potong_pendek || 0) : undefined,
       no_surat_jalan_sfp: data.no_surat_jalan_sfp || null,
       tanggal_sfp: data.tanggal_sfp || null,
       qty_masuk_sfp: Number(data.qty_masuk_sfp || 0),
@@ -109,11 +112,27 @@ class WipRepository {
       odoo_write_date: data.odoo_write_date || new Date().toISOString()
     };
 
-    const { data: upserted, error } = await supabaseServer
+    Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]);
+
+    let { data: upserted, error } = await supabaseServer
       .from('wip_orders')
       .upsert(payload, { onConflict: 'odoo_wip_id' })
       .select('id')
       .single();
+
+    if (error && (error.message?.includes('sisa_potong') || error.details?.includes('sisa_potong'))) {
+      const fallbackPayload = { ...payload };
+      delete fallbackPayload.sisa_potong_panjang;
+      delete fallbackPayload.sisa_potong_sedang;
+      delete fallbackPayload.sisa_potong_pendek;
+      const resFallback = await supabaseServer
+        .from('wip_orders')
+        .upsert(fallbackPayload, { onConflict: 'odoo_wip_id' })
+        .select('id')
+        .single();
+      upserted = resFallback.data;
+      error = resFallback.error;
+    }
 
     if (error) {
       console.error('[WipRepo] upsertWipOrder error:', error.message);

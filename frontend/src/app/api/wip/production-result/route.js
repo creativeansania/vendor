@@ -16,7 +16,10 @@ export async function POST(req) {
     const rawWipId = payload.wipId || payload._id || payload.id || searchParams.get('id') || searchParams.get('wipId');
     const qtyGradeA = payload.qtyGradeA !== undefined ? payload.qtyGradeA : payload.x_studio_qty_kirim_a_grade;
     const qtyGradeB = payload.qtyGradeB !== undefined ? payload.qtyGradeB : payload.x_studio_qty_kirim_b_grade;
-    const sisaMakloonKg = payload.sisaMakloonKg !== undefined ? payload.sisaMakloonKg : payload.x_studio_sisa_makloon_kg;
+    const sisaPotongPanjang = payload.sisaPotongPanjang !== undefined ? payload.sisaPotongPanjang : (payload.sisa_potong_panjang !== undefined ? payload.sisa_potong_panjang : payload.x_studio_sisa_potong_panjang);
+    const sisaPotongSedang = payload.sisaPotongSedang !== undefined ? payload.sisaPotongSedang : (payload.sisa_potong_sedang !== undefined ? payload.sisa_potong_sedang : payload.x_studio_sisa_potong_sedang);
+    const sisaPotongPendek = payload.sisaPotongPendek !== undefined ? payload.sisaPotongPendek : (payload.sisa_potong_pendek !== undefined ? payload.sisa_potong_pendek : payload.x_studio_sisa_potong_pendek);
+    const sisaMakloonKg = payload.sisaMakloonKg !== undefined ? payload.sisaMakloonKg : (payload.sisa_makloon_kg !== undefined ? payload.sisa_makloon_kg : payload.x_studio_sisa_makloon_kg);
     const noSuratJalan = payload.noSuratJalan || payload.no_surat_jalan_sfp || payload.x_studio_no_surat_jalan_sfp;
 
     if (!rawWipId) {
@@ -47,7 +50,10 @@ export async function POST(req) {
       orderId,
       qtyGradeA: Number(qtyGradeA || 0),
       qtyGradeB: Number(qtyGradeB || 0),
-      sisaMakloonKg: Number(sisaMakloonKg || 0),
+      sisaPotongPanjang: sisaPotongPanjang !== undefined ? Number(sisaPotongPanjang) : undefined,
+      sisaPotongSedang: sisaPotongSedang !== undefined ? Number(sisaPotongSedang) : undefined,
+      sisaPotongPendek: sisaPotongPendek !== undefined ? Number(sisaPotongPendek) : undefined,
+      sisaMakloonKg: sisaMakloonKg !== undefined ? Number(sisaMakloonKg) : 0,
       noSuratJalan
     });
 

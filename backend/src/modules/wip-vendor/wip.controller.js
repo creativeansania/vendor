@@ -59,7 +59,10 @@ export const handleSubmitProductionResult = async (req, res) => {
   const wipId = payload.wipId || payload._id || payload.id;
   const qtyGradeA = payload.qtyGradeA !== undefined ? payload.qtyGradeA : payload.x_studio_qty_kirim_a_grade;
   const qtyGradeB = payload.qtyGradeB !== undefined ? payload.qtyGradeB : payload.x_studio_qty_kirim_b_grade;
-  const sisaMakloonKg = payload.sisaMakloonKg !== undefined ? payload.sisaMakloonKg : payload.x_studio_sisa_makloon_kg;
+  const sisaPotongPanjang = payload.sisaPotongPanjang !== undefined ? payload.sisaPotongPanjang : (payload.sisa_potong_panjang !== undefined ? payload.sisa_potong_panjang : payload.x_studio_sisa_potong_panjang);
+  const sisaPotongSedang = payload.sisaPotongSedang !== undefined ? payload.sisaPotongSedang : (payload.sisa_potong_sedang !== undefined ? payload.sisa_potong_sedang : payload.x_studio_sisa_potong_sedang);
+  const sisaPotongPendek = payload.sisaPotongPendek !== undefined ? payload.sisaPotongPendek : (payload.sisa_potong_pendek !== undefined ? payload.sisa_potong_pendek : payload.x_studio_sisa_potong_pendek);
+  const sisaMakloonKg = payload.sisaMakloonKg !== undefined ? payload.sisaMakloonKg : (payload.sisa_makloon_kg !== undefined ? payload.sisa_makloon_kg : payload.x_studio_sisa_makloon_kg);
 
   if (!wipId) {
     return res.status(400).json({ success: false, message: 'WIP ID is required' });
@@ -70,6 +73,9 @@ export const handleSubmitProductionResult = async (req, res) => {
       wipId,
       qtyGradeA: Number(qtyGradeA || 0),
       qtyGradeB: Number(qtyGradeB || 0),
+      sisaPotongPanjang: sisaPotongPanjang !== undefined ? Number(sisaPotongPanjang) : undefined,
+      sisaPotongSedang: sisaPotongSedang !== undefined ? Number(sisaPotongSedang) : undefined,
+      sisaPotongPendek: sisaPotongPendek !== undefined ? Number(sisaPotongPendek) : undefined,
       sisaMakloonKg: Number(sisaMakloonKg || 0)
     });
     return res.status(200).json(result);
