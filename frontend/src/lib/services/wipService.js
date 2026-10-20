@@ -86,6 +86,10 @@ export class WipService {
     return syncService.onMoConfirmed(moId, options);
   }
 
+  async ensureDedicatedComponentPickings(moId) {
+    return syncService.ensureDedicatedComponentPickings(moId);
+  }
+
   async onTransferDone(pickingId) {
     return syncService.onTransferDone(pickingId);
   }

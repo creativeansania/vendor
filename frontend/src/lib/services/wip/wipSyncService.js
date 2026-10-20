@@ -294,6 +294,166 @@ export async function syncAllFromOdoo() {
 }
 
 /**
+ * Ensures all component transfers (PC/SPB) for an MO are dedicated 1:1 to this MO.
+ * If Odoo grouped moves of multiple MOs into one picking, this function splits them
+ * into 1 document per MO.
+ */
+export async function ensureDedicatedComponentPickings(moId) {
+  try {
+    const id = Number(moId);
+    if (!id || isNaN(id)) return;
+
+    await adminOdooClient.authenticate();
+    const mos = await adminOdooClient._callObject('mrp.production', 'read', [[id]], {
+      fields: ['id', 'name', 'picking_ids', 'production_group_id', 'origin', 'company_id']
+    });
+    if (!mos || !mos[0]) return;
+    const mo = mos[0];
+    const pickingIds = mo.picking_ids || [];
+    if (pickingIds.length === 0) return;
+
+    const pickings = await adminOdooClient._callObject('stock.picking', 'read', [pickingIds], {
+      fields: [
+        'id', 'name', 'picking_type_id', 'state', 'move_ids', 'origin', 'location_id',
+        'location_dest_id', 'move_type', 'company_id', 'scheduled_date', 'date_deadline',
+        'note', 'x_studio_sales_order', 'x_studio_source_warehouse', 'x_studio_destination_warehouse'
+      ]
+    });
+
+    for (const pick of pickings) {
+      if (pick.state === 'done' || pick.state === 'cancel') continue;
+      const pName = (pick.name || '').toUpperCase();
+      if (!pName.includes('/PC/') && !pName.includes('/SPB/')) continue;
+      if (!pick.move_ids || pick.move_ids.length === 0) continue;
+
+      const moves = await adminOdooClient._callObject('stock.move', 'read', [pick.move_ids], {
+        fields: ['id', 'product_id', 'product_uom_qty', 'state', 'production_group_id', 'raw_material_production_id', 'move_line_ids']
+      });
+
+      // Find all distinct production groups across the moves
+      const groupIds = [...new Set(moves.filter(m => m.production_group_id && m.production_group_id[0]).map(m => m.production_group_id[0]))];
+      const prodGroupMap = new Map();
+      if (groupIds.length > 0) {
+        try {
+          const groups = await adminOdooClient._callObject('mrp.production.group', 'read', [groupIds], {
+            fields: ['id', 'name', 'production_ids']
+          });
+          groups.forEach(g => prodGroupMap.set(g.id, g));
+        } catch (e) {}
+      }
+
+      // Group moves by MO ID
+      const movesByMo = new Map();
+      for (const m of moves) {
+        let mMoId = null;
+        if (m.raw_material_production_id && m.raw_material_production_id[0]) {
+          mMoId = m.raw_material_production_id[0];
+        } else if (m.production_group_id && m.production_group_id[0]) {
+          const g = prodGroupMap.get(m.production_group_id[0]);
+          if (g && g.production_ids && g.production_ids.length > 0) {
+            mMoId = typeof g.production_ids[0] === 'object' ? g.production_ids[0].id : g.production_ids[0];
+          }
+        }
+
+        const key = mMoId || 'unassigned';
+        if (!movesByMo.has(key)) {
+          movesByMo.set(key, []);
+        }
+        movesByMo.get(key).push(m);
+      }
+
+      // If all moves belong to at most 1 MO, picking is already dedicated
+      const moKeys = Array.from(movesByMo.keys()).filter(k => k !== 'unassigned');
+      if (moKeys.length <= 1) {
+        continue;
+      }
+
+      console.log(`[WipSyncService] Shared picking ${pick.name} (#${pick.id}) contains moves for ${moKeys.length} MOs. Splitting into 1 document per MO...`);
+
+      // 1st MO stays in the original picking, subsequent MOs get new pickings
+      const entries = Array.from(movesByMo.entries()).filter(([k]) => k !== 'unassigned');
+      const [firstMoIdKey] = entries[0];
+      const firstMoId = Number(firstMoIdKey);
+
+      // Read MO names for all entries
+      const allMoIds = entries.map(([k]) => Number(k)).filter(Boolean);
+      const moInfoMap = new Map();
+      try {
+        const moList = await adminOdooClient._callObject('mrp.production', 'read', [allMoIds], { fields: ['id', 'name'] });
+        moList.forEach(item => moInfoMap.set(item.id, item.name));
+      } catch (e) {}
+
+      // Update original picking origin
+      const firstMoName = moInfoMap.get(firstMoId) || `MO#${firstMoId}`;
+      await adminOdooClient._callObject('stock.picking', 'write', [
+        [pick.id],
+        {
+          origin: `${pick.origin || ''}, ${firstMoName}`.trim(),
+          x_studio_manufacturing_order: firstMoId
+        }
+      ]);
+      transfersCache.delete(firstMoId);
+
+      // Split all other MOs into dedicated pickings
+      for (let i = 1; i < entries.length; i++) {
+        const [targetMoIdKey, targetMoves] = entries[i];
+        const targetMoId = Number(targetMoIdKey);
+        const targetMoName = moInfoMap.get(targetMoId) || `MO#${targetMoId}`;
+        const targetMoveIds = targetMoves.map(m => m.id);
+        const targetMoveLineIds = targetMoves.flatMap(m => m.move_line_ids || []);
+
+        const newPickPayload = {
+          picking_type_id: pick.picking_type_id ? pick.picking_type_id[0] : 383,
+          location_id: pick.location_id ? pick.location_id[0] : 8,
+          location_dest_id: pick.location_dest_id ? pick.location_dest_id[0] : 284,
+          move_type: pick.move_type || 'direct',
+          origin: `${pick.origin || ''}, ${targetMoName}`.trim(),
+          company_id: pick.company_id ? pick.company_id[0] : 1,
+          scheduled_date: pick.scheduled_date,
+          date_deadline: pick.date_deadline,
+          x_studio_manufacturing_order: targetMoId,
+          x_studio_manufacturing_orders: pick.origin || targetMoName,
+          x_studio_sales_order: pick.x_studio_sales_order ? pick.x_studio_sales_order[0] : false,
+          x_studio_source_warehouse: pick.x_studio_source_warehouse,
+          x_studio_destination_warehouse: pick.x_studio_destination_warehouse,
+          note: pick.note
+        };
+
+        const newPickId = await adminOdooClient._callObject('stock.picking', 'create', [newPickPayload]);
+
+        await adminOdooClient._callObject('stock.move', 'write', [
+          targetMoveIds,
+          { picking_id: newPickId }
+        ]);
+
+        if (targetMoveLineIds.length > 0) {
+          await adminOdooClient._callObject('stock.move.line', 'write', [
+            targetMoveLineIds,
+            { picking_id: newPickId }
+          ]);
+        }
+
+        // Link new picking to target MO's WIP record if WIP exists
+        const targetWips = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'search_read', [
+          [['x_studio_manufacturing_order', '=', targetMoId]]
+        ], { fields: ['id'] });
+        if (targetWips && targetWips[0]) {
+          await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [
+            [targetWips[0].id],
+            { x_studio_daftar_transfer: [[6, 0, [newPickId]]] }
+          ], { context: { tracking_disable: true, no_automation: true } });
+        }
+
+        transfersCache.delete(targetMoId);
+        console.log(`[WipSyncService] Created dedicated picking #${newPickId} for MO #${targetMoId} (${targetMoName})`);
+      }
+    }
+  } catch (splitErr) {
+    console.warn(`[WipSyncService] Warning in ensureDedicatedComponentPickings for MO #${moId}:`, splitErr.message);
+  }
+}
+
+/**
  * 1. Triggered when Manufacturing Order is Confirmed
  * Replaces Odoo Automation: [Custom] Buat WIP dari MO
  */
@@ -312,7 +472,8 @@ export async function onMoConfirmed(moId, { autoSync = true } = {}) {
     ], { fields: ['id', 'x_name'] });
 
     if (existingWips && existingWips.length > 0) {
-      console.log(`[WipSyncService] WIP record already exists for MO #${id} (WIP ID: ${existingWips[0].id}, Name: ${existingWips[0].x_name}). Skipping creation.`);
+      console.log(`[WipSyncService] WIP record already exists for MO #${id} (WIP ID: ${existingWips[0].id}, Name: ${existingWips[0].x_name}). Ensuring picking isolation...`);
+      await ensureDedicatedComponentPickings(id);
       return { success: true, alreadyExists: true, wipId: existingWips[0].id };
     }
 
@@ -381,6 +542,9 @@ export async function onMoConfirmed(moId, { autoSync = true } = {}) {
 
     const newWipId = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'create', [newWipPayload]);
     console.log(`[WipSyncService] Created WIP record #${newWipId} for MO "${moName}".`);
+
+    // Ensure dedicated 1:1 component picking for this MO
+    await ensureDedicatedComponentPickings(id);
 
     if (autoSync && mo.picking_ids && mo.picking_ids.length > 0) {
       try {
