@@ -1,6 +1,6 @@
 'use client';
 
-import CuttingSummaryCard from './cutting/CuttingSummaryCard';
+import CuttingTotalsSection from './cutting/CuttingTotalsSection';
 import FabricRollsSection from './cutting/FabricRollsSection';
 import AccessoryLinesSection from './cutting/AccessoryLinesSection';
 import CuttingSubmitBar from './cutting/CuttingSubmitBar';
@@ -10,17 +10,21 @@ export default function CuttingTab({
   targetSpkQty,
   currentActualCutting,
   selisihCutting,
+  estimasiSpb,
   actualCutting,
   setActualCutting,
   handleFillCuttingWithTargetSpk,
+  handleFillCuttingWithEstimasiSpb,
   canEditCutting,
   saving,
-  fabricLines,
-  accessoryLines,
-  penerimaanQtys,
-  rollWeights,
-  totalPhysicalFabric,
+  fabricLines = [],
+  accessoryLines = [],
+  penerimaanQtys = {},
+  rollWeights = {},
+  totalPhysicalFabric = 0,
+  handleFillAllFabricFromSj,
   handleFillAllFabricFromPenerimaan,
+  handleFillAllAccessoriesFromSj,
   handleFillAllAccessories,
   handlePenerimaanChange,
   handleFillCuttingFromPenerimaan,
@@ -29,18 +33,50 @@ export default function CuttingTab({
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-      {/* CARD 1: HASIL POTONG */}
-      <CuttingSummaryCard
+      {/* 1. TOTALS & SUMMARY: QTY KIRIM, PENERIMAAN, CUTTING/PEMAKAIAN & SELISIH HASIL CUTTING */}
+      <CuttingTotalsSection
         order={order}
-        targetSpkQty={targetSpkQty}
-        currentActualCutting={currentActualCutting}
-        selisihCutting={selisihCutting}
+        fabricLines={fabricLines}
+        penerimaanQtys={penerimaanQtys}
+        totalPhysicalFabric={totalPhysicalFabric}
         actualCutting={actualCutting}
-        setActualCutting={setActualCutting}
-        handleFillCuttingWithTargetSpk={handleFillCuttingWithTargetSpk}
-        canEditCutting={canEditCutting}
-        saving={saving}
+        estimasiSpb={estimasiSpb}
+        selisihCutting={selisihCutting}
+        currentActualCutting={currentActualCutting}
       />
+
+      {/* FALLBACK INPUT IF NO FABRIC ROLL LINES */}
+      {fabricLines.length === 0 && (
+        <div className="card" style={{ padding: '16px 18px', borderRadius: '14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+            <div>
+              <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                ✂️ Input Qty Potong (Actual Cutting)
+              </h4>
+              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                SPK ini tidak memiliki rincian roll kain terpisah. Masukkan hasil potong langsung dalam satuan PCS.
+              </div>
+            </div>
+            <span className="badge badge-gold mono-num">PCS</span>
+          </div>
+          <div style={{ maxWidth: '220px' }}>
+            <div className="input-addon-group" style={{ height: '42px', borderColor: actualCutting ? 'var(--brand-gold)' : 'var(--border-strong)' }}>
+              <input
+                type="number"
+                step="1"
+                min="0"
+                disabled={!canEditCutting || saving}
+                placeholder={estimasiSpb > 0 ? String(estimasiSpb) : (targetSpkQty > 0 ? String(targetSpkQty) : '0')}
+                value={actualCutting}
+                onChange={(e) => setActualCutting(e.target.value)}
+                className="input-addon-field"
+                style={{ fontSize: '1.2rem', fontWeight: 800 }}
+              />
+              <span className="input-addon-label">PCS</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* SECTION 1: BAHAN KAIN */}
       <FabricRollsSection
@@ -51,6 +87,8 @@ export default function CuttingTab({
         penerimaanQtys={penerimaanQtys}
         rollWeights={rollWeights}
         totalPhysicalFabric={totalPhysicalFabric}
+        estimasiSpb={estimasiSpb}
+        handleFillAllFabricFromSj={handleFillAllFabricFromSj}
         handleFillAllFabricFromPenerimaan={handleFillAllFabricFromPenerimaan}
         handlePenerimaanChange={handlePenerimaanChange}
         handleFillCuttingFromPenerimaan={handleFillCuttingFromPenerimaan}
@@ -65,20 +103,12 @@ export default function CuttingTab({
         saving={saving}
         penerimaanQtys={penerimaanQtys}
         rollWeights={rollWeights}
+        handleFillAllAccessoriesFromSj={handleFillAllAccessoriesFromSj}
         handleFillAllAccessories={handleFillAllAccessories}
         handlePenerimaanChange={handlePenerimaanChange}
         handleFillCuttingFromPenerimaan={handleFillCuttingFromPenerimaan}
         handleWeightChange={handleWeightChange}
       />
-
-      {/* EMPTY STATE IF NO LINES AT ALL */}
-      {fabricLines.length === 0 && accessoryLines.length === 0 && (
-        <div className="card" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-          SPK ini tidak memiliki rincian bahan kain terpisah.
-          <br />
-          Silakan langsung isi <strong>Hasil Potong</strong> pada kartu di atas.
-        </div>
-      )}
 
       {/* Sticky Submit Cutting Button */}
       <CuttingSubmitBar

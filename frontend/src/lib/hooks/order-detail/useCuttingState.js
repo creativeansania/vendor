@@ -76,22 +76,27 @@ export function useCuttingState({
     }, 0);
   }, [fabricLines, rollWeights]);
 
+  const estimasiSpb = useMemo(() => {
+    return parseFloat(order?.estimasi_dari_spb) || 0;
+  }, [order?.estimasi_dari_spb]);
+
   const currentActualCutting = useMemo(() => {
+    if (totalPhysicalFabric > 0) {
+      return totalPhysicalFabric;
+    }
     if (actualCutting !== '' && actualCutting !== null && actualCutting !== undefined) {
       return parseFloat(actualCutting) || 0;
     }
     if (order?.actual_cutting !== null && order?.actual_cutting !== undefined && order.actual_cutting > 0) {
       return parseFloat(order.actual_cutting);
     }
-    if (totalPhysicalFabric > 0) {
-      return totalPhysicalFabric;
-    }
     return 0;
-  }, [actualCutting, order, totalPhysicalFabric]);
+  }, [totalPhysicalFabric, actualCutting, order]);
 
+  // Actual cutting - estimasi dari spb (selisih hasil cutting)
   const selisihCutting = useMemo(() => {
-    return currentActualCutting - targetSpkQty;
-  }, [currentActualCutting, targetSpkQty]);
+    return currentActualCutting - estimasiSpb;
+  }, [currentActualCutting, estimasiSpb]);
 
   // Quick fill handlers
   const handleFillCuttingFromPenerimaan = (lineId) => {
@@ -99,6 +104,19 @@ export function useCuttingState({
     if (pVal !== '') {
       setRollWeights((prev) => ({ ...prev, [lineId]: pVal }));
     }
+  };
+
+  // Penerimaan Kain: Isi semua sesuai Surat Jalan
+  const handleFillAllFabricFromSj = () => {
+    setPenerimaanQtys((prev) => {
+      const updated = { ...prev };
+      fabricLines.forEach((line) => {
+        if (line.qty !== undefined && line.qty !== null) {
+          updated[line.id] = line.qty;
+        }
+      });
+      return updated;
+    });
   };
 
   const handleFillAllFabricFromPenerimaan = () => {
@@ -117,6 +135,20 @@ export function useCuttingState({
     });
   };
 
+  // Penerimaan Aksesoris: Isi semua sesuai Surat Jalan
+  const handleFillAllAccessoriesFromSj = () => {
+    setPenerimaanQtys((prev) => {
+      const updated = { ...prev };
+      accessoryLines.forEach((line) => {
+        if (line.qty !== undefined && line.qty !== null) {
+          updated[line.id] = line.qty;
+        }
+      });
+      return updated;
+    });
+  };
+
+  // Pemakaian Aksesoris: Isi semua sesuai Penerimaan
   const handleFillAllAccessories = () => {
     setRollWeights((prev) => {
       const updated = { ...prev };
@@ -124,7 +156,7 @@ export function useCuttingState({
         const pVal =
           penerimaanQtys[line.id] !== undefined
             ? penerimaanQtys[line.id]
-            : (line.qty_penerimaan || line.qty || 0);
+            : (line.qty_penerimaan !== undefined && line.qty_penerimaan !== null ? line.qty_penerimaan : (line.qty || 0));
         if (pVal !== undefined && pVal !== null && pVal !== '') {
           updated[line.id] = pVal;
         }
@@ -136,6 +168,15 @@ export function useCuttingState({
   const handleFillCuttingWithTargetSpk = () => {
     if (targetSpkQty > 0) {
       setActualCutting(String(targetSpkQty));
+    }
+  };
+
+  const handleFillCuttingWithEstimasiSpb = () => {
+    if (estimasiSpb > 0) {
+      if (fabricLines.length === 1) {
+        setRollWeights((prev) => ({ ...prev, [fabricLines[0].id]: String(estimasiSpb) }));
+      }
+      setActualCutting(String(estimasiSpb));
     }
   };
 
@@ -203,8 +244,12 @@ export function useCuttingState({
       return;
     }
 
-    const effectiveActual = inputActual !== null ? inputActual : totalPhysicalFabric;
-    const targetRef = targetSpkQty > 0 ? targetSpkQty : 0;
+    const effectiveActual = totalPhysicalFabric > 0
+      ? totalPhysicalFabric
+      : (inputActual !== null ? inputActual : (parseFloat(order?.actual_cutting) || 0));
+
+    const targetRef = estimasiSpb > 0 ? estimasiSpb : (targetSpkQty > 0 ? targetSpkQty : 0);
+    const targetLabel = estimasiSpb > 0 ? 'Estimasi SPB' : 'Target SPK';
     let isExtreme = false;
     let devPct = 0;
 
@@ -219,6 +264,7 @@ export function useCuttingState({
       isExtreme,
       deviationPct: devPct,
       title: isExtreme ? 'Perhatian: Cek Jumlah Hasil Potong' : 'Konfirmasi Simpan Hasil Potong',
+      targetLabel,
       targetVal: targetRef > 0 ? `${targetRef.toLocaleString('id-ID')} pcs` : '-',
       actualVal: `${effectiveActual.toLocaleString('id-ID')} pcs`,
       diffVal:
@@ -226,7 +272,7 @@ export function useCuttingState({
           ? `${effectiveActual - targetRef > 0 ? '+' : ''}${(effectiveActual - targetRef).toLocaleString('id-ID')} pcs`
           : '0',
       warningMessage: isExtreme
-        ? `Jumlah hasil potong (${effectiveActual.toLocaleString('id-ID')} pcs) selisih ${devPct.toFixed(0)}% dari target SPK (${targetRef.toLocaleString('id-ID')} pcs). Cek lagi apakah ada salah ketik sebelum disimpan.`
+        ? `Jumlah hasil potong (${effectiveActual.toLocaleString('id-ID')} pcs) selisih ${devPct.toFixed(0)}% dari ${targetLabel.toLowerCase()} (${targetRef.toLocaleString('id-ID')} pcs). Cek lagi apakah ada salah ketik sebelum disimpan.`
         : 'Data hasil potong akan disimpan dan disinkronkan langsung ke Odoo.',
       onConfirm: () => executeSubmitCutting(effectiveActual, rolls)
     });
@@ -246,10 +292,14 @@ export function useCuttingState({
     totalPhysicalFabric,
     currentActualCutting,
     selisihCutting,
+    estimasiSpb,
     handleFillCuttingFromPenerimaan,
+    handleFillAllFabricFromSj,
     handleFillAllFabricFromPenerimaan,
+    handleFillAllAccessoriesFromSj,
     handleFillAllAccessories,
     handleFillCuttingWithTargetSpk,
+    handleFillCuttingWithEstimasiSpb,
     handleRequestSubmitCutting,
     executeSubmitCutting
   };

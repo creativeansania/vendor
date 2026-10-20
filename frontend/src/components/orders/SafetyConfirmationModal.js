@@ -43,7 +43,7 @@ export default function SafetyConfirmationModal({
         {/* Comparison Metrics Grid */}
         <div className="comparison-card">
           <div className="comparison-box">
-            <span className="comparison-box-label">Target SPK</span>
+            <span className="comparison-box-label">{safetyModal.targetLabel || 'Target SPK'}</span>
             <span className="comparison-box-value" style={{ fontSize: '1.05rem' }}>{safetyModal.targetVal}</span>
           </div>
           <div className="comparison-box" style={{ background: 'var(--bg-card)', borderRadius: '8px', padding: '4px' }}>

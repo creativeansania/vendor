@@ -38,11 +38,7 @@ export function getLineUom(line, defaultUom = 'pcs') {
 }
 
 export function getLineLabel(line, defaultUom = '') {
-  const uom = (line?.uom || defaultUom).toLowerCase();
-  if (uom === 'kg') return 'BERAT TIMBANG';
-  if (uom === 'yard' || uom === 'yd') return 'PANJANG FISIK';
-  if (uom === 'meter' || uom === 'm') return 'PANJANG FISIK';
-  return 'JUMLAH FISIK';
+  return 'QTY POTONG';
 }
 
 export function adjustQty(setter, currentVal, delta, min = 0) {

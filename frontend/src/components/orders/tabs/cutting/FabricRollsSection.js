@@ -11,6 +11,8 @@ export default function FabricRollsSection({
   penerimaanQtys = {},
   rollWeights = {},
   totalPhysicalFabric = 0,
+  estimasiSpb = 0,
+  handleFillAllFabricFromSj,
   handleFillAllFabricFromPenerimaan,
   handlePenerimaanChange,
   handleFillCuttingFromPenerimaan,
@@ -18,34 +20,35 @@ export default function FabricRollsSection({
 }) {
   if (fabricLines.length === 0) return null;
 
+  const effectiveEstimasi = estimasiSpb > 0 ? estimasiSpb : (parseFloat(order?.estimasi_dari_spb) || 0);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 2px', flexWrap: 'wrap', gap: '8px' }}>
         <span style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          🧵 Rincian Bahan Kain ({fabricLines.length} baris)
+          🧵 Rincian Roll Kain ({fabricLines.length} baris)
         </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {canEditCutting && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {canEditCutting && handleFillAllFabricFromSj && (
             <button
               type="button"
-              onClick={handleFillAllFabricFromPenerimaan}
+              onClick={handleFillAllFabricFromSj}
               className="quick-action-pill quick-action-pill-amber"
               style={{ fontSize: '0.72rem' }}
-              title="Isi semua hasil potong kain sesuai Qty Penerimaan"
+              title="Isi semua Qty Penerimaan kain sesuai Surat Jalan"
             >
               <Zap size={11} />
-              <span>Sesuai Penerimaan Semua</span>
+              <span>Sesuai SJ Semua</span>
             </button>
           )}
           <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-            Total Fisik Potong: <strong className="mono-num" style={{ color: 'var(--brand-gold)', fontWeight: 800 }}>{totalPhysicalFabric.toFixed(2)} {getLineUom(fabricLines[0], order?.unit_kain)}</strong>
+            Total Qty Potong: <strong className="mono-num" style={{ color: 'var(--brand-gold)', fontWeight: 800 }}>{totalPhysicalFabric.toLocaleString('id-ID')} PCS</strong>
           </span>
         </div>
       </div>
 
       {fabricLines.map((line, idx) => {
         const lineUom = getLineUom(line, order?.unit_kain);
-        const lineLabel = getLineLabel(line, order?.unit_kain);
         const currentPenerimaan =
           penerimaanQtys[line.id] !== undefined
             ? penerimaanQtys[line.id]
@@ -124,29 +127,29 @@ export default function FabricRollsSection({
                 </div>
               </div>
 
-              {/* INPUT 2: QTY CUTTING / TERPAKAI */}
+              {/* INPUT 2: QTY POTONG (SATUAN PCS) */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <label style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--brand-gold)', textTransform: 'uppercase' }}>
-                    ✂️ {lineLabel}:
+                    ✂️ Qty Potong:
                   </label>
-                  {canEditCutting && (
+                  {canEditCutting && fabricLines.length === 1 && effectiveEstimasi > 0 && (
                     <button
                       type="button"
-                      onClick={() => handleFillCuttingFromPenerimaan(line.id)}
-                      className={`quick-action-pill ${parseFloat(rollWeights[line.id]) === parseFloat(currentPenerimaan) ? 'quick-action-pill-emerald' : ''}`}
+                      onClick={() => handleWeightChange(line.id, String(effectiveEstimasi))}
+                      className={`quick-action-pill ${parseFloat(rollWeights[line.id]) === effectiveEstimasi ? 'quick-action-pill-emerald' : ''}`}
                       style={{ fontSize: '0.65rem', padding: '1px 5px' }}
-                      title="Gunakan nilai Qty Penerimaan"
+                      title="Isi sesuai Estimasi SPB"
                     >
-                      {parseFloat(rollWeights[line.id]) === parseFloat(currentPenerimaan) ? (
+                      {parseFloat(rollWeights[line.id]) === effectiveEstimasi ? (
                         <>
                           <Check size={10} />
-                          <span>Pas</span>
+                          <span>SPB</span>
                         </>
                       ) : (
                         <>
                           <Zap size={10} />
-                          <span>Pakai Masuk</span>
+                          <span>SPB ({effectiveEstimasi})</span>
                         </>
                       )}
                     </button>
@@ -156,17 +159,17 @@ export default function FabricRollsSection({
                   <div className="input-addon-group" style={{ height: '38px', borderColor: rollWeights[line.id] ? 'var(--brand-gold)' : 'var(--border-strong)' }}>
                     <input
                       type="number"
-                      step="0.01"
+                      step="1"
                       min="0"
                       disabled={!canEditCutting || saving}
-                      placeholder="0.00"
+                      placeholder="0"
                       value={rollWeights[line.id] !== undefined ? rollWeights[line.id] : ''}
                       onChange={(e) => handleWeightChange(line.id, e.target.value)}
                       className="input-addon-field"
                       style={{ fontSize: '0.95rem', fontWeight: 800 }}
                     />
                     <span className="input-addon-label" style={{ fontSize: '0.68rem', padding: '0 6px' }}>
-                      {lineUom}
+                      PCS
                     </span>
                   </div>
                 </div>

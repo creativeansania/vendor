@@ -77,9 +77,11 @@ function OrderDetailContent() {
             targetSpkQty={detail.targetSpkQty}
             currentActualCutting={detail.currentActualCutting}
             selisihCutting={detail.selisihCutting}
+            estimasiSpb={detail.estimasiSpb}
             actualCutting={detail.actualCutting}
             setActualCutting={detail.setActualCutting}
             handleFillCuttingWithTargetSpk={detail.handleFillCuttingWithTargetSpk}
+            handleFillCuttingWithEstimasiSpb={detail.handleFillCuttingWithEstimasiSpb}
             canEditCutting={detail.canEditCutting}
             saving={detail.saving}
             fabricLines={detail.fabricLines}
@@ -87,7 +89,9 @@ function OrderDetailContent() {
             penerimaanQtys={detail.penerimaanQtys}
             rollWeights={detail.rollWeights}
             totalPhysicalFabric={detail.totalPhysicalFabric}
+            handleFillAllFabricFromSj={detail.handleFillAllFabricFromSj}
             handleFillAllFabricFromPenerimaan={detail.handleFillAllFabricFromPenerimaan}
+            handleFillAllAccessoriesFromSj={detail.handleFillAllAccessoriesFromSj}
             handleFillAllAccessories={detail.handleFillAllAccessories}
             handlePenerimaanChange={detail.handlePenerimaanChange}
             handleFillCuttingFromPenerimaan={detail.handleFillCuttingFromPenerimaan}
