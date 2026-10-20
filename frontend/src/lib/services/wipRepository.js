@@ -131,10 +131,39 @@ class WipRepository {
       if (!namaItem) continue;
 
       const kodeLot = line.kode_lot || line.x_studio_kode_warna_roll || 'Tanpa Lot';
-      const isAcc = (namaItem || '').toLowerCase().includes('acc') || (namaItem || '').toLowerCase().includes('aksesoris') || (namaItem || '').toLowerCase().includes('kancing') || (namaItem || '').toLowerCase().includes('benang');
-      const lineType = line.line_type || (isAcc ? 'aksesoris' : 'kain');
+      const lowerName = (namaItem || '').toLowerCase();
+      const uomVal = (line.uom || line.x_studio_uom || 'yard').toLowerCase();
+      const isAcc =
+        lowerName.includes('hangtag') ||
+        lowerName.includes('hang tag') ||
+        lowerName.includes('pouch') ||
+        lowerName.includes('barcode') ||
+        lowerName.includes('kertas') ||
+        lowerName.includes('label') ||
+        lowerName.includes('plastik') ||
+        lowerName.includes('polybag') ||
+        lowerName.includes('opp') ||
+        lowerName.includes('kancing') ||
+        lowerName.includes('benang') ||
+        lowerName.includes('zipper') ||
+        lowerName.includes('resleting') ||
+        lowerName.includes('sleting') ||
+        lowerName.includes('acc') ||
+        lowerName.includes('acces') ||
+        lowerName.includes('aksesoris') ||
+        lowerName.includes('pita') ||
+        lowerName.includes('renda') ||
+        lowerName.includes('kardus') ||
+        lowerName.includes('box') ||
+        lowerName.includes('tag pin') ||
+        lowerName.includes('tali') ||
+        lowerName.includes('stiker') ||
+        lowerName.includes('sticker') ||
+        (!lowerName.includes('kain') && ['pcs', 'lembar', 'buah', 'biji', 'pack', 'roll'].includes(uomVal));
+
+      const lineType = line.line_type || (isAcc ? 'aksesoris' : (lowerName.includes('kain') ? 'kain' : 'aksesoris'));
       const qty = Number(line.qty || line.x_studio_yards || 0);
-      const uom = line.uom || line.x_studio_uom || 'yard';
+      const uom = line.uom || line.x_studio_uom || (isAcc ? 'pcs' : 'yard');
       const rawBerat = line.qty_berat_kg !== undefined ? line.qty_berat_kg : line.x_studio_qty_berat_kg;
       const qtyBeratKg = rawBerat !== null && rawBerat !== undefined && rawBerat !== '' ? Number(rawBerat) : null;
       const rawPenerimaan = line.qty_penerimaan !== undefined ? line.qty_penerimaan : line.x_studio_qty_penerimaan;

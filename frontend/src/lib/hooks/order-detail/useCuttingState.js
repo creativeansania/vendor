@@ -28,15 +28,38 @@ export function useCuttingState({
   const fabricLines = useMemo(() => {
     return rollLines.filter((l) => {
       const name = (l.nama_item || '').toLowerCase();
+      const uom = (l.uom || '').toLowerCase();
+
+      // Explicit accessories & packaging items
       const isAcc =
         l.line_type === 'aksesoris' ||
         name.includes('acc') ||
         name.includes('acces') ||
         name.includes('aksesoris') ||
+        name.includes('hangtag') ||
+        name.includes('hang tag') ||
+        name.includes('pouch') ||
+        name.includes('barcode') ||
+        name.includes('kertas') ||
         name.includes('kancing') ||
         name.includes('benang') ||
         name.includes('zipper') ||
-        name.includes('label');
+        name.includes('resleting') ||
+        name.includes('sleting') ||
+        name.includes('label') ||
+        name.includes('plastik') ||
+        name.includes('polybag') ||
+        name.includes('opp') ||
+        name.includes('pita') ||
+        name.includes('renda') ||
+        name.includes('kardus') ||
+        name.includes('box') ||
+        name.includes('tag pin') ||
+        name.includes('tali') ||
+        name.includes('stiker') ||
+        name.includes('sticker') ||
+        (!name.includes('kain') && ['pcs', 'lembar', 'buah', 'biji', 'pack', 'roll'].includes(uom));
+
       if (isAcc) return false;
       return l.line_type === 'kain' || name.includes('kain');
     });
