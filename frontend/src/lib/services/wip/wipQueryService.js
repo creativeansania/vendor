@@ -154,36 +154,90 @@ export async function getOrders({ user, search, status, vendorId, page = 1, limi
  * Aggregate SPK metrics for dashboard
  */
 export async function getMetrics(user, vendorId) {
-  let base = supabaseServer.from('wip_orders').select('id, cutting_locked_at, result_locked_at, status_kebutuhan_kain, deadline_spk').eq('is_active', true);
+  let base = supabaseServer.from('wip_orders').select('id, cutting_locked_at, result_locked_at, status_kebutuhan_kain, deadline_spk, parent_wip_order_id').eq('is_active', true);
   if (vendorId) {
     base = base.eq('vendor_id', Number(vendorId));
   }
 
   const { data: rows } = await base;
   if (!rows) {
-    return { total_spk: 0, cutting_selesai: 0, selesai_jahit: 0, kain_kurang: 0, terlambat: 0 };
+    return {
+      total: 0,
+      cutting_pending: 0,
+      sewing_active: 0,
+      result_locked: 0,
+      kain_kurang: 0,
+      overdue: 0,
+      deadline_week: 0,
+      backorder_count: 0,
+      total_spk: 0,
+      cutting_selesai: 0,
+      selesai_jahit: 0,
+      terlambat: 0
+    };
   }
 
   const todayStr = new Date().toISOString().split('T')[0];
-  let total_spk = rows.length;
-  let cutting_selesai = 0;
-  let selesai_jahit = 0;
+  const sevenDaysLater = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  let total = rows.length;
+  let cutting_pending = 0;
+  let sewing_active = 0;
+  let result_locked = 0;
   let kain_kurang = 0;
-  let terlambat = 0;
+  let overdue = 0;
+  let deadline_week = 0;
+  let backorder_count = 0;
+  let cutting_selesai = 0;
 
   for (const r of rows) {
-    if (r.cutting_locked_at) cutting_selesai++;
-    if (r.result_locked_at) selesai_jahit++;
-    if (r.status_kebutuhan_kain && r.status_kebutuhan_kain.toLowerCase().includes('kurang')) kain_kurang++;
-    if (!r.result_locked_at && r.deadline_spk && r.deadline_spk < todayStr) terlambat++;
+    const isBackorder = Boolean(r.parent_wip_order_id);
+    const isCuttingLocked = Boolean(r.cutting_locked_at);
+    const isResultLocked = Boolean(r.result_locked_at);
+
+    if (isBackorder) {
+      backorder_count++;
+    }
+
+    if (isResultLocked) {
+      result_locked++;
+    } else if (isCuttingLocked || isBackorder) {
+      sewing_active++;
+    } else {
+      cutting_pending++;
+    }
+
+    if (isCuttingLocked) {
+      cutting_selesai++;
+    }
+
+    if (r.status_kebutuhan_kain && r.status_kebutuhan_kain.toLowerCase().includes('kurang')) {
+      kain_kurang++;
+    }
+
+    if (!isResultLocked && r.deadline_spk) {
+      if (r.deadline_spk < todayStr) {
+        overdue++;
+      } else if (r.deadline_spk <= sevenDaysLater) {
+        deadline_week++;
+      }
+    }
   }
 
   return {
-    total_spk,
-    cutting_selesai,
-    selesai_jahit,
+    total,
+    cutting_pending,
+    sewing_active,
+    result_locked,
     kain_kurang,
-    terlambat
+    overdue,
+    deadline_week,
+    backorder_count,
+    // backwards-compatible keys:
+    total_spk: total,
+    cutting_selesai,
+    selesai_jahit: result_locked,
+    terlambat: overdue
   };
 }
 

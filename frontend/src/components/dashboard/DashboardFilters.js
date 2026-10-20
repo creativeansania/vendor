@@ -97,7 +97,7 @@ export default function DashboardFilters({
                 <option value="">Semua Vendor ({vendors.length})</option>
                 {vendors.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.name} ({v.code})
+                    {v.name} {v.code ? `(${v.code})` : ''}
                   </option>
                 ))}
               </select>
@@ -189,7 +189,11 @@ export default function DashboardFilters({
               )}
               {selectedVendor && (
                 <span style={{ background: 'var(--status-purple-bg)', border: '1px solid var(--status-purple-border)', color: 'var(--status-purple)', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
-                  Vendor: {vendors.find((v) => String(v.id) === String(selectedVendor))?.name || selectedVendor}
+                  Vendor: {(() => {
+                    const found = vendors.find((v) => String(v.id) === String(selectedVendor));
+                    if (!found) return selectedVendor;
+                    return found.code ? `${found.name} (${found.code})` : found.name;
+                  })()}
                 </span>
               )}
               {sort !== 'latest' && (
@@ -234,19 +238,19 @@ export default function DashboardFilters({
             className={`filter-chip ${status === 'all' ? 'active' : ''}`}
             onClick={() => onToggleStatus('all')}
           >
-            Semua ({metrics.total || totalCount})
+            Semua ({metrics.total || totalCount || 0})
           </button>
           <button
             className={`filter-chip ${status === 'cutting_pending' ? 'active' : ''}`}
             onClick={() => onToggleStatus('cutting_pending')}
           >
-            ✂️ Belum Potong ({metrics.cutting_pending})
+            ✂️ Belum Potong ({metrics.cutting_pending ?? 0})
           </button>
           <button
             className={`filter-chip ${status === 'cutting_locked' ? 'active' : ''}`}
             onClick={() => onToggleStatus('cutting_locked')}
           >
-            🔒 Sedang Jahit ({metrics.sewing_active})
+            🔒 Sedang Jahit ({metrics.sewing_active ?? 0})
           </button>
           <button
             className={`filter-chip ${status === 'kain_kurang' ? 'active' : ''}`}
@@ -270,7 +274,7 @@ export default function DashboardFilters({
                 : {}
             }
           >
-            ⚠️ Kain Kurang ({metrics.kain_kurang || activeKainKurangBadge || 0})
+            ⚠️ Kain Kurang ({metrics.kain_kurang ?? activeKainKurangBadge ?? 0})
           </button>
           <button
             className={`filter-chip ${status === 'overdue' ? 'active' : ''}`}
@@ -294,25 +298,25 @@ export default function DashboardFilters({
                 : {}
             }
           >
-            🔥 Overdue ({metrics.overdue})
+            🔥 Overdue ({metrics.overdue ?? 0})
           </button>
           <button
             className={`filter-chip ${status === 'deadline_week' ? 'active' : ''}`}
             onClick={() => onToggleStatus('deadline_week')}
           >
-            ⏰ Deadline 7 Hari ({metrics.deadline_week})
+            ⏰ Deadline 7 Hari ({metrics.deadline_week ?? 0})
           </button>
           <button
             className={`filter-chip ${status === 'backorder' ? 'active' : ''}`}
             onClick={() => onToggleStatus('backorder')}
           >
-            🔄 Backorder ({metrics.backorder_count})
+            🔄 Backorder ({metrics.backorder_count ?? 0})
           </button>
           <button
             className={`filter-chip ${status === 'result_locked' ? 'active' : ''}`}
             onClick={() => onToggleStatus('result_locked')}
           >
-            ✅ Selesai ({metrics.result_locked})
+            ✅ Selesai ({metrics.result_locked ?? 0})
           </button>
         </div>
       </div>

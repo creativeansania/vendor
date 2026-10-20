@@ -14,7 +14,7 @@ export default function DashboardMetricsGrid({ metrics, totalCount, status, onTo
     >
       <MetricTile
         label="Semua SPK"
-        value={metrics.total || totalCount}
+        value={metrics.total || totalCount || 0}
         subtext="Sinkron Odoo"
         icon={<Layers size={14} />}
         variant="default"
@@ -25,7 +25,7 @@ export default function DashboardMetricsGrid({ metrics, totalCount, status, onTo
 
       <MetricTile
         label="Perlu Potong"
-        value={metrics.cutting_pending}
+        value={metrics.cutting_pending ?? 0}
         subtext="Antrean Meja"
         icon={<Scissors size={14} />}
         variant="gold"
@@ -36,7 +36,7 @@ export default function DashboardMetricsGrid({ metrics, totalCount, status, onTo
 
       <MetricTile
         label="Sedang Jahit"
-        value={metrics.sewing_active}
+        value={metrics.sewing_active ?? 0}
         subtext="Proses Sewing"
         icon={<Lock size={14} />}
         variant="sky"
@@ -47,7 +47,7 @@ export default function DashboardMetricsGrid({ metrics, totalCount, status, onTo
 
       <MetricTile
         label="Kain Kurang"
-        value={metrics.kain_kurang}
+        value={metrics.kain_kurang ?? 0}
         subtext="Perlu Solusi"
         icon={<AlertTriangle size={14} />}
         variant="rose"
@@ -58,7 +58,7 @@ export default function DashboardMetricsGrid({ metrics, totalCount, status, onTo
 
       <MetricTile
         label="Lewat Batas"
-        value={metrics.overdue}
+        value={metrics.overdue ?? 0}
         subtext="Overdue SPK"
         icon={<Flame size={14} />}
         variant="amber"
@@ -69,7 +69,7 @@ export default function DashboardMetricsGrid({ metrics, totalCount, status, onTo
 
       <MetricTile
         label="Selesai"
-        value={metrics.result_locked}
+        value={metrics.result_locked ?? 0}
         subtext="SJ Terbit"
         icon={<CheckCircle2 size={14} />}
         variant="emerald"
