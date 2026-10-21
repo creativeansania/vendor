@@ -240,69 +240,82 @@ export async function findMatchingGradeBVariant(parentProductId) {
 }
 
 /**
- * Push production result changes to Odoo ERP
+ * Sync Grade A producing qty to Odoo MO
  */
-export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg, categories = {}) {
+export async function syncGradeAToOdoo(orderOrWipId, aGrade) {
   const odooWipId = typeof orderOrWipId === 'object' ? orderOrWipId.odoo_wip_id : orderOrWipId;
   const odooMoId = typeof orderOrWipId === 'object' ? orderOrWipId.odoo_mo_id : null;
   if (!odooWipId && !odooMoId) return;
 
   await adminOdooClient.authenticate();
+  const wipUpdateVals = {
+    x_studio_qty_kirim_a_grade: aGrade
+  };
 
-  let pKg = 0, sKg = 0, pdkKg = 0;
-  if (typeof categories === 'object' && categories !== null) {
-    pKg = Math.max(0, Number(categories.sisaPanjang || 0));
-    sKg = Math.max(0, Number(categories.sisaSedang || 0));
-    pdkKg = Math.max(0, Number(categories.sisaPendek || 0));
+  if (odooMoId) {
+    try {
+      const mos = await adminOdooClient._callObject('mrp.production', 'read', [[odooMoId]], {
+        fields: ['id', 'name', 'state', 'qty_producing']
+      });
+      if (mos && mos[0]) {
+        const mo = mos[0];
+        if (typeof orderOrWipId === 'object' && mo.name && mo.name !== orderOrWipId.mo_name) {
+          orderOrWipId.mo_name = mo.name;
+          supabaseServer.from('wip_orders').update({ mo_name: mo.name }).eq('id', orderOrWipId.id).then();
+        }
+        if (typeof orderOrWipId === 'object' && mo.state && mo.state !== orderOrWipId.mo_state) {
+          orderOrWipId.mo_state = mo.state;
+          supabaseServer.from('wip_orders').update({ mo_state: mo.state }).eq('id', orderOrWipId.id).then();
+        }
+
+        if (!['done', 'cancel'].includes(mo.state)) {
+          await adminOdooClient._callObject('mrp.production', 'write', [[mo.id], {
+            qty_producing: aGrade
+          }]);
+        }
+      }
+    } catch (e) {
+      console.warn(`[syncGradeAToOdoo] Error syncing to MO #${odooMoId}:`, e.message);
+    }
   }
 
-  const catSum = Number((pKg + sKg + pdkKg).toFixed(2));
-  const totalSisa = catSum > 0 ? catSum : Math.max(0, Number(sisaKg || 0));
+  if (odooWipId) {
+    await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [[odooWipId], wipUpdateVals], {
+      context: { tracking_disable: true, no_automation: true }
+    });
+  }
+}
 
+/**
+ * Sync Grade B qty to Odoo (Creates or updates MO Turunan Grade B)
+ */
+export async function syncGradeBToOdoo(orderOrWipId, bGrade) {
+  const odooWipId = typeof orderOrWipId === 'object' ? orderOrWipId.odoo_wip_id : orderOrWipId;
+  const odooMoId = typeof orderOrWipId === 'object' ? orderOrWipId.odoo_mo_id : null;
+  if (!odooWipId && !odooMoId) return;
+
+  await adminOdooClient.authenticate();
   const wipUpdateVals = {
-    x_studio_qty_kirim_a_grade: aGrade,
-    x_studio_qty_kirim_b_grade: bGrade,
-    x_studio_sisa_potong_panjang: pKg,
-    x_studio_sisa_potong_sedang: sKg,
-    x_studio_sisa_potong_pendek: pdkKg,
-    x_studio_sisa_reject: totalSisa,
-    x_studio_sisa_makloon_kg: totalSisa
+    x_studio_qty_kirim_b_grade: bGrade
   };
 
   let parentMo = null;
   if (odooMoId) {
     try {
       const mos = await adminOdooClient._callObject('mrp.production', 'read', [[odooMoId]], {
-        fields: ['id', 'name', 'state', 'qty_producing', 'product_id', 'product_uom_id', 'company_id', 'picking_type_id', 'production_group_id', 'bom_id', 'x_studio_sales_order', 'product_qty']
+        fields: ['id', 'name', 'state', 'product_id', 'product_uom_id', 'company_id', 'picking_type_id', 'production_group_id', 'bom_id', 'x_studio_sales_order', 'product_qty']
       });
-      if (mos && mos[0]) {
-        parentMo = mos[0];
-      }
-    } catch (moErr) {
-      console.warn(`[WipProductionService] Read parent MO #${odooMoId} error:`, moErr.message);
+      if (mos && mos[0]) parentMo = mos[0];
+    } catch (e) {
+      console.warn(`[syncGradeBToOdoo] Read parent MO error:`, e.message);
     }
   }
 
-  // 1. Sync to Parent Manufacturing Order (qty_producing for Grade A)
-  if (parentMo && aGrade !== undefined && aGrade !== null) {
-    try {
-      if (!['done', 'cancel'].includes(parentMo.state)) {
-        await adminOdooClient._callObject('mrp.production', 'write', [[parentMo.id], {
-          qty_producing: aGrade
-        }]);
-      }
-    } catch (moErr) {
-      console.warn(`[WipProductionService] Sync qty_producing to MO #${odooMoId} warning:`, moErr.message);
-    }
-  }
-
-  // 2. MO Grade B creation / update if bGrade > 0
   if (parentMo && bGrade > 0) {
     try {
       const originB = `Turunan Grade B - ${parentMo.name}`;
-      // Find if MO Grade B already exists
       const existingMoBs = await adminOdooClient._callObject('mrp.production', 'search_read', [
-        [[ 'origin', '=', originB ]]
+        [['origin', '=', originB]]
       ], { fields: ['id', 'name', 'state', 'product_qty', 'x_studio_sales_order'], limit: 1 });
 
       if (existingMoBs && existingMoBs.length > 0) {
@@ -314,7 +327,6 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
         if (parentMo.x_studio_sales_order && !moB.x_studio_sales_order) {
           moBUpdates.x_studio_sales_order = parentMo.x_studio_sales_order[0];
         }
-        // Update product to Grade B variant if still in draft
         if (moB.state === 'draft' && parentMo.product_id) {
           try {
             const targetProdBId = await findMatchingGradeBVariant(parentMo.product_id[0]);
@@ -328,17 +340,13 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
         }
         wipUpdateVals.x_studio_nama_mo_grade_b = moB.name;
       } else {
-        // Resolve Grade B product variant, or cleanly fallback to parent product
         let targetProdBId = parentMo.product_id ? parentMo.product_id[0] : null;
         if (targetProdBId) {
           try {
             targetProdBId = await findMatchingGradeBVariant(targetProdBId);
-          } catch (resErr) {
-            console.warn(`[WipProductionService] Fallback to parent product for Grade B:`, resErr.message);
-          }
+          } catch (e) {}
         }
 
-        // Find matching BOM for Grade B variant if available
         let targetBomId = parentMo.bom_id ? parentMo.bom_id[0] : false;
         if (targetProdBId && targetProdBId !== parentMo.product_id[0]) {
           try {
@@ -347,10 +355,8 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
               ['id'],
               { limit: 1 }
             ]);
-            if (boms && boms.length > 0) {
-              targetBomId = boms[0].id;
-            }
-          } catch (bomErr) {}
+            if (boms && boms.length > 0) targetBomId = boms[0].id;
+          } catch (e) {}
         }
 
         const moPayload = {
@@ -361,27 +367,56 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
           company_id: parentMo.company_id ? parentMo.company_id[0] : 1,
           picking_type_id: parentMo.picking_type_id ? parentMo.picking_type_id[0] : false
         };
-        if (parentMo.production_group_id) {
-          moPayload.production_group_id = parentMo.production_group_id[0];
-        }
-        if (targetBomId) {
-          moPayload.bom_id = targetBomId;
-        }
-        if (parentMo.x_studio_sales_order) {
-          moPayload.x_studio_sales_order = parentMo.x_studio_sales_order[0];
-        }
+        if (parentMo.production_group_id) moPayload.production_group_id = parentMo.production_group_id[0];
+        if (targetBomId) moPayload.bom_id = targetBomId;
+        if (parentMo.x_studio_sales_order) moPayload.x_studio_sales_order = parentMo.x_studio_sales_order[0];
 
         const newMoBId = await adminOdooClient._callObject('mrp.production', 'create', [moPayload]);
         const readMoB = await adminOdooClient._callObject('mrp.production', 'read', [[newMoBId]], { fields: ['name'] });
-        const moBName = readMoB && readMoB[0] ? readMoB[0].name : `MO#${newMoBId}`;
-        wipUpdateVals.x_studio_nama_mo_grade_b = moBName;
+        wipUpdateVals.x_studio_nama_mo_grade_b = readMoB && readMoB[0] ? readMoB[0].name : `MO#${newMoBId}`;
       }
-    } catch (moBErr) {
-      console.warn(`[WipProductionService] MO Grade B creation error:`, moBErr.message);
+    } catch (e) {
+      console.warn(`[syncGradeBToOdoo] MO Grade B creation error:`, e.message);
     }
   }
 
-  // 3. Sisa Potong Kain (BSKL) -> Create / update Internal Transfer for BSKL with up to 3 stock.move lines
+  if (odooWipId) {
+    await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [[odooWipId], wipUpdateVals], {
+      context: { tracking_disable: true, no_automation: true }
+    });
+  }
+}
+
+/**
+ * Sync BSKL sisa potong to Odoo Internal Transfer (with customer delivery slip)
+ */
+export async function syncBsklToOdoo(orderOrWipId, { pKg = 0, sKg = 0, pdkKg = 0, totalSisa = 0, noSuratJalanBskl = '' } = {}) {
+  const odooWipId = typeof orderOrWipId === 'object' ? orderOrWipId.odoo_wip_id : orderOrWipId;
+  const odooMoId = typeof orderOrWipId === 'object' ? orderOrWipId.odoo_mo_id : null;
+  if (!odooWipId && !odooMoId) return;
+
+  await adminOdooClient.authenticate();
+  const catSum = Number((pKg + sKg + pdkKg).toFixed(2));
+  const effectiveTotal = catSum > 0 ? catSum : totalSisa;
+
+  const wipUpdateVals = {
+    x_studio_sisa_potong_panjang: pKg,
+    x_studio_sisa_potong_sedang: sKg,
+    x_studio_sisa_potong_pendek: pdkKg,
+    x_studio_sisa_reject: effectiveTotal,
+    x_studio_sisa_makloon_kg: effectiveTotal
+  };
+
+  let parentMo = null;
+  if (odooMoId) {
+    try {
+      const mos = await adminOdooClient._callObject('mrp.production', 'read', [[odooMoId]], {
+        fields: ['id', 'name', 'state', 'company_id', 'product_id', 'product_qty', 'x_studio_sales_order']
+      });
+      if (mos && mos[0]) parentMo = mos[0];
+    } catch (e) {}
+  }
+
   if (odooWipId && parentMo) {
     try {
       const wips = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'read', [[odooWipId]], {
@@ -404,12 +439,11 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
 
           const existingPicks = await adminOdooClient._callObject('stock.picking', 'search_read', [
             [['origin', '=like', `${prefix}%`]]
-          ], { fields: ['id', 'name', 'state', 'move_ids', 'x_studio_sales_order'], limit: 1 });
+          ], { fields: ['id', 'name', 'state', 'move_ids', 'x_studio_sales_order', 'x_studio_delivery_slip_pabrikvendor'], limit: 1 });
 
           const pick = existingPicks && existingPicks.length > 0 ? existingPicks[0] : null;
 
-          if (totalSisa > 0) {
-            // Find destination location WHGB/Stock
+          if (effectiveTotal > 0) {
             const destLocs = await adminOdooClient._callObject('stock.location', 'search_read', [
               [
                 ['complete_name', 'ilike', 'WHGB/Stock'],
@@ -418,17 +452,13 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
               ]
             ], { fields: ['id'], limit: 1 });
 
-            // Fetch master products for BSKL categories
             const bsklProds = await adminOdooClient._callObject('product.product', 'search_read', [
               [['name', 'in', ['BSKL PANJANG', 'BSKL SEDANG', 'BSKL PENDEK', 'BSKL']]]
             ], { fields: ['id', 'name', 'uom_id'] });
 
             const prodMap = {};
-            (bsklProds || []).forEach(p => {
-              prodMap[p.name] = p;
-            });
+            (bsklProds || []).forEach(p => { prodMap[p.name] = p; });
 
-            // Prepare target item lines to transfer
             const targetItems = [];
             if (pKg > 0) {
               const prod = prodMap['BSKL PANJANG'] || { id: 320936, name: 'BSKL PANJANG', uom_id: [12, 'kg'] };
@@ -442,11 +472,9 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
               const prod = prodMap['BSKL PENDEK'] || { id: 320938, name: 'BSKL PENDEK', uom_id: [12, 'kg'] };
               targetItems.push({ prod, qty: pdkKg });
             }
-
-            // Fallback: if categories weren't specified separately but totalSisa > 0
-            if (targetItems.length === 0 && totalSisa > 0) {
+            if (targetItems.length === 0 && effectiveTotal > 0) {
               const fallbackProd = prodMap['BSKL'] || { id: 312078, name: 'BSKL', uom_id: [12, 'kg'] };
-              targetItems.push({ prod: fallbackProd, qty: totalSisa });
+              targetItems.push({ prod: fallbackProd, qty: effectiveTotal });
             }
 
             if (destLocs && destLocs.length > 0 && targetItems.length > 0) {
@@ -455,6 +483,17 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
 
               if (pick) {
                 if (!['done', 'cancel'].includes(pick.state)) {
+                  const pickUpdates = {};
+                  if (noSuratJalanBskl && pick.x_studio_delivery_slip_pabrikvendor !== noSuratJalanBskl) {
+                    pickUpdates.x_studio_delivery_slip_pabrikvendor = noSuratJalanBskl;
+                  }
+                  if (soId && !pick.x_studio_sales_order) {
+                    pickUpdates.x_studio_sales_order = soId;
+                  }
+                  if (Object.keys(pickUpdates).length > 0) {
+                    await adminOdooClient._callObject('stock.picking', 'write', [[pick.id], pickUpdates]);
+                  }
+
                   const existingMoves = pick.move_ids && pick.move_ids.length > 0
                     ? await adminOdooClient._callObject('stock.move', 'read', [
                         pick.move_ids,
@@ -462,7 +501,6 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
                       ])
                     : [];
 
-                  // Update or create move for each targetItem
                   for (const item of targetItems) {
                     const existingMove = existingMoves.find(m => m.product_id && m.product_id[0] === item.prod.id);
                     if (existingMove) {
@@ -483,7 +521,6 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
                     }
                   }
 
-                  // Cancel moves for products no longer present
                   for (const m of existingMoves) {
                     const stillNeeded = targetItems.some(ti => ti.prod.id === m.product_id[0]);
                     if (!stillNeeded && !['done', 'cancel'].includes(m.state)) {
@@ -494,14 +531,9 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
                       }
                     }
                   }
-
-                  if (soId && !pick.x_studio_sales_order) {
-                    await adminOdooClient._callObject('stock.picking', 'write', [[pick.id], { x_studio_sales_order: soId }]);
-                  }
                 }
                 wipUpdateVals.x_studio_nama_transfer_makloon = pick.name;
               } else {
-                // Create new picking
                 const ptypes = await adminOdooClient._callObject('stock.picking.type', 'search_read', [
                   [
                     ['code', '=', 'internal'],
@@ -521,19 +553,13 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
                     company_id: parentMo.company_id[0],
                     note: `Sisa bahan makloon dari MO ${parentMo.name}`
                   };
-                  if (soId) {
-                    pickPayload.x_studio_sales_order = soId;
-                  }
-                  if (parentMo.product_id) {
-                    pickPayload.x_studio_product_mo = parentMo.product_id[0];
-                  }
-                  if (parentMo.product_qty) {
-                    pickPayload.x_studio_quantity_mo = parentMo.product_qty;
-                  }
+                  if (soId) pickPayload.x_studio_sales_order = soId;
+                  if (noSuratJalanBskl) pickPayload.x_studio_delivery_slip_pabrikvendor = noSuratJalanBskl;
+                  if (parentMo.product_id) pickPayload.x_studio_product_mo = parentMo.product_id[0];
+                  if (parentMo.product_qty) pickPayload.x_studio_quantity_mo = parentMo.product_qty;
 
                   const newPickId = await adminOdooClient._callObject('stock.picking', 'create', [pickPayload]);
 
-                  // Create stock.move lines for each active category
                   for (const item of targetItems) {
                     await adminOdooClient._callObject('stock.move', 'create', [{
                       product_id: item.prod.id,
@@ -548,23 +574,18 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
                   }
 
                   const readPick = await adminOdooClient._callObject('stock.picking', 'read', [[newPickId]], { fields: ['name'] });
-                  const pickName = readPick && readPick[0] ? readPick[0].name : `PICK#${newPickId}`;
-                  wipUpdateVals.x_studio_nama_transfer_makloon = pickName;
+                  wipUpdateVals.x_studio_nama_transfer_makloon = readPick && readPick[0] ? readPick[0].name : `PICK#${newPickId}`;
                 }
               }
             }
-          } else if (pick && !['done', 'cancel'].includes(pick.state)) {
-            await adminOdooClient._callObject('stock.picking', 'action_cancel', [[pick.id]]);
-            wipUpdateVals.x_studio_nama_transfer_makloon = false;
           }
         }
       }
-    } catch (sisaErr) {
-      console.warn(`[WipProductionService] Transfer Makloon creation error:`, sisaErr.message);
+    } catch (e) {
+      console.warn(`[syncBsklToOdoo] Transfer Makloon creation error:`, e.message);
     }
   }
 
-  // 4. Write all values to Monitoring WIP Vendor
   if (odooWipId) {
     await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [[odooWipId], wipUpdateVals], {
       context: { tracking_disable: true, no_automation: true }
@@ -573,39 +594,286 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
 }
 
 /**
- * Unlock Order stage (Master Admin only)
+ * Push production result changes to Odoo ERP (Backward compatibility wrapper)
  */
-export async function unlockOrder({ user, orderId, unlockType, reason }) {
-  if (user.role !== 'master_admin') {
-    throw new Error('Hanya Master Admin yang berhak membuka kunci (unlock).');
-  }
-  if (!reason || !reason.trim()) {
-    throw new Error('Alasan unlock wajib diisi untuk catatan audit.');
+export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg, categories = {}) {
+  await syncGradeAToOdoo(orderOrWipId, aGrade);
+  await syncGradeBToOdoo(orderOrWipId, bGrade);
+  await syncBsklToOdoo(orderOrWipId, {
+    pKg: categories.sisaPanjang || 0,
+    sKg: categories.sisaSedang || 0,
+    pdkKg: categories.sisaPendek || 0,
+    totalSisa: sisaKg,
+    noSuratJalanBskl: categories.noSuratJalanBskl || ''
+  });
+}
+
+/**
+ * Submit Grade A only (locks Grade A once MO state is done)
+ */
+export async function submitGradeA({ user, orderId, qtyGradeA, noSuratJalan }) {
+  const { order } = await getOrderDetails({ user, orderId, includeRawMoves: false });
+
+  if (order.is_grade_a_locked && user.role !== 'master_admin' && !order.is_unlocked_by_admin) {
+    throw new Error('Input Grade A terkunci karena produksi telah selesai dan MO Odoo berstatus Done.');
   }
 
-  if (unlockType === 'cutting') {
-    await supabaseServer.from('wip_orders').update({
-      cutting_locked_at: null,
-      cutting_locked_by: null
-    }).eq('id', orderId);
-  } else if (unlockType === 'result') {
-    await supabaseServer.from('wip_orders').update({
-      result_locked_at: null,
-      result_locked_by: null
-    }).eq('id', orderId);
-  } else {
-    throw new Error('Tipe unlock tidak valid (pilih "cutting" atau "result").');
+  const aGrade = Math.max(0, Number(qtyGradeA || 0));
+  const suratJalan = (noSuratJalan || '').trim();
+
+  const updatePayload = {
+    qty_grade_a: aGrade,
+    updated_at: new Date().toISOString()
+  };
+  if (suratJalan) {
+    updatePayload.no_surat_jalan_sfp = suratJalan;
+  }
+
+  await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
+
+  await supabaseServer.from('audit_logs').insert({
+    user_id: user.id,
+    wip_order_id: orderId,
+    action: 'submit_grade_a',
+    before_data: { qty_grade_a: order.qty_grade_a, no_surat_jalan_sfp: order.no_surat_jalan_sfp },
+    after_data: { qtyGradeA: aGrade, noSuratJalan: suratJalan }
+  });
+
+  try {
+    await syncGradeAToOdoo(order, aGrade);
+    if (order.odoo_mo_id) rawMovesCache.delete(order.odoo_mo_id);
+  } catch (err) {
+    console.warn(`[WipProductionService] Odoo Grade A push warning: ${err.message}`);
+  }
+
+  return {
+    success: true,
+    message: 'Qty Grade A dan Surat Jalan berhasil disimpan dan disinkronkan ke Odoo!',
+    qtyGradeA: aGrade,
+    noSuratJalan: suratJalan
+  };
+}
+
+/**
+ * Submit Grade B only (with max 2x submit quota: 1 initial + 1 revision)
+ */
+export async function submitGradeB({ user, orderId, qtyGradeB, noSuratJalanGradeB }) {
+  const { order } = await getOrderDetails({ user, orderId, includeRawMoves: false });
+
+  let currentCount = Number(order.grade_b_submit_count || 0);
+  if (order.grade_b_submit_count === undefined || order.grade_b_submit_count === null) {
+    const { count } = await supabaseServer
+      .from('audit_logs')
+      .select('*', { count: 'exact', head: true })
+      .eq('wip_order_id', orderId)
+      .eq('action', 'submit_grade_b');
+    currentCount = count || 0;
+  }
+
+  const isUnlocked = Boolean(order.is_unlocked_by_admin);
+  if (currentCount >= 2 && user.role !== 'master_admin' && !isUnlocked) {
+    throw new Error('Jatah submit Grade B telah habis (Maksimal 2x submit: 1x awal + 1x revisi). Hubungi Master Admin untuk membuka kunci.');
+  }
+
+  const bGrade = Math.max(0, Number(qtyGradeB || 0));
+  const sjB = (noSuratJalanGradeB || '').trim();
+  const newCount = currentCount + 1;
+
+  const updatePayload = {
+    qty_grade_b: bGrade,
+    grade_b_submit_count: newCount,
+    updated_at: new Date().toISOString()
+  };
+  if (sjB) {
+    updatePayload.no_surat_jalan_grade_b = sjB;
+  }
+
+  const { error: updErr } = await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
+  if (updErr && (updErr.message?.includes('grade_b') || updErr.details?.includes('grade_b'))) {
+    console.warn('[WipProductionService] Fallback update without new grade_b columns:', updErr.message);
+    delete updatePayload.grade_b_submit_count;
+    delete updatePayload.no_surat_jalan_grade_b;
+    await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
   }
 
   await supabaseServer.from('audit_logs').insert({
     user_id: user.id,
     wip_order_id: orderId,
-    action: `unlock_${unlockType}`,
-    reason: reason.trim()
+    action: 'submit_grade_b',
+    before_data: { qty_grade_b: order.qty_grade_b, count: currentCount },
+    after_data: { qtyGradeB: bGrade, noSuratJalanGradeB: sjB, count: newCount }
+  });
+
+  try {
+    await syncGradeBToOdoo(order, bGrade);
+    if (order.odoo_mo_id) rawMovesCache.delete(order.odoo_mo_id);
+  } catch (err) {
+    console.warn(`[WipProductionService] Odoo Grade B push warning: ${err.message}`);
+  }
+
+  return {
+    success: true,
+    message: newCount === 1
+      ? 'Qty Grade B berhasil disubmit! Anda memiliki jatah 1x revisi.'
+      : 'Revisi Grade B berhasil disimpan. Input Grade B kini terkunci.',
+    qtyGradeB: bGrade,
+    submitCount: newCount,
+    isLocked: newCount >= 2
+  };
+}
+
+/**
+ * Submit BSKL only (locks when internal transfer is validated in Odoo)
+ */
+export async function submitBskl({ user, orderId, sisaPotongPanjang, sisaPotongSedang, sisaPotongPendek, sisaMakloonKg, noSuratJalanBskl }) {
+  const { order } = await getOrderDetails({ user, orderId, includeRawMoves: false });
+
+  if (order.is_bskl_locked && user.role !== 'master_admin' && !order.is_unlocked_by_admin) {
+    throw new Error('Input Sisa Potong (BSKL) terkunci karena dokumen transfer telah divalidasi oleh Gudang Ansania.');
+  }
+
+  const panjangKg = Math.max(0, Number(sisaPotongPanjang || 0));
+  const sedangKg = Math.max(0, Number(sisaPotongSedang || 0));
+  const pendekKg = Math.max(0, Number(sisaPotongPendek || 0));
+  const hasCategories = sisaPotongPanjang !== undefined || sisaPotongSedang !== undefined || sisaPotongPendek !== undefined;
+  const calculatedTotal = Number((panjangKg + sedangKg + pendekKg).toFixed(2));
+  const totalSisaKg = hasCategories ? calculatedTotal : Math.max(0, Number(sisaMakloonKg || 0));
+  const sjBskl = (noSuratJalanBskl || '').trim();
+
+  const updatePayload = {
+    sisa_makloon_kg: totalSisaKg,
+    sisa_potong_panjang: panjangKg,
+    sisa_potong_sedang: sedangKg,
+    sisa_potong_pendek: pendekKg,
+    updated_at: new Date().toISOString()
+  };
+  if (sjBskl) {
+    updatePayload.no_surat_jalan_bskl = sjBskl;
+  }
+
+  const { error: updErr } = await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
+  if (updErr && (updErr.message?.includes('sisa_potong') || updErr.message?.includes('no_surat_jalan_bskl'))) {
+    console.warn('[WipProductionService] Fallback update without sisa_potong/sj columns:', updErr.message);
+    delete updatePayload.sisa_potong_panjang;
+    delete updatePayload.sisa_potong_sedang;
+    delete updatePayload.sisa_potong_pendek;
+    delete updatePayload.no_surat_jalan_bskl;
+    await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
+  }
+
+  await supabaseServer.from('audit_logs').insert({
+    user_id: user.id,
+    wip_order_id: orderId,
+    action: 'submit_bskl',
+    before_data: { sisa_makloon_kg: order.sisa_makloon_kg },
+    after_data: {
+      sisaPotongPanjang: panjangKg,
+      sisaPotongSedang: sedangKg,
+      sisaPotongPendek: pendekKg,
+      sisaMakloonKg: totalSisaKg,
+      noSuratJalanBskl: sjBskl
+    }
+  });
+
+  try {
+    await syncBsklToOdoo(order, {
+      pKg: panjangKg,
+      sKg: sedangKg,
+      pdkKg: pendekKg,
+      totalSisa: totalSisaKg,
+      noSuratJalanBskl: sjBskl
+    });
+  } catch (err) {
+    console.warn(`[WipProductionService] Odoo BSKL transfer push warning: ${err.message}`);
+  }
+
+  return {
+    success: true,
+    message: 'Rincian sisa potong (BSKL) berhasil disimpan dan transfer Odoo berhasil dibuat/diperbarui!',
+    sisaPotongPanjang: panjangKg,
+    sisaPotongSedang: sedangKg,
+    sisaPotongPendek: pendekKg,
+    sisaMakloonKg: totalSisaKg,
+    noSuratJalanBskl: sjBskl
+  };
+}
+
+/**
+ * Master Admin Explicit Unlock: Buka Kunci agar user/vendor dapat mengedit kembali
+ */
+export async function adminUnlockOrder({ user, orderId, reason = '' }) {
+  if (user.role !== 'master_admin') {
+    throw new Error('Hanya Master Admin yang berhak membuka kunci (unlock).');
+  }
+
+  const updatePayload = {
+    is_unlocked_by_admin: true,
+    unlocked_at: new Date().toISOString(),
+    unlocked_by: user.id,
+    cutting_locked_at: null,
+    cutting_locked_by: null,
+    result_locked_at: null,
+    result_locked_by: null,
+    grade_b_submit_count: 0
+  };
+
+  const { error: updErr } = await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
+  if (updErr && updErr.message?.includes('is_unlocked_by_admin')) {
+    delete updatePayload.is_unlocked_by_admin;
+    delete updatePayload.unlocked_at;
+    delete updatePayload.unlocked_by;
+    delete updatePayload.grade_b_submit_count;
+    await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
+  }
+
+  await supabaseServer.from('audit_logs').insert({
+    user_id: user.id,
+    wip_order_id: orderId,
+    action: 'admin_unlock_order',
+    reason: (reason || 'Dibuka manual oleh Master Admin').trim()
   });
 
   return {
     success: true,
-    message: `Kunci tahap ${unlockType} berhasil dibuka kembali.`
+    message: 'Kunci order berhasil dibuka oleh Master Admin. Seluruh user & vendor dapat mengedit kembali.'
   };
 }
+
+/**
+ * Master Admin Explicit Relock: Kunci Kembali
+ */
+export async function adminRelockOrder({ user, orderId }) {
+  if (user.role !== 'master_admin') {
+    throw new Error('Hanya Master Admin yang berhak mengunci kembali (relock).');
+  }
+
+  const updatePayload = {
+    is_unlocked_by_admin: false,
+    updated_at: new Date().toISOString()
+  };
+
+  const { error: updErr } = await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
+  if (updErr && updErr.message?.includes('is_unlocked_by_admin')) {
+    delete updatePayload.is_unlocked_by_admin;
+    await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
+  }
+
+  await supabaseServer.from('audit_logs').insert({
+    user_id: user.id,
+    wip_order_id: orderId,
+    action: 'admin_relock_order'
+  });
+
+  return {
+    success: true,
+    message: 'Order berhasil dikunci kembali oleh Master Admin.'
+  };
+}
+
+/**
+ * Unlock Order stage (Backward compatibility)
+ */
+export async function unlockOrder({ user, orderId, unlockType, reason }) {
+  return adminUnlockOrder({ user, orderId, reason });
+}
+

@@ -76,18 +76,20 @@ export async function syncOrderFromOdoo({ user, orderId }) {
 
   // Read MO details
   let moState = order.mo_state;
+  let moName = order.mo_name || w.x_name;
   let deadlineSpk = w.x_studio_deadline_spk || order.deadline_spk;
   let startSpk = w.x_studio_start_spk || order.start_spk;
   let qtySpk = Number(w.x_studio_qty_spk || order.qty_spk || 0);
   let salesOrder = w.x_studio_sales_order ? (Array.isArray(w.x_studio_sales_order) ? w.x_studio_sales_order[1] : String(w.x_studio_sales_order)) : order.sales_order;
 
-  if (moId && (!deadlineSpk || !qtySpk)) {
+  if (moId) {
     try {
       const mos = await adminOdooClient._callObject('mrp.production', 'read', [[moId]], {
         fields: ['id', 'name', 'state', 'date_planned_start', 'date_deadline', 'product_qty', 'sale_id']
       });
       if (mos && mos[0]) {
         const m = mos[0];
+        if (m.name) moName = m.name;
         moState = m.state || moState;
         if (!startSpk && m.date_planned_start) startSpk = m.date_planned_start.split(' ')[0];
         if (!deadlineSpk && m.date_deadline) deadlineSpk = m.date_deadline.split(' ')[0];
@@ -139,8 +141,9 @@ export async function syncOrderFromOdoo({ user, orderId }) {
     odoo_mo_id: moId,
     odoo_warehouse_id: whId,
     vendor_name: whName,
-    mo_name: w.x_name,
+    mo_name: moName || w.x_name,
     mo_state: moState,
+
     sales_order: salesOrder,
     product_name: w.x_studio_product ? w.x_studio_product[1] : order.product_name,
     qty_spk: qtySpk,

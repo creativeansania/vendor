@@ -64,6 +64,18 @@ export class WipService {
     return productionService.submitProductionResult(params);
   }
 
+  async submitGradeA(params) {
+    return productionService.submitGradeA(params);
+  }
+
+  async submitGradeB(params) {
+    return productionService.submitGradeB(params);
+  }
+
+  async submitBskl(params) {
+    return productionService.submitBskl(params);
+  }
+
   async _syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg, categories) {
     return productionService.syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg, categories);
   }
@@ -71,6 +83,15 @@ export class WipService {
   async unlockOrder(params) {
     return productionService.unlockOrder(params);
   }
+
+  async adminUnlockOrder(params) {
+    return productionService.adminUnlockOrder(params);
+  }
+
+  async adminRelockOrder(params) {
+    return productionService.adminRelockOrder(params);
+  }
+
 
   // --- Sync & ERP Webhook Services ---
 

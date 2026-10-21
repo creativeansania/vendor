@@ -10,14 +10,27 @@ export async function POST(req, { params }) {
     }
 
     const { id } = await params;
-    const { unlockType, reason } = await req.json();
+    let body = {};
+    try {
+      body = await req.json();
+    } catch {}
 
-    const result = await wipService.unlockOrder({
-      user: auth.user,
-      orderId: Number(id),
-      unlockType,
-      reason
-    });
+    const action = body.action || 'unlock'; // 'unlock' or 'relock'
+    const reason = body.reason || 'Dibuka manual oleh Master Admin';
+
+    let result;
+    if (action === 'relock') {
+      result = await wipService.adminRelockOrder({
+        user: auth.user,
+        orderId: Number(id)
+      });
+    } else {
+      result = await wipService.adminUnlockOrder({
+        user: auth.user,
+        orderId: Number(id),
+        reason
+      });
+    }
 
     return NextResponse.json(result);
   } catch (err) {

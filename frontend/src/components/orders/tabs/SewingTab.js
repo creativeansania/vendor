@@ -2,7 +2,6 @@
 
 import SewingSummaryCard from './sewing/SewingSummaryCard';
 import SewingRincianSection from './sewing/SewingRincianSection';
-import SewingSubmitBar from './sewing/SewingSubmitBar';
 
 export default function SewingTab({
   order,
@@ -13,25 +12,21 @@ export default function SewingTab({
   setGradeA,
   gradeB,
   setGradeB,
-  sisaPanjang,
-  setSisaPanjang,
-  sisaSedang,
-  setSisaSedang,
-  sisaPendek,
-  setSisaPendek,
-  totalSisaKg,
-  sisaKg,
-  setSisaKg,
-  noSuratJalan,
-  setNoSuratJalan,
+  noSuratJalanGradeA,
+  setNoSuratJalanGradeA,
+  noSuratJalanGradeB,
+  setNoSuratJalanGradeB,
   setPresetGradeA,
-  canEditResult,
+  canEditGradeA,
+  canEditGradeB,
+  gradeBSubmitCount = 0,
   saving,
-  handleRequestSubmitProduction
+  handleRequestSubmitGradeA,
+  handleRequestSubmitGradeB
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-      {/* CARD 1: HASIL JAHIT */}
+      {/* SUMMARY CARD: HASIL JAHIT */}
       <SewingSummaryCard
         order={order}
         targetSpkQty={targetSpkQty}
@@ -41,7 +36,7 @@ export default function SewingTab({
         gradeB={gradeB}
       />
 
-      {/* SECTION: RINCIAN HASIL JAHIT */}
+      {/* SECTION: RINCIAN & TRIGGER BUTTONS (GRADE A & GRADE B) */}
       <SewingRincianSection
         targetSpkQty={targetSpkQty}
         totalYieldPcs={totalYieldPcs}
@@ -49,28 +44,17 @@ export default function SewingTab({
         setGradeA={setGradeA}
         gradeB={gradeB}
         setGradeB={setGradeB}
-        sisaPanjang={sisaPanjang}
-        setSisaPanjang={setSisaPanjang}
-        sisaSedang={sisaSedang}
-        setSisaSedang={setSisaSedang}
-        sisaPendek={sisaPendek}
-        setSisaPendek={setSisaPendek}
-        totalSisaKg={totalSisaKg}
-        sisaKg={sisaKg}
-        setSisaKg={setSisaKg}
-        noSuratJalan={noSuratJalan}
-        setNoSuratJalan={setNoSuratJalan}
+        noSuratJalanGradeA={noSuratJalanGradeA}
+        setNoSuratJalanGradeA={setNoSuratJalanGradeA}
+        noSuratJalanGradeB={noSuratJalanGradeB}
+        setNoSuratJalanGradeB={setNoSuratJalanGradeB}
         setPresetGradeA={setPresetGradeA}
-        canEditResult={canEditResult}
+        canEditGradeA={canEditGradeA}
+        canEditGradeB={canEditGradeB}
+        gradeBSubmitCount={gradeBSubmitCount}
         saving={saving}
-      />
-
-      {/* STICKY SUBMIT BUTTON */}
-      <SewingSubmitBar
-        canEditResult={canEditResult}
-        saving={saving}
-        totalYieldPcs={totalYieldPcs}
-        onSubmit={handleRequestSubmitProduction}
+        onSubmitGradeA={handleRequestSubmitGradeA}
+        onSubmitGradeB={handleRequestSubmitGradeB}
       />
     </div>
   );

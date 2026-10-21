@@ -131,7 +131,9 @@ export function useOrderDetail(orderId) {
           productionState.setSisaPanjang(String(res.order.sisa_makloon_kg));
         }
         
-        productionState.setNoSuratJalan(res.order.no_surat_jalan || res.order.no_surat_jalan_sfp || '');
+        productionState.setNoSuratJalanGradeA(res.order.no_surat_jalan_sfp || res.order.no_surat_jalan || '');
+        productionState.setNoSuratJalanGradeB(res.order.no_surat_jalan_grade_b || '');
+        productionState.setNoSuratJalanBskl(res.order.no_surat_jalan_bskl || '');
       }
     } catch (err) {
       setFeedback({ text: 'Gagal memuat SPK: ' + err.message, type: 'error' });
@@ -145,6 +147,13 @@ export function useOrderDetail(orderId) {
       loadData();
     }
   }, [user, orderId, loadData]);
+
+  // Auto-switch to tab 'kain' if active tab is hidden on backorders
+  useEffect(() => {
+    if (order?.is_backorder && ['aksesoris', 'jahit', 'bskl'].includes(activeTab)) {
+      setActiveTab('kain');
+    }
+  }, [order?.is_backorder, activeTab, setActiveTab]);
 
   // Share SPK context to WhatsApp Group / Chat
   const handleShareToWa = (customIssue = '') => {
@@ -194,11 +203,24 @@ export function useOrderDetail(orderId) {
 
   // Permissions & lock states
   const isBackorder = Boolean(order?.is_backorder);
-  const isCuttingLocked = Boolean(order?.cutting_locked_at);
-  const isResultLocked = Boolean(order?.result_locked_at);
   const isMasterAdmin = user?.role === 'master_admin';
-  const canEditCutting = !isCuttingLocked || isMasterAdmin;
-  const canEditResult = !isResultLocked || isMasterAdmin;
+  const isUnlockedByAdmin = Boolean(order?.is_unlocked_by_admin);
+
+  const hasGradeASent = Number(order?.qty_grade_a || 0) > 0;
+  const isMoDone = order?.mo_state === 'done';
+
+  const isCuttingLocked = Boolean(order?.is_cutting_locked ?? (hasGradeASent && isMoDone && !isUnlockedByAdmin && !isBackorder));
+  const isGradeALocked = Boolean(order?.is_grade_a_locked ?? (hasGradeASent && isMoDone && !isUnlockedByAdmin));
+  const isGradeBLocked = Boolean(order?.is_grade_b_locked ?? (Number(order?.grade_b_submit_count || 0) >= 2 && !isUnlockedByAdmin));
+  const isBsklLocked = Boolean(order?.is_bskl_locked ?? (order?.is_bskl_validated && !isUnlockedByAdmin));
+  const isResultLocked = isGradeALocked && isGradeBLocked;
+
+  const canEditCutting = order?.can_edit_cutting ?? (!isCuttingLocked || isUnlockedByAdmin || isMasterAdmin);
+  const canEditGradeA = order?.can_edit_grade_a ?? (!isGradeALocked || isUnlockedByAdmin || isMasterAdmin);
+  const canEditGradeB = order?.can_edit_grade_b ?? (!isGradeBLocked || isUnlockedByAdmin || isMasterAdmin);
+  const canEditBskl = order?.can_edit_bskl ?? (!isBsklLocked || isUnlockedByAdmin || isMasterAdmin);
+  const canEditResult = canEditGradeA || canEditGradeB;
+
 
   return {
     orderId,
@@ -221,17 +243,23 @@ export function useOrderDetail(orderId) {
     setGradeA: productionState.setGradeA,
     gradeB: productionState.gradeB,
     setGradeB: productionState.setGradeB,
+    noSuratJalanGradeA: productionState.noSuratJalanGradeA,
+    setNoSuratJalanGradeA: productionState.setNoSuratJalanGradeA,
+    noSuratJalanGradeB: productionState.noSuratJalanGradeB,
+    setNoSuratJalanGradeB: productionState.setNoSuratJalanGradeB,
     sisaPanjang: productionState.sisaPanjang,
     setSisaPanjang: productionState.setSisaPanjang,
     sisaSedang: productionState.sisaSedang,
     setSisaSedang: productionState.setSisaSedang,
     sisaPendek: productionState.sisaPendek,
     setSisaPendek: productionState.setSisaPendek,
+    noSuratJalanBskl: productionState.noSuratJalanBskl,
+    setNoSuratJalanBskl: productionState.setNoSuratJalanBskl,
     totalSisaKg: productionState.totalSisaKg,
     sisaKg: productionState.totalSisaKg,
     setSisaKg: productionState.setSisaKg,
-    noSuratJalan: productionState.noSuratJalan,
-    setNoSuratJalan: productionState.setNoSuratJalan,
+    noSuratJalan: productionState.noSuratJalanGradeA,
+    setNoSuratJalan: productionState.setNoSuratJalanGradeA,
     safetyModal,
     setSafetyModal,
     loadData,
@@ -251,6 +279,10 @@ export function useOrderDetail(orderId) {
     setPresetGradeA: productionState.setPresetGradeA,
     handleRequestSubmitCutting: cuttingState.handleRequestSubmitCutting,
     executeSubmitCutting: cuttingState.executeSubmitCutting,
+    handleRequestSubmitGradeA: productionState.handleRequestSubmitGradeA,
+    handleRequestSubmitGradeB: () => productionState.handleRequestSubmitGradeB(Number(order?.grade_b_submit_count || 0)),
+    handleRequestSubmitBskl: productionState.handleRequestSubmitBskl,
+    handleAdminToggleUnlock: () => productionState.handleAdminToggleUnlock(isUnlockedByAdmin),
     handleRequestSubmitProduction: productionState.handleRequestSubmitProduction,
     executeSubmitProduction: productionState.executeSubmitProduction,
     fabricLines: cuttingState.fabricLines,
@@ -269,10 +301,19 @@ export function useOrderDetail(orderId) {
     skuCode,
     cleanProductName,
     isBackorder,
+    isUnlockedByAdmin,
     isCuttingLocked,
+    isGradeALocked,
+    isGradeBLocked,
+    isBsklLocked,
     isResultLocked,
     isMasterAdmin,
     canEditCutting,
-    canEditResult
+    canEditGradeA,
+    canEditGradeB,
+    canEditBskl,
+    canEditResult,
+    gradeBSubmitCount: Number(order?.grade_b_submit_count || 0)
   };
 }
+

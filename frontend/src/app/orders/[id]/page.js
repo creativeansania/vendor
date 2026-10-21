@@ -11,6 +11,7 @@ import OrderTabsNav from '@/components/orders/OrderTabsNav';
 import FabricTab from '@/components/orders/tabs/FabricTab';
 import AccessoryTab from '@/components/orders/tabs/AccessoryTab';
 import SewingTab from '@/components/orders/tabs/SewingTab';
+import BsklTab from '@/components/orders/tabs/BsklTab';
 import TransferTab from '@/components/orders/tabs/TransferTab';
 import SafetyConfirmationModal from '@/components/orders/SafetyConfirmationModal';
 
@@ -44,8 +45,19 @@ function OrderDetailContent() {
 
       {/* Main Content Area */}
       <main className="main-content">
-        {/* Alerts / Feedback Message & Backorder Banner */}
-        <OrderBanner feedback={detail.feedback} isBackorder={detail.isBackorder} />
+        {/* Alerts / Feedback Message, Master Admin Unlock Control & Backorder Banner */}
+        <OrderBanner
+          feedback={detail.feedback}
+          isBackorder={detail.isBackorder}
+          isMasterAdmin={detail.isMasterAdmin}
+          isUnlockedByAdmin={detail.isUnlockedByAdmin}
+          isCuttingLocked={detail.isCuttingLocked}
+          isGradeALocked={detail.isGradeALocked}
+          isGradeBLocked={detail.isGradeBLocked}
+          isBsklLocked={detail.isBsklLocked}
+          handleAdminToggleUnlock={detail.handleAdminToggleUnlock}
+          saving={detail.saving}
+        />
 
         {/* Master SPK Specification Card */}
         <OrderSpecCard
@@ -67,6 +79,7 @@ function OrderDetailContent() {
         <OrderTabsNav
           activeTab={detail.activeTab}
           setActiveTab={detail.setActiveTab}
+          isBackorder={detail.isBackorder}
           fabricLinesCount={detail.fabricLines?.length || 0}
           accessoryLinesCount={detail.accessoryLines?.length || 0}
           transfersCount={detail.transfers?.length || 0}
@@ -99,8 +112,8 @@ function OrderDetailContent() {
           />
         )}
 
-        {/* TAB 2: AKSESORIS (BAHAN PELENGKAP) */}
-        {detail.activeTab === 'aksesoris' && (
+        {/* TAB 2: AKSESORIS (BAHAN PELENGKAP) - HANYA PADA NON-BACKORDER */}
+        {!detail.isBackorder && detail.activeTab === 'aksesoris' && (
           <AccessoryTab
             order={detail.order}
             canEditCutting={detail.canEditCutting}
@@ -119,8 +132,8 @@ function OrderDetailContent() {
           />
         )}
 
-        {/* TAB 3: INPUT HASIL JAHIT */}
-        {(detail.activeTab === 'jahit' || detail.activeTab === 'hasil') && (
+        {/* TAB 3: INPUT HASIL JAHIT - HANYA PADA NON-BACKORDER */}
+        {!detail.isBackorder && (detail.activeTab === 'jahit' || detail.activeTab === 'hasil') && (
           <SewingTab
             order={detail.order}
             targetSpkQty={detail.targetSpkQty}
@@ -130,6 +143,24 @@ function OrderDetailContent() {
             setGradeA={detail.setGradeA}
             gradeB={detail.gradeB}
             setGradeB={detail.setGradeB}
+            noSuratJalanGradeA={detail.noSuratJalanGradeA}
+            setNoSuratJalanGradeA={detail.setNoSuratJalanGradeA}
+            noSuratJalanGradeB={detail.noSuratJalanGradeB}
+            setNoSuratJalanGradeB={detail.setNoSuratJalanGradeB}
+            setPresetGradeA={detail.setPresetGradeA}
+            canEditGradeA={detail.canEditGradeA}
+            canEditGradeB={detail.canEditGradeB}
+            gradeBSubmitCount={detail.gradeBSubmitCount}
+            saving={detail.saving}
+            handleRequestSubmitGradeA={detail.handleRequestSubmitGradeA}
+            handleRequestSubmitGradeB={detail.handleRequestSubmitGradeB}
+          />
+        )}
+
+        {/* TAB 4: SISA POTONG KAIN (BSKL) - HANYA PADA NON-BACKORDER */}
+        {!detail.isBackorder && detail.activeTab === 'bskl' && (
+          <BsklTab
+            order={detail.order}
             sisaPanjang={detail.sisaPanjang}
             setSisaPanjang={detail.setSisaPanjang}
             sisaSedang={detail.sisaSedang}
@@ -137,18 +168,16 @@ function OrderDetailContent() {
             sisaPendek={detail.sisaPendek}
             setSisaPendek={detail.setSisaPendek}
             totalSisaKg={detail.totalSisaKg}
-            sisaKg={detail.sisaKg}
-            setSisaKg={detail.setSisaKg}
-            noSuratJalan={detail.noSuratJalan}
-            setNoSuratJalan={detail.setNoSuratJalan}
-            setPresetGradeA={detail.setPresetGradeA}
-            canEditResult={detail.canEditResult}
+            noSuratJalanBskl={detail.noSuratJalanBskl}
+            setNoSuratJalanBskl={detail.setNoSuratJalanBskl}
+            canEditBskl={detail.canEditBskl}
+            isBsklLocked={detail.isBsklLocked}
             saving={detail.saving}
-            handleRequestSubmitProduction={detail.handleRequestSubmitProduction}
+            handleRequestSubmitBskl={detail.handleRequestSubmitBskl}
           />
         )}
 
-        {/* TAB 4: DOKUMEN TRANSFER ODOO */}
+        {/* TAB 5: DOKUMEN TRANSFER ODOO */}
         {detail.activeTab === 'transfer' && (
           <TransferTab
             order={detail.order}
@@ -163,6 +192,7 @@ function OrderDetailContent() {
             syncingOdoo={detail.syncingOdoo}
           />
         )}
+
       </main>
 
       {/* SAFETY CONFIRMATION & EXTREME DEVIATION MODAL */}

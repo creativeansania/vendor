@@ -374,6 +374,63 @@ export async function getOrderDetails({ user, orderId, includeRawMoves = true })
     ]);
   }
 
+  // Check if BSKL transfer is validated
+  const bsklTransfer = (transfers || []).find(t =>
+    (t.origin && t.origin.includes('Sisa Makloon')) ||
+    (t.name && t.name.includes('BSKL')) ||
+    t.category === 'bskl'
+  );
+  if (bsklTransfer) {
+    order.bskl_transfer = bsklTransfer;
+    if (bsklTransfer.state === 'done' || bsklTransfer.stateDisplay === 'Selesai') {
+      order.is_bskl_validated = true;
+    }
+  }
+
+  // Resolve Grade B submit count
+  if (order.grade_b_submit_count === undefined || order.grade_b_submit_count === null) {
+    try {
+      const { count } = await supabaseServer
+        .from('audit_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('wip_order_id', order.id)
+        .eq('action', 'submit_grade_b');
+      order.grade_b_submit_count = count || 0;
+    } catch (e) {
+      order.grade_b_submit_count = 0;
+    }
+  }
+
+  // Lifecycle-based Locking & Permissions
+  const isBackorder = Boolean(order.parent_wip_order_id);
+  const isUnlockedByAdmin = Boolean(order.is_unlocked_by_admin);
+  const hasGradeASent = Number(order.qty_grade_a || 0) > 0;
+  const isMoDone = order.mo_state === 'done';
+
+  // 1. Penerimaan, potong, kain, & aksesoris: terkunci setelah Grade A dikirim & MO state done.
+  // Bisa dibuka jika backorder ATAU dibuka master admin
+  const isCuttingLocked = (hasGradeASent && isMoDone) && !isUnlockedByAdmin && !isBackorder;
+
+  // 2. Qty Grade A: terkunci setelah Grade A dikirim & MO state done
+  const isGradeALocked = (hasGradeASent && isMoDone) && !isUnlockedByAdmin;
+
+  // 3. Qty Grade B: terkunci setelah submit 2x (1x initial + 1x revisi)
+  const isGradeBLocked = (Number(order.grade_b_submit_count || 0) >= 2) && !isUnlockedByAdmin;
+
+  // 4. Sisa Potong (BSKL): terkunci setelah dokumen transfer divalidasi di Odoo
+  const isBsklLocked = Boolean(order.is_bskl_validated) && !isUnlockedByAdmin;
+
+  order.is_cutting_locked = isCuttingLocked;
+  order.is_grade_a_locked = isGradeALocked;
+  order.is_grade_b_locked = isGradeBLocked;
+  order.is_bskl_locked = isBsklLocked;
+
+  const isMasterAdmin = user.role === 'master_admin';
+  order.can_edit_cutting = !isCuttingLocked || isUnlockedByAdmin || isMasterAdmin;
+  order.can_edit_grade_a = !isGradeALocked || isUnlockedByAdmin || isMasterAdmin;
+  order.can_edit_grade_b = !isGradeBLocked || isUnlockedByAdmin || isMasterAdmin;
+  order.can_edit_bskl = !isBsklLocked || isUnlockedByAdmin || isMasterAdmin;
+
   return {
     order,
     rollLines: order.roll_lines || [],
@@ -395,8 +452,21 @@ export async function fetchOrderRawMoves(order) {
   try {
     await adminOdooClient.authenticate();
     const mo = await adminOdooClient._callObject('mrp.production', 'read', [[order.odoo_mo_id]], {
-      fields: ['move_raw_ids']
+      fields: ['id', 'name', 'state', 'move_raw_ids']
     });
+
+    if (mo && mo[0]) {
+      // Auto-update MO name if changed in Odoo (e.g. backorder renamed to -001)
+      if (mo[0].name && mo[0].name !== order.mo_name) {
+        order.mo_name = mo[0].name;
+        supabaseServer.from('wip_orders').update({ mo_name: mo[0].name }).eq('id', order.id).then();
+      }
+      // Auto-update MO state if changed in Odoo (e.g. done)
+      if (mo[0].state && mo[0].state !== order.mo_state) {
+        order.mo_state = mo[0].state;
+        supabaseServer.from('wip_orders').update({ mo_state: mo[0].state }).eq('id', order.id).then();
+      }
+    }
 
     if (!mo || !mo[0] || !mo[0].move_raw_ids || mo[0].move_raw_ids.length === 0) {
       rawMovesCache.set(order.odoo_mo_id, { time: Date.now(), data: [] });
@@ -435,6 +505,7 @@ export async function fetchOrderRawMoves(order) {
     return [];
   }
 }
+
 
 /**
  * Fetch stock transfers associated with this order
@@ -499,8 +570,8 @@ export async function fetchOrderTransfers(order) {
         category = 'komponen';
       } else if (pName.includes('/SFP/') || typeName.toLowerCase().includes('simpan') || typeName.toLowerCase().includes('produk jadi')) {
         category = 'produk_jadi';
-      } else if (pName.includes('BSKL') || (p.origin && p.origin.toLowerCase().includes('retur'))) {
-        category = 'retur';
+      } else if (pName.includes('BSKL') || (p.origin && (p.origin.toLowerCase().includes('retur') || p.origin.toLowerCase().includes('sisa makloon')))) {
+        category = 'bskl';
       }
 
       return {

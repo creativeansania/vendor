@@ -1,10 +1,24 @@
 'use client';
 
-import { CheckCircle2, AlertTriangle, Info } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Info, Lock, Unlock } from 'lucide-react';
 
-export default function OrderBanner({ feedback, isBackorder }) {
+export default function OrderBanner({
+  feedback,
+  isBackorder,
+  isMasterAdmin = false,
+  isUnlockedByAdmin = false,
+  isCuttingLocked = false,
+  isGradeALocked = false,
+  isGradeBLocked = false,
+  isBsklLocked = false,
+  handleAdminToggleUnlock,
+  saving = false
+}) {
+  const isAnyLocked = isCuttingLocked || isGradeALocked || isGradeBLocked || isBsklLocked;
+
   return (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {/* FEEDBACK ALERT */}
       {feedback?.text && (
         <div
           style={{
@@ -30,6 +44,73 @@ export default function OrderBanner({ feedback, isBackorder }) {
         </div>
       )}
 
+      {/* MASTER ADMIN UNLOCK CONTROL BAR */}
+      {isMasterAdmin && (
+        <div
+          style={{
+            padding: '10px 16px',
+            borderRadius: '12px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '10px',
+            background: isUnlockedByAdmin ? '#fffbeb' : '#f8fafc',
+            border: `1.5px solid ${isUnlockedByAdmin ? '#fde68a' : '#cbd5e1'}`,
+            fontSize: '0.82rem'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {isUnlockedByAdmin ? (
+              <Unlock size={18} style={{ color: '#d97706', flexShrink: 0 }} />
+            ) : (
+              <Lock size={18} style={{ color: '#64748b', flexShrink: 0 }} />
+            )}
+            <div>
+              {isUnlockedByAdmin ? (
+                <span style={{ color: '#92400e', fontWeight: 700 }}>
+                  Kunci Dibuka oleh Master Admin: User lain & vendor dapat mengedit kembali seluruh isian.
+                </span>
+              ) : (
+                <span style={{ color: '#334155', fontWeight: 600 }}>
+                  Panel Master Admin: {isAnyLocked ? 'Sebagian tahapan terkunci sesuai aturan sistem.' : 'Kondisi tahapan saat ini aktif.'}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={handleAdminToggleUnlock}
+              className={`btn ${isUnlockedByAdmin ? 'btn-secondary' : 'btn-primary'}`}
+              style={{
+                fontSize: '0.78rem',
+                padding: '6px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                borderRadius: '8px'
+              }}
+            >
+              {isUnlockedByAdmin ? (
+                <>
+                  <Lock size={13} />
+                  <span>Kunci Kembali (Relock)</span>
+                </>
+              ) : (
+                <>
+                  <Unlock size={13} />
+                  <span>🔓 Buka Kunci (Unlock untuk Semua User)</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* BACKORDER BANNER */}
       {isBackorder && (
         <div
           style={{
@@ -46,10 +127,10 @@ export default function OrderBanner({ feedback, isBackorder }) {
         >
           <Info size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
           <div>
-            <strong>Backorder Turunan:</strong> Data hasil potong/bahan diwarisi otomatis dari MO induk. Anda dapat langsung menginput hasil jahit.
+            <strong>SPK Backorder (Kekurangan Bahan):</strong> Alur kerja difokuskan untuk penerimaan kain susulan dan pemotongan. Tab Aksesoris, Jahit, dan BSKL disembunyikan karena dikelola pada SPK Induk.
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
