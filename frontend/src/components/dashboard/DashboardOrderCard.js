@@ -104,15 +104,15 @@ export default function DashboardOrderCard({ order, onClick, onAskWa }) {
             </span>
           ) : (
             <span
-              className="badge badge-slate"
+              className="badge badge-amber"
               style={{
                 fontSize: '0.68rem',
                 padding: '2px 7px',
                 fontWeight: 600
               }}
-              title="Make-to-Stock (Pemenuhan Stok Gudang)"
+              title="Menunggu penautan Sales Order"
             >
-              Stok Gudang (Non-SO)
+              Menunggu SO
             </span>
           )}
         </div>

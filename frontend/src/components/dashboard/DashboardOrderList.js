@@ -68,7 +68,7 @@ export default function DashboardOrderList({
       const rawSo = (o.sales_order || o.source_document || '').trim();
       const isNonSo = !rawSo || rawSo === '-' || rawSo.toLowerCase() === 'false' || rawSo.toLowerCase() === 'none';
       const soKey = isNonSo ? 'NON_SO' : rawSo;
-      const soLabel = isNonSo ? 'Tanpa Sales Order (Stok Gudang / SPK Mandiri)' : rawSo;
+      const soLabel = isNonSo ? 'Menunggu Penautan Sales Order' : rawSo;
 
       if (!groups.has(soKey)) {
         groups.set(soKey, {

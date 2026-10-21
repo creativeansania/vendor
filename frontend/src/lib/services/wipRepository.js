@@ -92,6 +92,36 @@ class WipRepository {
       }
     }
 
+    let salesOrder = (data.sales_order && data.sales_order !== '-') ? data.sales_order : null;
+
+    // Inherit sales_order from parent WIP order if missing
+    if (!salesOrder && parentWipOrderId) {
+      const { data: parent } = await supabaseServer
+        .from('wip_orders')
+        .select('sales_order')
+        .eq('id', parentWipOrderId)
+        .maybeSingle();
+      if (parent && parent.sales_order && parent.sales_order !== '-') {
+        salesOrder = parent.sales_order;
+      }
+    }
+
+    // Inherit sales_order from sibling MO with same base prefix
+    if (!salesOrder && data.mo_name) {
+      const basePrefix = data.mo_name.replace(/-\d+$/, '');
+      const { data: sibling } = await supabaseServer
+        .from('wip_orders')
+        .select('sales_order')
+        .or(`mo_name.eq.${basePrefix},mo_name.eq.${basePrefix}-001,mo_name.ilike.${basePrefix}%`)
+        .not('sales_order', 'is', null)
+        .not('sales_order', 'eq', '-')
+        .limit(1)
+        .maybeSingle();
+      if (sibling && sibling.sales_order) {
+        salesOrder = sibling.sales_order;
+      }
+    }
+
     const payload = {
       odoo_wip_id: Number(data.odoo_wip_id),
       odoo_mo_id: Number(data.odoo_mo_id),
@@ -99,7 +129,7 @@ class WipRepository {
       parent_wip_order_id: parentWipOrderId,
       mo_name: data.mo_name,
       mo_state: data.mo_state || 'draft',
-      sales_order: data.sales_order || null,
+      sales_order: salesOrder,
       product_name: data.product_name || null,
       qty_spk: Number(data.qty_spk || 0),
       start_spk: data.start_spk || null,

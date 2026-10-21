@@ -85,7 +85,7 @@ export async function syncOrderFromOdoo({ user, orderId }) {
   if (moId) {
     try {
       const mos = await adminOdooClient._callObject('mrp.production', 'read', [[moId]], {
-        fields: ['id', 'name', 'state', 'date_planned_start', 'date_deadline', 'product_qty', 'sale_id']
+        fields: ['id', 'name', 'state', 'date_planned_start', 'date_deadline', 'product_qty', 'sale_line_id', 'origin', 'x_studio_sales_order']
       });
       if (mos && mos[0]) {
         const m = mos[0];
@@ -94,7 +94,25 @@ export async function syncOrderFromOdoo({ user, orderId }) {
         if (!startSpk && m.date_planned_start) startSpk = m.date_planned_start.split(' ')[0];
         if (!deadlineSpk && m.date_deadline) deadlineSpk = m.date_deadline.split(' ')[0];
         if (!qtySpk && m.product_qty) qtySpk = Number(m.product_qty);
-        if (!salesOrder && m.sale_id) salesOrder = Array.isArray(m.sale_id) ? m.sale_id[1] : String(m.sale_id);
+        if (!salesOrder && m.x_studio_sales_order) {
+          salesOrder = Array.isArray(m.x_studio_sales_order) ? m.x_studio_sales_order[1] : String(m.x_studio_sales_order);
+        }
+      }
+    } catch (e) {}
+  }
+
+  // If still no sales order, automatically resolve using resolveSalesOrderForMo
+  if (!salesOrder && moId) {
+    try {
+      const resolved = await resolveSalesOrderForMo(moId);
+      if (resolved && resolved.name) {
+        salesOrder = resolved.name;
+        if (w.id && resolved.id) {
+          await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [
+            [w.id],
+            { x_studio_sales_order: resolved.id }
+          ], { context: { tracking_disable: true, no_automation: true } }).catch(() => {});
+        }
       }
     } catch (e) {}
   }
