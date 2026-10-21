@@ -26,7 +26,7 @@ export default function SewingRincianSection({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 2px', flexWrap: 'wrap', gap: '8px' }}>
         <span style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          👕 Hasil Jahit Baju Jadi
+          📦 Hasil Jahit (Grade A & Grade B)
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {canEditGradeA && targetSpkQty > 0 && (
@@ -42,7 +42,7 @@ export default function SewingRincianSection({
             </button>
           )}
           <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            Total Baju: <strong className="mono-num" style={{ color: 'var(--brand-gold)', fontWeight: 800 }}>{totalYieldPcs} PCS</strong>
+            Total Produk: <strong className="mono-num" style={{ color: 'var(--brand-gold)', fontWeight: 800 }}>{totalYieldPcs} PCS</strong>
           </span>
         </div>
       </div>
@@ -95,7 +95,7 @@ export default function SewingRincianSection({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', alignItems: 'end', marginBottom: '14px' }}>
           <div>
             <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--status-emerald)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
-              Jumlah Baju Grade A (PCS):
+              Jumlah Grade A (PCS):
             </label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <div className="input-addon-group" style={{ height: '40px', flex: 1, borderColor: gradeA ? 'var(--status-emerald)' : 'var(--border-strong)' }}>
@@ -126,7 +126,7 @@ export default function SewingRincianSection({
 
           <div>
             <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
-              📄 No. Surat Jalan Baju Grade A:
+              📄 No. Surat Jalan Grade A:
             </label>
             <input
               type="text"
@@ -200,7 +200,7 @@ export default function SewingRincianSection({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', alignItems: 'end', marginBottom: '14px' }}>
           <div>
             <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--status-rose)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
-              Jumlah Baju Grade B (PCS):
+              Jumlah Grade B (PCS):
             </label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <div className="input-addon-group" style={{ height: '40px', flex: 1, borderColor: parseFloat(gradeB) > 0 ? 'var(--status-rose)' : 'var(--border-strong)' }}>
@@ -231,7 +231,7 @@ export default function SewingRincianSection({
 
           <div>
             <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
-              📄 No. Surat Jalan Baju Grade B:
+              📄 No. Surat Jalan Grade B:
             </label>
             <input
               type="text"

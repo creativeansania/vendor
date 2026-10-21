@@ -14,7 +14,11 @@ function formatRupiahPrice(val) {
 }
 
 export default function DashboardOrderCard({ order, onClick, onAskWa }) {
-  const isBackorder = Boolean(order.is_backorder);
+  const isBackorder = Boolean(
+    order.is_backorder ||
+    (order.mo_name && /-0*([2-9]|\d{2,})$/.test(order.mo_name.trim())) ||
+    (order.parent_wip_order_id && !/-0*1$/.test((order.mo_name || '').trim()))
+  );
   const isCuttingLocked = Boolean(order.cutting_locked_at) || isBackorder;
   const isResultLocked = Boolean(order.result_locked_at);
   const price = formatRupiahPrice(order.harga_vendor);

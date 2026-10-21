@@ -37,7 +37,7 @@ export default function SewingSummaryCard({
               Hasil Jahit
             </h3>
             <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-              Total baju jadi yang selesai dijahit (Grade A + Grade B)
+              Total produk jadi yang selesai dijahit (Grade A + Grade B)
             </div>
           </div>
         </div>

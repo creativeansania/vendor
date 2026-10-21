@@ -127,7 +127,7 @@ export default function OrderBanner({
         >
           <Info size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
           <div>
-            <strong>SPK Backorder (Kekurangan Bahan):</strong> Alur kerja difokuskan untuk penerimaan kain susulan dan pemotongan. Tab Aksesoris, Jahit, dan BSKL disembunyikan karena dikelola pada SPK Induk.
+            <strong>SPK Backorder:</strong> Kain, Aksesoris, dan BSKL dikelola pada MO Induk (-001). Pada SPK backorder ini, Anda dapat menginput hasil Jahit (Grade A &amp; Grade B) dan memantau Dokumen Transfer.
           </div>
         </div>
       )}

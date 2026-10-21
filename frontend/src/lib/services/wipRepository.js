@@ -74,6 +74,24 @@ class WipRepository {
       }
     }
 
+    // Auto-detect parent if MO name has backorder suffix like -002, -005, etc.
+    if (!parentWipOrderId && data.mo_name) {
+      const match = data.mo_name.match(/-(\d+)$/);
+      if (match && parseInt(match[1], 10) > 1) {
+        const basePrefix = data.mo_name.replace(/-\d+$/, '');
+        const { data: parent } = await supabaseServer
+          .from('wip_orders')
+          .select('id')
+          .or(`mo_name.eq.${basePrefix}-001,mo_name.eq.${basePrefix}`)
+          .order('id', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (parent) {
+          parentWipOrderId = parent.id;
+        }
+      }
+    }
+
     const payload = {
       odoo_wip_id: Number(data.odoo_wip_id),
       odoo_mo_id: Number(data.odoo_mo_id),

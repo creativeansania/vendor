@@ -4,6 +4,31 @@ import { wipRepo } from '../wipRepository.js';
 import { rawMovesCache, transfersCache, CACHE_TTL } from './wipCache.js';
 import { fetchVendorPriceFromOdoo } from './wipSyncService.js';
 
+export function isChildBackorder(orderOrMoName, parentWipOrderId) {
+  const name = typeof orderOrMoName === 'string' ? orderOrMoName : (orderOrMoName?.mo_name || '');
+  const parentId = typeof orderOrMoName === 'object' ? orderOrMoName?.parent_wip_order_id : parentWipOrderId;
+  const trimmed = name.trim();
+
+  // If ends with -001, -01, or -1: it is the parent MO! NOT a child backorder!
+  if (/-(?:0*1)$/.test(trimmed)) {
+    return false;
+  }
+
+  // If ends with -002, -003, -004, -005, etc. (-00X where X > 1)
+  const match = trimmed.match(/-(\d+)$/);
+  if (match) {
+    const num = parseInt(match[1], 10);
+    if (num > 1) return true;
+  }
+
+  // If parent_wip_order_id exists and not -001
+  if (parentId) {
+    return true;
+  }
+
+  return false;
+}
+
 /**
  * Get orders list with pagination, search, status filter, period filter, sorting, and metrics
  */
@@ -120,7 +145,7 @@ export async function getOrders({ user, search, status, vendorId, page = 1, limi
   const showPrice = user.role !== 'admin_vendor';
 
   const orders = (rawOrders || []).map(o => {
-    const isBackorder = Boolean(o.parent_wip_order_id);
+    const isBackorder = isChildBackorder(o);
     const salesOrder = o.sales_order || (o.parent && o.parent.sales_order) || '-';
     const vendorName = o.vendors ? o.vendors.name : 'Unknown';
 
@@ -356,7 +381,8 @@ export async function getOrderDetails({ user, orderId, includeRawMoves = true })
     .order('id', { ascending: true });
 
   order.roll_lines = rollLines || [];
-  order.is_backorder = Boolean(order.parent_wip_order_id);
+  const isBackorder = isChildBackorder(order);
+  order.is_backorder = isBackorder;
   order.sales_order = order.sales_order || (order.parent ? order.parent.sales_order : '-') || '-';
   order.vendor_name = order.vendors ? order.vendors.name : 'Unknown';
   if (!showPrice) {
@@ -402,7 +428,6 @@ export async function getOrderDetails({ user, orderId, includeRawMoves = true })
   }
 
   // Lifecycle-based Locking & Permissions
-  const isBackorder = Boolean(order.parent_wip_order_id);
   const isUnlockedByAdmin = Boolean(order.is_unlocked_by_admin);
   const hasGradeASent = Number(order.qty_grade_a || 0) > 0;
   const isMoDone = order.mo_state === 'done';

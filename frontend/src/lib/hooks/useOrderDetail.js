@@ -148,10 +148,10 @@ export function useOrderDetail(orderId) {
     }
   }, [user, orderId, loadData]);
 
-  // Auto-switch to tab 'kain' if active tab is hidden on backorders
+  // Auto-switch to tab 'jahit' if active tab is hidden on backorders
   useEffect(() => {
-    if (order?.is_backorder && ['aksesoris', 'jahit', 'bskl'].includes(activeTab)) {
-      setActiveTab('kain');
+    if (order?.is_backorder && ['kain', 'timbang', 'aksesoris', 'bskl'].includes(activeTab)) {
+      setActiveTab('jahit');
     }
   }, [order?.is_backorder, activeTab, setActiveTab]);
 
@@ -202,7 +202,11 @@ export function useOrderDetail(orderId) {
   }, [order?.product_name]);
 
   // Permissions & lock states
-  const isBackorder = Boolean(order?.is_backorder);
+  const isBackorder = Boolean(
+    order?.is_backorder ||
+    (order?.mo_name && /-0*([2-9]|\d{2,})$/.test(order.mo_name.trim())) ||
+    (order?.parent_wip_order_id && !/-0*1$/.test((order?.mo_name || '').trim()))
+  );
   const isMasterAdmin = user?.role === 'master_admin';
   const isUnlockedByAdmin = Boolean(order?.is_unlocked_by_admin);
 

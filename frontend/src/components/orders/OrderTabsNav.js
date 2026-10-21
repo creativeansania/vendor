@@ -15,20 +15,44 @@ export default function OrderTabsNav({
 
   return (
     <div className="segmented-tabs-wrapper">
-      {/* 1. KAIN */}
-      <button
-        id="tab-btn-kain"
-        type="button"
-        onClick={() => setActiveTab('kain')}
-        className={`segmented-tab-btn ${activeTab === 'kain' || activeTab === 'timbang' ? 'active' : ''}`}
-      >
-        <Scissors size={15} className="tab-icon" />
-        <span>1. Kain {fCount > 0 ? `(${fCount})` : ''}</span>
-      </button>
-
-      {/* NON-BACKORDER TABS */}
-      {!isBackorder && (
+      {/* JIKA BACKORDER: Hanya Tab Jahit dan Dokumen Transfer */}
+      {isBackorder ? (
         <>
+          {/* 1. JAHIT */}
+          <button
+            id="tab-btn-jahit"
+            type="button"
+            onClick={() => setActiveTab('jahit')}
+            className={`segmented-tab-btn ${activeTab === 'jahit' || activeTab === 'hasil' ? 'active' : ''}`}
+          >
+            <Package size={15} className="tab-icon" />
+            <span>1. Jahit</span>
+          </button>
+
+          {/* 2. DOKUMEN TRANSFER */}
+          <button
+            id="tab-btn-transfer"
+            type="button"
+            onClick={() => setActiveTab('transfer')}
+            className={`segmented-tab-btn ${activeTab === 'transfer' ? 'active' : ''}`}
+          >
+            <Truck size={15} className="tab-icon" />
+            <span>2. Dokumen Transfer {transfersCount > 0 ? `(${transfersCount})` : ''}</span>
+          </button>
+        </>
+      ) : (
+        <>
+          {/* 1. KAIN */}
+          <button
+            id="tab-btn-kain"
+            type="button"
+            onClick={() => setActiveTab('kain')}
+            className={`segmented-tab-btn ${activeTab === 'kain' || activeTab === 'timbang' ? 'active' : ''}`}
+          >
+            <Scissors size={15} className="tab-icon" />
+            <span>1. Kain {fCount > 0 ? `(${fCount})` : ''}</span>
+          </button>
+
           {/* 2. AKSESORIS */}
           <button
             id="tab-btn-aksesoris"
@@ -61,19 +85,19 @@ export default function OrderTabsNav({
             <Recycle size={15} className="tab-icon" />
             <span>4. BSKL</span>
           </button>
+
+          {/* 5. DOKUMEN TRANSFER */}
+          <button
+            id="tab-btn-transfer"
+            type="button"
+            onClick={() => setActiveTab('transfer')}
+            className={`segmented-tab-btn ${activeTab === 'transfer' ? 'active' : ''}`}
+          >
+            <Truck size={15} className="tab-icon" />
+            <span>5. Dokumen Transfer {transfersCount > 0 ? `(${transfersCount})` : ''}</span>
+          </button>
         </>
       )}
-
-      {/* DOKUMEN TRANSFER */}
-      <button
-        id="tab-btn-transfer"
-        type="button"
-        onClick={() => setActiveTab('transfer')}
-        className={`segmented-tab-btn ${activeTab === 'transfer' ? 'active' : ''}`}
-      >
-        <Truck size={15} className="tab-icon" />
-        <span>{isBackorder ? '2. Dokumen Transfer' : '5. Dokumen Transfer'} {transfersCount > 0 ? `(${transfersCount})` : ''}</span>
-      </button>
     </div>
   );
 }

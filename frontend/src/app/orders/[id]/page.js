@@ -85,8 +85,8 @@ function OrderDetailContent() {
           transfersCount={detail.transfers?.length || 0}
         />
 
-        {/* TAB 1: KAIN (BAHAN KAIN) */}
-        {(detail.activeTab === 'kain' || detail.activeTab === 'timbang') && (
+        {/* TAB 1: KAIN (BAHAN KAIN) - HANYA PADA NON-BACKORDER & -001 */}
+        {!detail.isBackorder && (detail.activeTab === 'kain' || detail.activeTab === 'timbang') && (
           <FabricTab
             order={detail.order}
             targetSpkQty={detail.targetSpkQty}
@@ -132,8 +132,8 @@ function OrderDetailContent() {
           />
         )}
 
-        {/* TAB 3: INPUT HASIL JAHIT - HANYA PADA NON-BACKORDER */}
-        {!detail.isBackorder && (detail.activeTab === 'jahit' || detail.activeTab === 'hasil') && (
+        {/* TAB: INPUT HASIL JAHIT (GRADE A & B) - TERSEDIA PADA REGULER & BACKORDER */}
+        {(detail.activeTab === 'jahit' || detail.activeTab === 'hasil') && (
           <SewingTab
             order={detail.order}
             targetSpkQty={detail.targetSpkQty}

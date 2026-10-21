@@ -68,7 +68,7 @@ export function useProductionState({
   const handleRequestSubmitGradeA = () => {
     const valA = parseFloat(gradeA) || 0;
     if (valA <= 0) {
-      setFeedback({ text: 'Harap isi jumlah baju Grade A (lebih dari 0).', type: 'error' });
+      setFeedback({ text: 'Harap isi jumlah Grade A (lebih dari 0).', type: 'error' });
       return;
     }
 
