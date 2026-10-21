@@ -120,10 +120,20 @@ export async function getOrders({ user, search, status, vendorId, page = 1, limi
   }
 
   // 7. Sorting
-  if (sort === 'deadline') {
+  if (sort === 'deadline' || sort === 'deadline_asc') {
     query = query.order('deadline_spk', { ascending: true, nullsFirst: false });
+  } else if (sort === 'deadline_desc') {
+    query = query.order('deadline_spk', { ascending: false, nullsFirst: false });
+  } else if (sort === 'so') {
+    query = query.order('sales_order', { ascending: true, nullsFirst: false }).order('id', { ascending: false });
   } else if (sort === 'mo') {
     query = query.order('mo_name', { ascending: true });
+  } else if (sort === 'qty_desc') {
+    query = query.order('qty_spk', { ascending: false });
+  } else if (sort === 'qty_asc') {
+    query = query.order('qty_spk', { ascending: true });
+  } else if (sort === 'oldest') {
+    query = query.order('id', { ascending: true });
   } else if (sort === 'product') {
     query = query.order('product_name', { ascending: true });
   } else if (sort === 'status') {

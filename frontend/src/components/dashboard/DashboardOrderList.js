@@ -1,7 +1,29 @@
 'use client';
 
-import { Layers, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import {
+  Layers,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  ShoppingBag,
+  ChevronDown,
+  ChevronUp,
+  LayoutGrid,
+  FolderKanban
+} from 'lucide-react';
 import DashboardOrderCard from './DashboardOrderCard';
+
+function formatShortDate(dateStr) {
+  if (!dateStr) return null;
+  try {
+    const [y, m, d] = dateStr.split('-');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    return `${parseInt(d, 10)} ${months[parseInt(m, 10) - 1] || m} ${y}`;
+  } catch (e) {
+    return dateStr;
+  }
+}
 
 export default function DashboardOrderList({
   loading,
@@ -18,6 +40,88 @@ export default function DashboardOrderList({
   pageNumbers = [],
   onPageChange
 }) {
+  // View mode: 'grouped' (Sales Order) or 'flat' (Standard Grid)
+  const [viewMode, setViewMode] = useState('grouped');
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('pwa_dashboard_view_mode');
+      if (saved === 'flat' || saved === 'grouped') {
+        setViewMode(saved);
+      }
+    } catch (e) {}
+  }, []);
+
+  const handleSetViewMode = (mode) => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem('pwa_dashboard_view_mode', mode);
+    } catch (e) {}
+  };
+
+  // Group orders by Sales Order
+  const groupedOrders = useMemo(() => {
+    const groups = new Map();
+
+    for (const o of orders) {
+      const rawSo = (o.sales_order || o.source_document || '').trim();
+      const isNonSo = !rawSo || rawSo === '-' || rawSo.toLowerCase() === 'false' || rawSo.toLowerCase() === 'none';
+      const soKey = isNonSo ? 'NON_SO' : rawSo;
+      const soLabel = isNonSo ? 'Tanpa Sales Order (Stok Gudang / SPK Mandiri)' : rawSo;
+
+      if (!groups.has(soKey)) {
+        groups.set(soKey, {
+          soKey,
+          soLabel,
+          isNonSo,
+          orders: [],
+          totalTargetPcs: 0,
+          hasKainKurang: false,
+          vendorNames: new Set(),
+          earliestDeadline: null
+        });
+      }
+
+      const g = groups.get(soKey);
+      g.orders.push(o);
+      g.totalTargetPcs += Number(o.qty_target || o.qty_spk || 0);
+
+      if (o.status_kebutuhan_kain === 'Kurang') {
+        g.hasKainKurang = true;
+      }
+      if (o.vendor_name && o.vendor_name !== 'Unknown') {
+        g.vendorNames.add(o.vendor_name);
+      }
+      if (o.deadline_spk) {
+        if (!g.earliestDeadline || o.deadline_spk < g.earliestDeadline) {
+          g.earliestDeadline = o.deadline_spk;
+        }
+      }
+    }
+
+    return Array.from(groups.values());
+  }, [orders]);
+
+  const toggleGroup = (key) => {
+    setCollapsedGroups((prev) => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const handleExpandAll = () => {
+    setCollapsedGroups({});
+  };
+
+  const handleCollapseAll = () => {
+    const all = {};
+    groupedOrders.forEach((g) => {
+      all[g.soKey] = true;
+    });
+    setCollapsedGroups(all);
+  };
+
   if (loading) {
     return (
       <div className="card" style={{ textAlign: 'center', padding: '60px 20px', borderRadius: '16px' }}>
@@ -69,17 +173,270 @@ export default function DashboardOrderList({
 
   return (
     <>
-      {/* Orders Grid */}
-      <div className="orders-grid">
-        {orders.map((o) => (
-          <DashboardOrderCard
-            key={o.id}
-            order={o}
-            onClick={() => onSelectOrder(o.id)}
-            onAskWa={onAskWa}
-          />
-        ))}
+      {/* View Switcher & Group Summary Toolbar */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '12px',
+          marginBottom: '16px',
+          padding: '4px 2px'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+            Daftar SPK Produksi
+          </span>
+          <span className="badge badge-slate mono-num" style={{ fontSize: '0.74rem' }}>
+            {orders.length} SPK {viewMode === 'grouped' ? `• ${groupedOrders.length} Sales Order` : ''}
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {viewMode === 'grouped' && groupedOrders.length > 1 && (
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={handleExpandAll}
+                className="btn-ghost"
+                style={{ fontSize: '0.74rem', padding: '4px 8px', borderRadius: '6px', color: 'var(--text-muted)' }}
+              >
+                Buka Semua
+              </button>
+              <span style={{ color: 'var(--border-default)' }}>|</span>
+              <button
+                type="button"
+                onClick={handleCollapseAll}
+                className="btn-ghost"
+                style={{ fontSize: '0.74rem', padding: '4px 8px', borderRadius: '6px', color: 'var(--text-muted)' }}
+              >
+                Tutup Semua
+              </button>
+            </div>
+          )}
+
+          {/* View Toggle */}
+          <div
+            style={{
+              display: 'flex',
+              padding: '3px',
+              background: 'var(--bg-card)',
+              borderRadius: '10px',
+              border: '1px solid var(--border-default)'
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => handleSetViewMode('grouped')}
+              className={`segmented-tab-btn ${viewMode === 'grouped' ? 'active' : ''}`}
+              style={{
+                fontSize: '0.76rem',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}
+              title="Kelompokkan SPK berdasarkan Sales Order"
+            >
+              <FolderKanban size={13} />
+              <span>Per Sales Order</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetViewMode('flat')}
+              className={`segmented-tab-btn ${viewMode === 'flat' ? 'active' : ''}`}
+              style={{
+                fontSize: '0.76rem',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}
+              title="Tampilkan semua SPK dalam grid biasa"
+            >
+              <LayoutGrid size={13} />
+              <span>Grid Biasa</span>
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* Orders Content: Grouped vs Flat */}
+      {viewMode === 'grouped' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          {groupedOrders.map((group) => {
+            const isCollapsed = Boolean(collapsedGroups[group.soKey]);
+            return (
+              <div
+                key={group.soKey}
+                className="card"
+                style={{
+                  padding: 0,
+                  borderRadius: '18px',
+                  border: '1px solid var(--border-default)',
+                  overflow: 'hidden',
+                  background: 'var(--bg-card)',
+                  boxShadow: 'var(--shadow-sm)'
+                }}
+              >
+                {/* SO Group Header Bar */}
+                <div
+                  onClick={() => toggleGroup(group.soKey)}
+                  style={{
+                    padding: '14px 18px',
+                    background: group.isNonSo
+                      ? 'var(--bg-card-subtle)'
+                      : 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(217, 119, 6, 0.02) 100%)',
+                    borderBottom: isCollapsed ? 'none' : '1px solid var(--border-default)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '12px',
+                    userSelect: 'none'
+                  }}
+                >
+                  {/* Left: Icon + SO Label + Badges */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', minWidth: 0 }}>
+                    <div
+                      style={{
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '10px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: group.isNonSo ? 'var(--border-subtle)' : 'var(--brand-gold-light)',
+                        color: group.isNonSo ? 'var(--text-muted)' : 'var(--brand-gold)',
+                        border: `1px solid ${group.isNonSo ? 'var(--border-default)' : 'var(--brand-gold-border)'}`,
+                        flexShrink: 0
+                      }}
+                    >
+                      {group.isNonSo ? <Layers size={18} /> : <ShoppingBag size={18} />}
+                    </div>
+
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)' }}>
+                          {group.isNonSo ? 'Kategori SPK' : 'Sales Order'}
+                        </span>
+                        <span className="badge badge-indigo mono-num" style={{ fontSize: '0.7rem', padding: '2px 8px' }}>
+                          {group.orders.length} SPK
+                        </span>
+                        {group.hasKainKurang && (
+                          <span
+                            className="badge"
+                            style={{
+                              fontSize: '0.66rem',
+                              padding: '2px 7px',
+                              background: 'var(--status-rose-bg)',
+                              color: 'var(--status-rose)',
+                              border: '1px solid var(--status-rose-border)',
+                              fontWeight: 800
+                            }}
+                          >
+                            ⚠️ Ada Kain Kurang
+                          </span>
+                        )}
+                        {group.vendorNames.size === 1 && (
+                          <span className="badge badge-slate hide-on-mobile" style={{ fontSize: '0.68rem', padding: '2px 7px' }}>
+                            {Array.from(group.vendorNames)[0]}
+                          </span>
+                        )}
+                      </div>
+
+                      <div
+                        className="mono-num"
+                        style={{
+                          fontSize: '1.05rem',
+                          fontWeight: 800,
+                          color: group.isNonSo ? 'var(--text-primary)' : 'var(--brand-gold)',
+                          marginTop: '2px'
+                        }}
+                      >
+                        {group.soLabel}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right: Summary Metrics + Chevron */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>
+                        Total Target
+                      </div>
+                      <div className="mono-num" style={{ fontSize: '0.98rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        {group.totalTargetPcs.toLocaleString('id-ID')} <span style={{ fontSize: '0.72rem', fontWeight: 500 }}>pcs</span>
+                      </div>
+                    </div>
+
+                    {group.earliestDeadline && (
+                      <div className="hide-on-mobile" style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>
+                          Deadline
+                        </div>
+                        <div className="mono-num" style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                          {formatShortDate(group.earliestDeadline)}
+                        </div>
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-default)',
+                        background: 'var(--bg-card)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--text-muted)',
+                        flexShrink: 0
+                      }}
+                    >
+                      {isCollapsed ? <ChevronDown size={17} /> : <ChevronUp size={17} />}
+                    </div>
+                  </div>
+                </div>
+
+                {/* SO Cards Body */}
+                {!isCollapsed && (
+                  <div style={{ padding: '16px', background: 'var(--bg-card-subtle)' }}>
+                    <div className="orders-grid">
+                      {group.orders.map((o) => (
+                        <DashboardOrderCard
+                          key={o.id}
+                          order={o}
+                          onClick={() => onSelectOrder(o.id)}
+                          onAskWa={onAskWa}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* Flat Grid View */
+        <div className="orders-grid">
+          {orders.map((o) => (
+            <DashboardOrderCard
+              key={o.id}
+              order={o}
+              onClick={() => onSelectOrder(o.id)}
+              onAskWa={onAskWa}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Numbered Pagination Controls */}
       {totalPages > 1 && (
@@ -108,11 +465,9 @@ export default function DashboardOrderList({
               const isCurrent = pItem === page;
               return (
                 <button
-                  key={pItem}
+                  key={`page-${pItem}`}
                   onClick={() => onPageChange(pItem)}
                   className={`pagination-item ${isCurrent ? 'active' : ''}`}
-                  aria-current={isCurrent ? 'page' : undefined}
-                  title={`Halaman ${pItem}`}
                 >
                   {pItem}
                 </button>
@@ -124,45 +479,11 @@ export default function DashboardOrderList({
               onClick={() => onPageChange(page + 1)}
               disabled={page >= totalPages}
               className="pagination-item pagination-item-nav"
-              title="Halaman Selanjutnya"
+              title="Halaman Berikutnya"
             >
               <span className="hide-on-mobile">Next</span>
               <ChevronRight size={16} />
             </button>
-          </div>
-
-          {/* Pagination Info & Quick Jump */}
-          <div className="pagination-info" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            <span style={{ fontSize: '0.84rem' }}>
-              Halaman <strong className="mono-num" style={{ color: 'var(--text-primary)' }}>{page}</strong> dari <strong className="mono-num">{totalPages}</strong> ({totalCount} total SPK)
-            </span>
-
-            {totalPages > 5 && (
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ color: 'var(--border-strong)' }}>•</span>
-                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Lompat ke:</span>
-                <select
-                  value={page}
-                  onChange={(e) => onPageChange(Number(e.target.value))}
-                  className="select-field"
-                  style={{
-                    height: '34px',
-                    padding: '2px 10px',
-                    fontSize: '0.82rem',
-                    borderRadius: '8px',
-                    width: 'auto',
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pNum) => (
-                    <option key={pNum} value={pNum}>
-                      Hal {pNum}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
           </div>
         </div>
       )}

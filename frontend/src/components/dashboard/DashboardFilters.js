@@ -116,6 +116,7 @@ export default function DashboardFilters({
               onChange={(e) => onSortChange(e.target.value)}
             >
               <option value="latest">🆕 SPK Terbaru Dibuat</option>
+              <option value="so">🛒 Nomor Sales Order (A-Z)</option>
               <option value="deadline_asc">⏳ Deadline Paling Dekat</option>
               <option value="deadline_desc">📅 Deadline Paling Jauh</option>
               <option value="qty_desc">📦 Target SPK Terbesar</option>

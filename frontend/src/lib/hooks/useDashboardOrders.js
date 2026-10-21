@@ -69,7 +69,7 @@ export function useDashboardOrders() {
     try {
       const queryParams = new URLSearchParams({
         page: String(page),
-        limit: '16'
+        limit: '24'
       });
       if (debouncedSearch.trim()) queryParams.set('search', debouncedSearch.trim());
       if (status !== 'all') queryParams.set('status', status);
