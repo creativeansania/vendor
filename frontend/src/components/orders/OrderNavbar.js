@@ -63,6 +63,22 @@ export default function OrderNavbar({
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {order.vendor_name}
             </span>
+            {order.finishing && (
+              <>
+                <span>•</span>
+                <span className="badge badge-indigo" style={{ fontSize: '0.66rem', padding: '1px 6px', fontWeight: 700 }}>
+                  ✨ {order.finishing}
+                </span>
+              </>
+            )}
+            {order.packing && (
+              <>
+                <span>•</span>
+                <span className="badge badge-cyan" style={{ fontSize: '0.66rem', padding: '1px 6px', fontWeight: 700 }}>
+                  📦 {order.packing}
+                </span>
+              </>
+            )}
           </p>
         </div>
       </div>

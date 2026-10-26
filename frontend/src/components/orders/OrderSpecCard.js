@@ -21,13 +21,19 @@ export default function OrderSpecCard({
           <span className="badge badge-gold mono-num" style={{ fontSize: '0.74rem' }}>
             SPK #{order.id}
           </span>
+          <span className="badge badge-indigo" style={{ fontSize: '0.74rem', fontWeight: 700 }}>
+            ✨ Finishing: {order.finishing || '-'}
+          </span>
+          <span className="badge badge-cyan" style={{ fontSize: '0.74rem', fontWeight: 700 }}>
+            📦 Packing: {order.packing || '-'}
+          </span>
         </div>
         <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.35, margin: 0 }}>
           {cleanProductName}
         </h2>
       </div>
 
-      {/* 3 Executive Highlight Tiles */}
+      {/* Executive Highlight Tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
         {/* Tile 1: Target SPK */}
         <div className="hero-tile" style={{ background: 'var(--brand-gold-light)', borderColor: 'var(--brand-gold-border)' }}>
@@ -96,38 +102,32 @@ export default function OrderSpecCard({
         </div>
       </div>
 
-      {/* Finishing & Packing Specification Strip */}
-      {(order.finishing || order.packing) && (
-        <div
-          style={{
-            marginTop: '12px',
-            paddingTop: '12px',
-            borderTop: '1px solid var(--border-color)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-            flexWrap: 'wrap',
-            fontSize: '0.82rem'
-          }}
-        >
-          {order.finishing && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ color: 'var(--text-muted)' }}>✨ Finishing:</span>
-              <span className="badge badge-indigo" style={{ fontWeight: 700, fontSize: '0.76rem', padding: '3px 8px' }}>
-                {order.finishing}
-              </span>
-            </div>
-          )}
-          {order.packing && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ color: 'var(--text-muted)' }}>📦 Packing:</span>
-              <span className="badge badge-cyan" style={{ fontWeight: 700, fontSize: '0.76rem', padding: '3px 8px' }}>
-                {order.packing}
-              </span>
-            </div>
-          )}
+      {/* Finishing & Packing Specification Strip (Always Displayed) */}
+      <div
+        style={{
+          marginTop: '12px',
+          paddingTop: '12px',
+          borderTop: '1px solid var(--border-color)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '20px',
+          flexWrap: 'wrap',
+          fontSize: '0.84rem'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>✨ Finishing:</span>
+          <span className="badge badge-indigo" style={{ fontWeight: 800, fontSize: '0.8rem', padding: '3px 10px' }}>
+            {order.finishing || '-'}
+          </span>
         </div>
-      )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>📦 Packing:</span>
+          <span className="badge badge-cyan" style={{ fontWeight: 800, fontSize: '0.8rem', padding: '3px 10px' }}>
+            {order.packing || '-'}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

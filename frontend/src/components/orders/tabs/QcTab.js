@@ -14,9 +14,12 @@ import {
   ShieldCheck,
   AlertTriangle,
   FileText,
-  UserCheck
+  UserCheck,
+  Image as ImageIcon,
+  Info
 } from 'lucide-react';
 import { adjustQty, formatDateIndo } from '@/lib/utils/formatters';
+import { fetchApi } from '@/lib/api';
 
 export default function QcTab({
   order,
@@ -25,11 +28,25 @@ export default function QcTab({
   onSaveQc,
   user
 }) {
-  const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
 
-  // Local form state initialized from order
-  const [qcPassId, setQcPassId] = useState(order?.qc_pass_id ? String(order.qc_pass_id) : '');
-  const [qcPassName, setQcPassName] = useState(order?.qc_pass_name || '');
+  // Pre-seeded inspectors so dropdown is NEVER empty
+  const [inspectors, setInspectors] = useState([
+    { id: 64, name: 'QC (quality@kantiss.com)' },
+    { id: 362, name: 'Suci Fitriani (quality@kantiss.com)' },
+    { id: 14, name: 'Master Admin' }
+  ]);
+  const [loadingInspectors, setLoadingInspectors] = useState(false);
+  const [localFeedback, setLocalFeedback] = useState(null);
+
+  // Form states: Default to Partner 64 ("QC") if not yet assigned
+  const [qcPassId, setQcPassId] = useState(
+    order?.qc_pass_id ? String(order.qc_pass_id) : '64'
+  );
+  const [qcPassName, setQcPassName] = useState(
+    order?.qc_pass_name || 'QC'
+  );
   const [qtyQcPass, setQtyQcPass] = useState(
     order?.qty_qc_pass !== undefined && order?.qty_qc_pass !== null
       ? String(order.qty_qc_pass)
@@ -38,38 +55,44 @@ export default function QcTab({
   const [qcStatus, setQcStatus] = useState(order?.qc_status || 'Passed');
   const [keteranganQms, setKeteranganQms] = useState(order?.keterangan_qms || '');
   const [gambarQc, setGambarQc] = useState(order?.gambar_qc || null);
-  const [inspectors, setInspectors] = useState([]);
-  const [loadingInspectors, setLoadingInspectors] = useState(false);
-  const [localFeedback, setLocalFeedback] = useState(null);
 
-  // Sync state if order prop changes
+  // Keep state synchronized if order prop updates
   useEffect(() => {
     if (order) {
-      if (order.qc_pass_id) setQcPassId(String(order.qc_pass_id));
-      if (order.qc_pass_name) setQcPassName(order.qc_pass_name);
+      if (order.qc_pass_id) {
+        setQcPassId(String(order.qc_pass_id));
+      }
+      if (order.qc_pass_name) {
+        setQcPassName(order.qc_pass_name);
+      }
       if (order.qty_qc_pass !== undefined && order.qty_qc_pass !== null) {
         setQtyQcPass(String(order.qty_qc_pass));
       }
-      if (order.qc_status) setQcStatus(order.qc_status);
-      if (order.keterangan_qms) setKeteranganQms(order.keterangan_qms);
-      if (order.gambar_qc) setGambarQc(order.gambar_qc);
+      if (order.qc_status) {
+        setQcStatus(order.qc_status);
+      }
+      if (order.keterangan_qms) {
+        setKeteranganQms(order.keterangan_qms);
+      }
+      if (order.gambar_qc) {
+        setGambarQc(order.gambar_qc);
+      }
     }
   }, [order]);
 
-  // Load QC inspectors from API
+  // Load QC inspectors from API with authenticated fetchApi
   useEffect(() => {
     let isMounted = true;
     async function loadInspectors() {
       if (!order?.id) return;
       setLoadingInspectors(true);
       try {
-        const res = await fetch(`/api/orders/${order.id}/qc`);
-        const data = await res.json();
-        if (isMounted && data.success && Array.isArray(data.inspectors)) {
-          setInspectors(data.inspectors);
-          // If no qcPassId currently set, default to QC inspector if available
+        const res = await fetchApi(`/orders/${order.id}/qc`);
+        if (isMounted && res?.success && Array.isArray(res.inspectors) && res.inspectors.length > 0) {
+          setInspectors(res.inspectors);
+          // If no qcPassId assigned yet, match QC partner
           if (!order?.qc_pass_id) {
-            const qcPartner = data.inspectors.find(i => i.id === 64 || i.name.toLowerCase().includes('qc'));
+            const qcPartner = res.inspectors.find(i => i.id === 64 || i.name.toLowerCase().includes('qc'));
             if (qcPartner) {
               setQcPassId(String(qcPartner.id));
               setQcPassName(qcPartner.name);
@@ -77,7 +100,7 @@ export default function QcTab({
           }
         }
       } catch (err) {
-        console.warn('Failed to load inspectors:', err);
+        console.warn('Failed to load inspectors via fetchApi:', err);
       } finally {
         if (isMounted) setLoadingInspectors(false);
       }
@@ -104,7 +127,7 @@ export default function QcTab({
     const reader = new FileReader();
     reader.onload = () => {
       setGambarQc(reader.result);
-      setLocalFeedback(null);
+      setLocalFeedback({ type: 'success', text: 'Foto berhasil dimuat. Klik "Simpan & Sinkronkan" untuk mengirim ke Odoo.' });
     };
     reader.onerror = () => {
       setLocalFeedback({ type: 'error', text: 'Gagal membaca file gambar.' });
@@ -169,6 +192,7 @@ export default function QcTab({
         )}
       </div>
 
+      {/* FEEDBACK ALERT */}
       {localFeedback && (
         <div
           style={{
@@ -190,6 +214,7 @@ export default function QcTab({
 
       {/* FORM CARD */}
       <form onSubmit={handleSubmit} className="card" style={{ padding: '22px', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        
         {/* ROW 1: QC PASS (INSPECTOR) & QC STATUS */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
           {/* Field 1: QC Pass */}
@@ -214,7 +239,6 @@ export default function QcTab({
                 background: 'var(--bg-surface)'
               }}
             >
-              <option value="">-- Pilih Petugas QC --</option>
               {inspectors.map((ins) => (
                 <option key={ins.id} value={ins.id}>
                   {ins.name}
@@ -225,7 +249,7 @@ export default function QcTab({
               )}
             </select>
             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              Partner res.partner di Odoo yang memvalidasi standar kualitas.
+              Partner di Odoo yang memvalidasi standar kualitas pengerjaan.
             </span>
           </div>
 
@@ -423,18 +447,28 @@ export default function QcTab({
           />
         </div>
 
-        {/* ROW 4: GAMBAR QC (CAMERA / UPLOAD BOX) */}
+        {/* ROW 4: GAMBAR QC (CAMERA & GALLERY PHOTO CAPTURE) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Camera size={15} style={{ color: 'var(--brand-gold)' }} />
-            <span>Gambar QC (Bukti Pemeriksaan)</span>
+            <span>Gambar QC (Foto Bukti Pemeriksaan)</span>
           </label>
 
+          {/* Hidden Inputs for Camera vs Gallery Picker */}
+          {/* Input 1: Camera capture (directly activates rear camera on smartphones) */}
           <input
             type="file"
             accept="image/*"
             capture="environment"
-            ref={fileInputRef}
+            ref={cameraInputRef}
+            onChange={handleFileChange}
+            style={{ display: 'none' }}
+          />
+          {/* Input 2: Gallery / File selector (select existing photo from phone or desktop) */}
+          <input
+            type="file"
+            accept="image/*"
+            ref={galleryInputRef}
             onChange={handleFileChange}
             style={{ display: 'none' }}
           />
@@ -444,7 +478,7 @@ export default function QcTab({
               style={{
                 position: 'relative',
                 width: '100%',
-                maxWidth: '360px',
+                maxWidth: '420px',
                 borderRadius: '14px',
                 overflow: 'hidden',
                 border: '2px solid var(--border-color)',
@@ -456,7 +490,7 @@ export default function QcTab({
                 alt="Gambar Bukti QC"
                 style={{
                   width: '100%',
-                  maxHeight: '260px',
+                  maxHeight: '280px',
                   objectFit: 'contain',
                   display: 'block'
                 }}
@@ -467,26 +501,47 @@ export default function QcTab({
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  background: 'rgba(15, 23, 42, 0.85)',
-                  backdropFilter: 'blur(4px)',
-                  borderTop: '1px solid rgba(255, 255, 255, 0.1)'
+                  background: 'rgba(15, 23, 42, 0.9)',
+                  backdropFilter: 'blur(6px)',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                  flexWrap: 'wrap',
+                  gap: '8px'
                 }}
               >
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="btn btn-secondary"
-                  style={{
-                    fontSize: '0.74rem',
-                    padding: '5px 10px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px'
-                  }}
-                >
-                  <Upload size={13} />
-                  <span>Ganti Foto</span>
-                </button>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => cameraInputRef.current?.click()}
+                    className="btn btn-secondary"
+                    style={{
+                      fontSize: '0.74rem',
+                      padding: '5px 10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px'
+                    }}
+                    title="Buka Kamera untuk foto ulang"
+                  >
+                    <Camera size={13} />
+                    <span>Foto Ulang</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => galleryInputRef.current?.click()}
+                    className="btn btn-secondary"
+                    style={{
+                      fontSize: '0.74rem',
+                      padding: '5px 10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px'
+                    }}
+                    title="Pilih foto lain dari galeri"
+                  >
+                    <Upload size={13} />
+                    <span>Ganti File</span>
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={() => setGambarQc(null)}
@@ -499,7 +554,8 @@ export default function QcTab({
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '4px'
+                    gap: '4px',
+                    padding: '5px 8px'
                   }}
                 >
                   <Trash2 size={14} />
@@ -509,11 +565,10 @@ export default function QcTab({
             </div>
           ) : (
             <div
-              onClick={() => fileInputRef.current?.click()}
               style={{
                 width: '100%',
-                maxWidth: '360px',
-                height: '180px',
+                maxWidth: '420px',
+                padding: '22px 16px',
                 borderRadius: '14px',
                 border: '2px dashed var(--border-color)',
                 background: 'var(--bg-surface)',
@@ -521,24 +576,15 @@ export default function QcTab({
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '10px',
-                cursor: 'pointer',
+                gap: '14px',
                 transition: 'all 0.2s ease',
                 color: 'var(--text-muted)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--brand-gold)';
-                e.currentTarget.style.background = 'rgba(217, 119, 6, 0.05)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-color)';
-                e.currentTarget.style.background = 'var(--bg-surface)';
               }}
             >
               <div
                 style={{
-                  width: '56px',
-                  height: '56px',
+                  width: '60px',
+                  height: '60px',
                   borderRadius: '50%',
                   background: 'rgba(217, 119, 6, 0.12)',
                   display: 'flex',
@@ -547,18 +593,78 @@ export default function QcTab({
                   color: 'var(--brand-gold)'
                 }}
               >
-                <Camera size={28} />
+                <Camera size={30} />
               </div>
+
               <div style={{ textAlign: 'center' }}>
-                <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-primary)', display: 'block' }}>
-                  Ambil Foto Kamera / Unggah Gambar
+                <span style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--text-primary)', display: 'block' }}>
+                  Ambil Foto Pemeriksaan QC
                 </span>
                 <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                  Format JPG, PNG, WEBP (Maksimal 8MB)
+                  Buka kamera langsung dari HP atau upload foto pakaian dari galeri
                 </span>
+              </div>
+
+              {/* DUAL ACTION BUTTONS: CAMERA VS GALLERY */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="btn btn-primary"
+                  style={{
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <Camera size={15} />
+                  <span>Buka Kamera HP</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="btn btn-secondary"
+                  style={{
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <ImageIcon size={15} />
+                  <span>Pilih dari Galeri</span>
+                </button>
               </div>
             </div>
           )}
+
+          {/* Workflow Explanation Banner */}
+          <div
+            style={{
+              padding: '10px 12px',
+              borderRadius: '8px',
+              background: 'rgba(217, 119, 6, 0.08)',
+              border: '1px solid rgba(217, 119, 6, 0.2)',
+              fontSize: '0.75rem',
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '8px',
+              maxWidth: '560px'
+            }}
+          >
+            <Info size={16} style={{ color: 'var(--brand-gold)', flexShrink: 0, marginTop: '1px' }} />
+            <div>
+              <strong style={{ color: 'var(--brand-gold)' }}>Alur Foto QC:</strong> Gunakan tombol <em>"Buka Kamera HP"</em> saat memeriksa produk jadi di workshop konveksi untuk memotret jahitan langsung. Gambar akan tersimpan otomatis di Odoo pada kolom <code>Gambar QC</code> saat Anda menekan tombol Simpan.
+            </div>
+          </div>
         </div>
 
         {/* SUBMIT BUTTON */}

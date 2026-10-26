@@ -23,25 +23,58 @@ export function assertAdminAccess(user) {
 export async function getQcInspectors() {
   const fallbackList = [
     { id: 64, name: 'QC (quality@kantiss.com)' },
+    { id: 362, name: 'Suci Fitriani (quality@kantiss.com)' },
     { id: 14, name: 'Master Admin' }
   ];
 
   try {
     await adminOdooClient.authenticate();
-    const partners = await adminOdooClient._callObject('res.partner', 'search_read', [
-      ['|', ['name', 'ilike', 'QC'], ['email', 'ilike', 'quality']]
-    ], {
-      fields: ['id', 'name', 'email'],
-      limit: 20
-    });
+    const map = new Map();
+    // Default QC partner
+    map.set(64, { id: 64, name: 'QC (quality@kantiss.com)' });
+    map.set(362, { id: 362, name: 'Suci Fitriani (quality@kantiss.com)' });
+    map.set(14, { id: 14, name: 'Master Admin' });
 
-    if (partners && partners.length > 0) {
-      return partners.map(p => ({
-        id: p.id,
-        name: p.email ? `${p.name} (${p.email})` : p.name
-      }));
-    }
-    return fallbackList;
+    // 1. Fetch QC partners
+    try {
+      const partners = await adminOdooClient._callObject('res.partner', 'search_read', [
+        ['|', ['name', 'ilike', 'QC'], ['email', 'ilike', 'quality']]
+      ], {
+        fields: ['id', 'name', 'email'],
+        limit: 20
+      });
+      if (partners && partners.length > 0) {
+        partners.forEach(p => {
+          map.set(p.id, {
+            id: p.id,
+            name: p.email ? `${p.name} (${p.email})` : p.name
+          });
+        });
+      }
+    } catch (e) {}
+
+    // 2. Fetch internal active users
+    try {
+      const users = await adminOdooClient._callObject('res.users', 'search_read', [
+        [['active', '=', true], ['share', '=', false]]
+      ], {
+        fields: ['id', 'name', 'partner_id'],
+        limit: 30
+      });
+      if (users && users.length > 0) {
+        users.forEach(u => {
+          if (u.partner_id && u.partner_id[0]) {
+            const pId = u.partner_id[0];
+            const pName = u.partner_id[1] || u.name;
+            if (!map.has(pId)) {
+              map.set(pId, { id: pId, name: `${pName} (Internal)` });
+            }
+          }
+        });
+      }
+    } catch (e) {}
+
+    return Array.from(map.values());
   } catch (err) {
     console.warn('[WipQcService] getQcInspectors error, using fallback:', err.message);
     return fallbackList;

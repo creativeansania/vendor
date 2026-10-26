@@ -2,7 +2,7 @@ import { supabaseServer } from '../../supabaseServer.js';
 import { adminOdooClient } from '../../odoo/odooClient.js';
 import { wipRepo } from '../wipRepository.js';
 import { rawMovesCache, transfersCache, CACHE_TTL } from './wipCache.js';
-import { fetchVendorPriceFromOdoo } from './wipSyncService.js';
+import { fetchVendorPriceFromOdoo, resolveFinishing } from './wipSyncService.js';
 
 export function isChildBackorder(orderOrMoName, parentWipOrderId) {
   const name = typeof orderOrMoName === 'string' ? orderOrMoName : (orderOrMoName?.mo_name || '');
@@ -337,6 +337,61 @@ export async function getOrderDetails({ user, orderId, includeRawMoves = true })
             .update({ consumption_per_pcs: cVal, consumption_uom: cUom })
             .eq('id', order.id);
         }
+      }
+    } catch (e) {
+      // Non-fatal
+    }
+  }
+
+  // Lazy fetch finishing, packing & QC from Odoo if missing
+  if ((order.finishing == null || order.packing == null || order.qc_pass_name == null) && order.odoo_wip_id) {
+    try {
+      await adminOdooClient.authenticate();
+      const wipData = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'read', [[order.odoo_wip_id]], {
+        fields: [
+          'x_studio_related_field_77l_1k5rj70p4',
+          'x_studio_related_field_52c_1k5rj7ik0',
+          'x_studio_qc_pass_1',
+          'x_studio_qty_qc_pass_1',
+          'x_studio_qc_status',
+          'x_studio_keterangan_qms',
+          'x_studio_gambar_qc'
+        ]
+      });
+      if (wipData && wipData[0]) {
+        const w = wipData[0];
+        const fin = resolveFinishing(w.x_studio_related_field_77l_1k5rj70p4);
+        const pack = w.x_studio_related_field_52c_1k5rj7ik0 || null;
+        const qpId = w.x_studio_qc_pass_1 ? (Array.isArray(w.x_studio_qc_pass_1) ? w.x_studio_qc_pass_1[0] : w.x_studio_qc_pass_1) : null;
+        const qpName = w.x_studio_qc_pass_1 && Array.isArray(w.x_studio_qc_pass_1) ? w.x_studio_qc_pass_1[1] : null;
+        const qQty = Number(w.x_studio_qty_qc_pass_1 || 0);
+        const qStatus = w.x_studio_qc_status || null;
+        const qKeterangan = w.x_studio_keterangan_qms || null;
+        const qGambar = w.x_studio_gambar_qc || null;
+
+        order.finishing = fin;
+        order.packing = pack;
+        if (order.qc_pass_id == null) order.qc_pass_id = qpId;
+        if (order.qc_pass_name == null) order.qc_pass_name = qpName;
+        if (order.qty_qc_pass == null || order.qty_qc_pass === 0) order.qty_qc_pass = qQty;
+        if (order.qc_status == null) order.qc_status = qStatus;
+        if (order.keterangan_qms == null) order.keterangan_qms = qKeterangan;
+        if (order.gambar_qc == null) order.gambar_qc = qGambar;
+
+        supabaseServer
+          .from('wip_orders')
+          .update({
+            finishing: fin,
+            packing: pack,
+            qc_pass_id: qpId,
+            qc_pass_name: qpName,
+            qty_qc_pass: qQty,
+            qc_status: qStatus,
+            keterangan_qms: qKeterangan,
+            gambar_qc: qGambar
+          })
+          .eq('id', order.id)
+          .catch(() => {});
       }
     } catch (e) {
       // Non-fatal
