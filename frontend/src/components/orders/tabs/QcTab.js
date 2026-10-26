@@ -31,22 +31,27 @@ export default function QcTab({
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
 
-  // Pre-seeded inspectors so dropdown is NEVER empty
-  const [inspectors, setInspectors] = useState([
-    { id: 64, name: 'QC (quality@kantiss.com)' },
-    { id: 362, name: 'Suci Fitriani (quality@kantiss.com)' },
-    { id: 14, name: 'Master Admin' }
-  ]);
+  // Strictly limited to the 2 designated QC inspectors: Yana Suryana & Dindin
+  const DEFAULT_INSPECTORS = [
+    { id: 14299, name: 'Yana Suryana' },
+    { id: 318, name: 'Dindin' }
+  ];
+
+  const [inspectors, setInspectors] = useState(DEFAULT_INSPECTORS);
   const [loadingInspectors, setLoadingInspectors] = useState(false);
   const [localFeedback, setLocalFeedback] = useState(null);
 
-  // Form states: Default to Partner 64 ("QC") if not yet assigned
-  const [qcPassId, setQcPassId] = useState(
-    order?.qc_pass_id ? String(order.qc_pass_id) : '64'
-  );
-  const [qcPassName, setQcPassName] = useState(
-    order?.qc_pass_name || 'QC'
-  );
+  // Form states: Default to Yana Suryana (14299) if not yet assigned
+  const [qcPassId, setQcPassId] = useState(() => {
+    if (order?.qc_pass_id && (Number(order.qc_pass_id) === 14299 || Number(order.qc_pass_id) === 318)) {
+      return String(order.qc_pass_id);
+    }
+    return '14299';
+  });
+  const [qcPassName, setQcPassName] = useState(() => {
+    if (order?.qc_pass_id && Number(order.qc_pass_id) === 318) return 'Dindin';
+    return order?.qc_pass_name || 'Yana Suryana';
+  });
   const [qtyQcPass, setQtyQcPass] = useState(
     order?.qty_qc_pass !== undefined && order?.qty_qc_pass !== null
       ? String(order.qty_qc_pass)
@@ -59,11 +64,9 @@ export default function QcTab({
   // Keep state synchronized if order prop updates
   useEffect(() => {
     if (order) {
-      if (order.qc_pass_id) {
+      if (order.qc_pass_id && (Number(order.qc_pass_id) === 14299 || Number(order.qc_pass_id) === 318)) {
         setQcPassId(String(order.qc_pass_id));
-      }
-      if (order.qc_pass_name) {
-        setQcPassName(order.qc_pass_name);
+        setQcPassName(Number(order.qc_pass_id) === 318 ? 'Dindin' : (order.qc_pass_name || 'Yana Suryana'));
       }
       if (order.qty_qc_pass !== undefined && order.qty_qc_pass !== null) {
         setQtyQcPass(String(order.qty_qc_pass));
@@ -80,34 +83,55 @@ export default function QcTab({
     }
   }, [order]);
 
-  // Load QC inspectors from API with authenticated fetchApi
+  // Load QC details & live image from Odoo via fetchApi
   useEffect(() => {
     let isMounted = true;
-    async function loadInspectors() {
+    async function loadInspectorsAndQcData() {
       if (!order?.id) return;
       setLoadingInspectors(true);
       try {
         const res = await fetchApi(`/orders/${order.id}/qc`);
-        if (isMounted && res?.success && Array.isArray(res.inspectors) && res.inspectors.length > 0) {
-          setInspectors(res.inspectors);
-          // If no qcPassId assigned yet, match QC partner
-          if (!order?.qc_pass_id) {
-            const qcPartner = res.inspectors.find(i => i.id === 64 || i.name.toLowerCase().includes('qc'));
-            if (qcPartner) {
-              setQcPassId(String(qcPartner.id));
-              setQcPassName(qcPartner.name);
-            }
+        if (isMounted && res?.success) {
+          if (Array.isArray(res.inspectors) && res.inspectors.length > 0) {
+            setInspectors(res.inspectors);
+          }
+          // Populate live image from Odoo if not already set locally
+          if (res.gambarQc && !gambarQc) {
+            setGambarQc(res.gambarQc);
           }
         }
       } catch (err) {
-        console.warn('Failed to load inspectors via fetchApi:', err);
+        console.warn('Failed to load QC data via fetchApi:', err);
       } finally {
         if (isMounted) setLoadingInspectors(false);
       }
     }
-    loadInspectors();
+    loadInspectorsAndQcData();
     return () => { isMounted = false; };
-  }, [order?.id, order?.qc_pass_id]);
+  }, [order?.id]);
+
+  // Client-side image compression to optimize speed & minimize Odoo storage
+  const compressImage = (dataUrl, maxWidth = 1280, quality = 0.78) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  };
 
   // Handle image upload from file or camera
   const handleFileChange = (e) => {
@@ -119,15 +143,21 @@ export default function QcTab({
       return;
     }
 
-    if (file.size > 8 * 1024 * 1024) {
-      setLocalFeedback({ type: 'error', text: 'Ukuran foto maksimal 8MB.' });
+    if (file.size > 15 * 1024 * 1024) {
+      setLocalFeedback({ type: 'error', text: 'Ukuran foto maksimal 15MB.' });
       return;
     }
 
     const reader = new FileReader();
-    reader.onload = () => {
-      setGambarQc(reader.result);
-      setLocalFeedback({ type: 'success', text: 'Foto berhasil dimuat. Klik "Simpan & Sinkronkan" untuk mengirim ke Odoo.' });
+    reader.onload = async () => {
+      try {
+        const compressed = await compressImage(reader.result, 1280, 0.78);
+        setGambarQc(compressed);
+        setLocalFeedback({ type: 'success', text: 'Foto berhasil dimuat & dioptimasi. Foto akan disimpan ke Odoo saat Anda klik "Simpan & Sinkronkan".' });
+      } catch (err) {
+        setGambarQc(reader.result);
+        setLocalFeedback({ type: 'success', text: 'Foto berhasil dimuat. Klik "Simpan & Sinkronkan" untuk mengirim ke Odoo.' });
+      }
     };
     reader.onerror = () => {
       setLocalFeedback({ type: 'error', text: 'Gagal membaca file gambar.' });
@@ -249,7 +279,7 @@ export default function QcTab({
               )}
             </select>
             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              Partner di Odoo yang memvalidasi standar kualitas pengerjaan.
+              Petugas QC resmi yang bertugas: Yana Suryana atau Dindin.
             </span>
           </div>
 
@@ -662,7 +692,7 @@ export default function QcTab({
           >
             <Info size={16} style={{ color: 'var(--brand-gold)', flexShrink: 0, marginTop: '1px' }} />
             <div>
-              <strong style={{ color: 'var(--brand-gold)' }}>Alur Foto QC:</strong> Gunakan tombol <em>"Buka Kamera HP"</em> saat memeriksa produk jadi di workshop konveksi untuk memotret jahitan langsung. Gambar akan tersimpan otomatis di Odoo pada kolom <code>Gambar QC</code> saat Anda menekan tombol Simpan.
+              <strong style={{ color: 'var(--brand-gold)' }}>Alur Foto QC (Hemat Storage):</strong> Gunakan tombol <em>"Buka Kamera HP"</em> untuk memotret pakaian saat audit fisik, atau <em>"Pilih dari Galeri"</em>. Foto disimpan langsung ke Odoo ERP dan <strong>TIDAK disimpan ke Supabase</strong> sehingga menghemat 100% kuota storage database Anda.
             </div>
           </div>
         </div>

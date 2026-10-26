@@ -103,6 +103,10 @@ export class WipService {
     return qcService.getQcInspectors();
   }
 
+  async getQcDetails(params) {
+    return qcService.getQcDetails(params);
+  }
+
   // --- Sync & ERP Webhook Services ---
 
   async syncOrderFromOdoo(params) {

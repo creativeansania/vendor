@@ -157,7 +157,7 @@ class WipRepository {
       qty_qc_pass: data.qty_qc_pass !== undefined ? Number(data.qty_qc_pass || 0) : undefined,
       qc_status: data.qc_status !== undefined ? data.qc_status : undefined,
       keterangan_qms: data.keterangan_qms !== undefined ? data.keterangan_qms : undefined,
-      gambar_qc: data.gambar_qc !== undefined ? data.gambar_qc : undefined,
+      has_gambar_qc: data.has_gambar_qc !== undefined ? Boolean(data.has_gambar_qc) : (data.gambar_qc ? true : undefined),
       qc_checked_at: data.qc_checked_at !== undefined ? data.qc_checked_at : undefined,
       qc_checked_by: data.qc_checked_by !== undefined ? data.qc_checked_by : undefined,
       no_surat_jalan_sfp: data.no_surat_jalan_sfp || null,
@@ -178,7 +178,7 @@ class WipRepository {
       .select('id')
       .single();
 
-    if (error && (error.code === '42703' || error.message?.includes('does not exist') || error.message?.includes('sisa_potong') || error.message?.includes('qc_') || error.message?.includes('finishing') || error.message?.includes('packing'))) {
+    if (error && (error.code === '42703' || error.message?.includes('does not exist') || error.message?.includes('sisa_potong') || error.message?.includes('qc_') || error.message?.includes('finishing') || error.message?.includes('packing') || error.message?.includes('has_gambar_qc'))) {
       const fallbackPayload = { ...payload };
       delete fallbackPayload.sisa_potong_panjang;
       delete fallbackPayload.sisa_potong_sedang;
@@ -190,7 +190,7 @@ class WipRepository {
       delete fallbackPayload.qty_qc_pass;
       delete fallbackPayload.qc_status;
       delete fallbackPayload.keterangan_qms;
-      delete fallbackPayload.gambar_qc;
+      delete fallbackPayload.has_gambar_qc;
       delete fallbackPayload.qc_checked_at;
       delete fallbackPayload.qc_checked_by;
       const resFallback = await supabaseServer

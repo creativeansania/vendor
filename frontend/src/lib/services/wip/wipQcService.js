@@ -9,6 +9,17 @@ import { getOrderDetails } from './wipQueryService.js';
 
 const ADMIN_ROLES = ['master_admin', 'admin'];
 
+/**
+ * Pre-defined QC Inspectors list:
+ * Strictly limited to 2 designated QC officers:
+ * 1. Yana Suryana (Odoo partner_id: 14299)
+ * 2. Dindin (Odoo partner_id: 318, Dindin Saepul Mutaqin)
+ */
+export const QC_INSPECTORS = [
+  { id: 14299, name: 'Yana Suryana' },
+  { id: 318, name: 'Dindin' }
+];
+
 export function assertAdminAccess(user) {
   if (!user || !ADMIN_ROLES.includes(user.role)) {
     const error = new Error('Akses ditolak: Form Quality Control (QC) hanya dapat diakses oleh Master Admin dan Admin Internal.');
@@ -18,71 +29,51 @@ export function assertAdminAccess(user) {
 }
 
 /**
- * Fetch available QC inspectors from Odoo (res.partner / res.users)
+ * Fetch available QC inspectors
+ * Restricted strictly to Yana Suryana and Dindin as per operational requirements.
  */
 export async function getQcInspectors() {
-  const fallbackList = [
-    { id: 64, name: 'QC (quality@kantiss.com)' },
-    { id: 362, name: 'Suci Fitriani (quality@kantiss.com)' },
-    { id: 14, name: 'Master Admin' }
-  ];
+  return QC_INSPECTORS;
+}
 
-  try {
-    await adminOdooClient.authenticate();
-    const map = new Map();
-    // Default QC partner
-    map.set(64, { id: 64, name: 'QC (quality@kantiss.com)' });
-    map.set(362, { id: 362, name: 'Suci Fitriani (quality@kantiss.com)' });
-    map.set(14, { id: 14, name: 'Master Admin' });
+/**
+ * Fetch QC details and live QC image directly from Odoo
+ * This avoids storing heavy base64 images in Supabase to conserve storage quota.
+ */
+export async function getQcDetails({ user, orderId }) {
+  assertAdminAccess(user);
 
-    // 1. Fetch QC partners
+  const { order } = await getOrderDetails({ user, orderId, includeRawMoves: false });
+  let liveGambarQc = null;
+
+  if (order.odoo_wip_id) {
     try {
-      const partners = await adminOdooClient._callObject('res.partner', 'search_read', [
-        ['|', ['name', 'ilike', 'QC'], ['email', 'ilike', 'quality']]
-      ], {
-        fields: ['id', 'name', 'email'],
-        limit: 20
-      });
-      if (partners && partners.length > 0) {
-        partners.forEach(p => {
-          map.set(p.id, {
-            id: p.id,
-            name: p.email ? `${p.name} (${p.email})` : p.name
-          });
-        });
-      }
-    } catch (e) {}
+      await adminOdooClient.authenticate();
+      const rows = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'read', [
+        [order.odoo_wip_id],
+        ['x_studio_gambar_qc', 'x_studio_qc_pass_1', 'x_studio_qty_qc_pass_1', 'x_studio_qc_status', 'x_studio_keterangan_qms']
+      ]);
 
-    // 2. Fetch internal active users
-    try {
-      const users = await adminOdooClient._callObject('res.users', 'search_read', [
-        [['active', '=', true], ['share', '=', false]]
-      ], {
-        fields: ['id', 'name', 'partner_id'],
-        limit: 30
-      });
-      if (users && users.length > 0) {
-        users.forEach(u => {
-          if (u.partner_id && u.partner_id[0]) {
-            const pId = u.partner_id[0];
-            const pName = u.partner_id[1] || u.name;
-            if (!map.has(pId)) {
-              map.set(pId, { id: pId, name: `${pName} (Internal)` });
-            }
-          }
-        });
+      if (rows && rows[0]) {
+        const r = rows[0];
+        liveGambarQc = r.x_studio_gambar_qc || null;
       }
-    } catch (e) {}
-
-    return Array.from(map.values());
-  } catch (err) {
-    console.warn('[WipQcService] getQcInspectors error, using fallback:', err.message);
-    return fallbackList;
+    } catch (err) {
+      console.warn(`[WipQcService] Failed reading live QC image from Odoo WIP #${order.odoo_wip_id}:`, err.message);
+    }
   }
+
+  return {
+    inspectors: QC_INSPECTORS,
+    gambarQc: liveGambarQc,
+    order
+  };
 }
 
 /**
  * Submit / Update QC form results
+ * NOTE: Base64 image is stored EXCLUSIVELY in Odoo (x_studio_gambar_qc)
+ * and NOT stored in Supabase to keep Supabase database storage light.
  */
 export async function submitQcResult({
   user,
@@ -105,7 +96,7 @@ export async function submitQcResult({
   const keterangan = keteranganQms !== undefined ? (keteranganQms ? String(keteranganQms).trim() : null) : undefined;
   const gambar = gambarQc !== undefined ? (gambarQc || null) : undefined;
 
-  // 1. Update in Supabase
+  // 1. Update in Supabase - ONLY store lightweight metadata & boolean flag (NO base64 image)
   const updatePayload = {
     qc_pass_id: passId,
     qc_pass_name: passName,
@@ -115,7 +106,9 @@ export async function submitQcResult({
     qc_checked_by: user.id
   };
   if (keterangan !== undefined) updatePayload.keterangan_qms = keterangan;
-  if (gambar !== undefined) updatePayload.gambar_qc = gambar;
+  if (gambar !== undefined) {
+    updatePayload.has_gambar_qc = Boolean(gambar);
+  }
 
   const { error: sbErr } = await supabaseServer
     .from('wip_orders')
@@ -123,7 +116,7 @@ export async function submitQcResult({
     .eq('id', orderId);
 
   if (sbErr) {
-    console.warn('[WipQcService] Supabase update warning (columns might not exist yet):', sbErr.message);
+    console.warn('[WipQcService] Supabase update warning:', sbErr.message);
   }
 
   // 2. Audit log
@@ -137,21 +130,23 @@ export async function submitQcResult({
         qc_pass_name: order.qc_pass_name,
         qty_qc_pass: order.qty_qc_pass,
         qc_status: order.qc_status,
-        keterangan_qms: order.keterangan_qms
+        keterangan_qms: order.keterangan_qms,
+        has_gambar_qc: order.has_gambar_qc
       },
       after_data: {
         qc_pass_id: passId,
         qc_pass_name: passName,
         qty_qc_pass: numQty,
         qc_status: validStatus,
-        keterangan_qms: keterangan
+        keterangan_qms: keterangan,
+        has_gambar_qc: Boolean(gambar)
       }
     });
   } catch (auditErr) {
     console.warn('[WipQcService] Audit log failed:', auditErr.message);
   }
 
-  // 3. Sync to Odoo x_monitoring_wip_vendo
+  // 3. Sync to Odoo x_monitoring_wip_vendo (Images stored exclusively in Odoo)
   if (order.odoo_wip_id) {
     try {
       await adminOdooClient.authenticate();
@@ -196,6 +191,11 @@ export async function submitQcResult({
     }
   }
 
-  // 4. Return fresh details
-  return getOrderDetails({ user, orderId, includeRawMoves: false });
+  // 4. Return fresh details with current image in memory for UI
+  const fresh = await getOrderDetails({ user, orderId, includeRawMoves: false });
+  if (fresh.order) {
+    fresh.order.has_gambar_qc = Boolean(gambar);
+    fresh.order.gambar_qc = gambar;
+  }
+  return fresh;
 }

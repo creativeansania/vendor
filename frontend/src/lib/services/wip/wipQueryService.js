@@ -375,7 +375,7 @@ export async function getOrderDetails({ user, orderId, includeRawMoves = true })
         if (order.qc_pass_name == null) order.qc_pass_name = qpName;
         if (order.qty_qc_pass == null || order.qty_qc_pass === 0) order.qty_qc_pass = qQty;
         if (order.qc_status == null) order.qc_status = qStatus;
-        if (order.keterangan_qms == null) order.keterangan_qms = qKeterangan;
+        order.has_gambar_qc = Boolean(qGambar);
         if (order.gambar_qc == null) order.gambar_qc = qGambar;
 
         supabaseServer
@@ -388,7 +388,7 @@ export async function getOrderDetails({ user, orderId, includeRawMoves = true })
             qty_qc_pass: qQty,
             qc_status: qStatus,
             keterangan_qms: qKeterangan,
-            gambar_qc: qGambar
+            has_gambar_qc: Boolean(qGambar)
           })
           .eq('id', order.id)
           .catch(() => {});

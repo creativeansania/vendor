@@ -159,6 +159,11 @@ ALTER TABLE wip_orders ADD COLUMN IF NOT EXISTS qc_pass_name VARCHAR(150) NULL;
 ALTER TABLE wip_orders ADD COLUMN IF NOT EXISTS qty_qc_pass NUMERIC(12,2) DEFAULT 0;
 ALTER TABLE wip_orders ADD COLUMN IF NOT EXISTS qc_status VARCHAR(50) NULL;
 ALTER TABLE wip_orders ADD COLUMN IF NOT EXISTS keterangan_qms TEXT NULL;
-ALTER TABLE wip_orders ADD COLUMN IF NOT EXISTS gambar_qc TEXT NULL;
+ALTER TABLE wip_orders ADD COLUMN IF NOT EXISTS has_gambar_qc BOOLEAN DEFAULT FALSE;
 ALTER TABLE wip_orders ADD COLUMN IF NOT EXISTS qc_checked_at TIMESTAMPTZ NULL;
 ALTER TABLE wip_orders ADD COLUMN IF NOT EXISTS qc_checked_by INT NULL;
+-- Catatan hemat storage: Foto QC disimpan langsung ke Odoo (x_studio_gambar_qc) dan TIDAK disimpan ke Supabase.
+-- Jika kolom gambar_qc sebelumnya sempat dibuat di database, jalankan query berikut untuk membersihkan storage:
+ALTER TABLE wip_orders DROP COLUMN IF EXISTS gambar_qc;
+
+

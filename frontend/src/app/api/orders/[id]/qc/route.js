@@ -18,8 +18,14 @@ export async function GET(req, { params }) {
       }, { status: 403 });
     }
 
-    const inspectors = await wipService.getQcInspectors();
-    return NextResponse.json({ success: true, inspectors });
+    const { id } = await params;
+    const details = await wipService.getQcDetails({ user: auth.user, orderId: Number(id) });
+    return NextResponse.json({
+      success: true,
+      inspectors: details.inspectors,
+      gambarQc: details.gambarQc,
+      order: details.order
+    });
   } catch (err) {
     console.error('[API /orders/[id]/qc GET] error:', err);
     return NextResponse.json({ success: false, message: err.message }, { status: 400 });
