@@ -31,7 +31,7 @@ function OrderDetailContent() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', overflowX: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', overflowX: 'clip' }}>
       {/* Top Navbar */}
       <OrderNavbar
         order={detail.order}

@@ -47,7 +47,7 @@ export default function DashboardPage() {
   if (!user) return null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', overflowX: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', overflowX: 'clip' }}>
       {/* Top Navigation */}
       <DashboardNavbar user={user} />
 

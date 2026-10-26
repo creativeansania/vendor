@@ -34,7 +34,7 @@ export default function AdminUsersPage() {
   if (!currentUser) return null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', overflowX: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', overflowX: 'clip' }}>
       <UserNavbar onOpenCreateModal={() => setCreateModal(true)} />
 
       <main className="main-content">

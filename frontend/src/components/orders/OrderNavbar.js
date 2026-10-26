@@ -20,9 +20,20 @@ export default function OrderNavbar({
   loadData
 }) {
   const router = useRouter();
-
   return (
-    <header className="navbar">
+    <header
+      className="navbar"
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 60,
+        background: 'var(--bg-card)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        borderBottom: '1px solid var(--border-default)',
+        boxShadow: '0 2px 12px rgba(0, 0, 0, 0.09)'
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
         <button
           onClick={() => router.push('/')}
