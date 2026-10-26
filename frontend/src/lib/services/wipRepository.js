@@ -150,6 +150,16 @@ class WipRepository {
       sisa_potong_panjang: data.sisa_potong_panjang !== undefined ? Number(data.sisa_potong_panjang || 0) : undefined,
       sisa_potong_sedang: data.sisa_potong_sedang !== undefined ? Number(data.sisa_potong_sedang || 0) : undefined,
       sisa_potong_pendek: data.sisa_potong_pendek !== undefined ? Number(data.sisa_potong_pendek || 0) : undefined,
+      finishing: data.finishing !== undefined ? data.finishing : undefined,
+      packing: data.packing !== undefined ? data.packing : undefined,
+      qc_pass_id: data.qc_pass_id !== undefined ? (data.qc_pass_id ? Number(data.qc_pass_id) : null) : undefined,
+      qc_pass_name: data.qc_pass_name !== undefined ? data.qc_pass_name : undefined,
+      qty_qc_pass: data.qty_qc_pass !== undefined ? Number(data.qty_qc_pass || 0) : undefined,
+      qc_status: data.qc_status !== undefined ? data.qc_status : undefined,
+      keterangan_qms: data.keterangan_qms !== undefined ? data.keterangan_qms : undefined,
+      gambar_qc: data.gambar_qc !== undefined ? data.gambar_qc : undefined,
+      qc_checked_at: data.qc_checked_at !== undefined ? data.qc_checked_at : undefined,
+      qc_checked_by: data.qc_checked_by !== undefined ? data.qc_checked_by : undefined,
       no_surat_jalan_sfp: data.no_surat_jalan_sfp || null,
       tanggal_sfp: data.tanggal_sfp || null,
       qty_masuk_sfp: Number(data.qty_masuk_sfp || 0),
@@ -168,11 +178,21 @@ class WipRepository {
       .select('id')
       .single();
 
-    if (error && (error.message?.includes('sisa_potong') || error.details?.includes('sisa_potong'))) {
+    if (error && (error.code === '42703' || error.message?.includes('does not exist') || error.message?.includes('sisa_potong') || error.message?.includes('qc_') || error.message?.includes('finishing') || error.message?.includes('packing'))) {
       const fallbackPayload = { ...payload };
       delete fallbackPayload.sisa_potong_panjang;
       delete fallbackPayload.sisa_potong_sedang;
       delete fallbackPayload.sisa_potong_pendek;
+      delete fallbackPayload.finishing;
+      delete fallbackPayload.packing;
+      delete fallbackPayload.qc_pass_id;
+      delete fallbackPayload.qc_pass_name;
+      delete fallbackPayload.qty_qc_pass;
+      delete fallbackPayload.qc_status;
+      delete fallbackPayload.keterangan_qms;
+      delete fallbackPayload.gambar_qc;
+      delete fallbackPayload.qc_checked_at;
+      delete fallbackPayload.qc_checked_by;
       const resFallback = await supabaseServer
         .from('wip_orders')
         .upsert(fallbackPayload, { onConflict: 'odoo_wip_id' })

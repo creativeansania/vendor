@@ -208,7 +208,39 @@ export function useOrderDetail(orderId) {
     (order?.parent_wip_order_id && !/-0*1$/.test((order?.mo_name || '').trim()))
   );
   const isMasterAdmin = user?.role === 'master_admin';
+  const isAdmin = ['master_admin', 'admin'].includes(user?.role);
   const isUnlockedByAdmin = Boolean(order?.is_unlocked_by_admin);
+
+  // Auto-switch away from tab 'qc' if user is not admin
+  useEffect(() => {
+    if (user && !isAdmin && activeTab === 'qc') {
+      setActiveTab(isBackorder ? 'jahit' : 'kain');
+    }
+  }, [user, isAdmin, activeTab, isBackorder, setActiveTab]);
+
+  const [savingQc, setSavingQc] = useState(false);
+
+  const handleSaveQc = async (qcData) => {
+    if (!orderId) return;
+    setSavingQc(true);
+    setFeedback({ text: '', type: '' });
+    try {
+      const res = await fetchApi(`/orders/${orderId}/qc`, {
+        method: 'POST',
+        body: JSON.stringify(qcData)
+      });
+      if (res.success) {
+        setFeedback({ text: res.message || 'Hasil Quality Control (QC) berhasil disimpan dan disinkronkan ke Odoo!', type: 'success' });
+        await loadData();
+      } else {
+        throw new Error(res.message || 'Gagal menyimpan hasil QC.');
+      }
+    } catch (err) {
+      setFeedback({ text: 'Gagal QC: ' + err.message, type: 'error' });
+    } finally {
+      setSavingQc(false);
+    }
+  };
 
   const hasGradeASent = Number(order?.qty_grade_a || 0) > 0;
   const isMoDone = order?.mo_state === 'done';
@@ -230,8 +262,11 @@ export function useOrderDetail(orderId) {
     orderId,
     order,
     user,
+    isAdmin,
     loading,
     saving,
+    savingQc,
+    handleSaveQc,
     syncingOdoo: transferState.syncingOdoo,
     feedback,
     activeTab,

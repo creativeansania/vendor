@@ -1,11 +1,12 @@
 'use client';
 
-import { Scissors, Tag, Package, Recycle, Truck } from 'lucide-react';
+import { Scissors, Tag, Package, Recycle, Truck, ClipboardCheck } from 'lucide-react';
 
 export default function OrderTabsNav({
   activeTab,
   setActiveTab,
   isBackorder = false,
+  isAdmin = false,
   fabricLinesCount = 0,
   accessoryLinesCount = 0,
   rollLinesCount = 0,
@@ -15,7 +16,7 @@ export default function OrderTabsNav({
 
   return (
     <div className="segmented-tabs-wrapper">
-      {/* JIKA BACKORDER: Hanya Tab Jahit dan Dokumen Transfer */}
+      {/* JIKA BACKORDER: Jahit, (QC jika Admin), dan Dokumen Transfer */}
       {isBackorder ? (
         <>
           {/* 1. JAHIT */}
@@ -29,7 +30,20 @@ export default function OrderTabsNav({
             <span>1. Jahit</span>
           </button>
 
-          {/* 2. DOKUMEN TRANSFER */}
+          {/* 2. QUALITY CONTROL (QC) - ADMIN ONLY */}
+          {isAdmin && (
+            <button
+              id="tab-btn-qc"
+              type="button"
+              onClick={() => setActiveTab('qc')}
+              className={`segmented-tab-btn ${activeTab === 'qc' ? 'active' : ''}`}
+            >
+              <ClipboardCheck size={15} className="tab-icon" />
+              <span>2. QC</span>
+            </button>
+          )}
+
+          {/* DOKUMEN TRANSFER */}
           <button
             id="tab-btn-transfer"
             type="button"
@@ -37,7 +51,7 @@ export default function OrderTabsNav({
             className={`segmented-tab-btn ${activeTab === 'transfer' ? 'active' : ''}`}
           >
             <Truck size={15} className="tab-icon" />
-            <span>2. Dokumen Transfer {transfersCount > 0 ? `(${transfersCount})` : ''}</span>
+            <span>{isAdmin ? '3.' : '2.'} Dokumen Transfer {transfersCount > 0 ? `(${transfersCount})` : ''}</span>
           </button>
         </>
       ) : (
@@ -86,7 +100,20 @@ export default function OrderTabsNav({
             <span>4. BSKL</span>
           </button>
 
-          {/* 5. DOKUMEN TRANSFER */}
+          {/* 5. QUALITY CONTROL (QC) - HANYA ADMIN (MASTER ADMIN & ADMIN INTERNAL) */}
+          {isAdmin && (
+            <button
+              id="tab-btn-qc"
+              type="button"
+              onClick={() => setActiveTab('qc')}
+              className={`segmented-tab-btn ${activeTab === 'qc' ? 'active' : ''}`}
+            >
+              <ClipboardCheck size={15} className="tab-icon" />
+              <span>5. QC</span>
+            </button>
+          )}
+
+          {/* DOKUMEN TRANSFER (NO 6 JIKA ADMIN, NO 5 JIKA VENDOR) */}
           <button
             id="tab-btn-transfer"
             type="button"
@@ -94,7 +121,7 @@ export default function OrderTabsNav({
             className={`segmented-tab-btn ${activeTab === 'transfer' ? 'active' : ''}`}
           >
             <Truck size={15} className="tab-icon" />
-            <span>5. Dokumen Transfer {transfersCount > 0 ? `(${transfersCount})` : ''}</span>
+            <span>{isAdmin ? '6.' : '5.'} Dokumen Transfer {transfersCount > 0 ? `(${transfersCount})` : ''}</span>
           </button>
         </>
       )}

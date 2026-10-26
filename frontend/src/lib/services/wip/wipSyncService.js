@@ -43,6 +43,30 @@ export async function fetchVendorPriceFromOdoo(warehouseId, productId, workcente
 }
 
 /**
+ * Helper: Mapping finishing selection value to display label
+ */
+export const FINISHING_LABELS = {
+  'NECI': 'NECI HALUS',
+  'NECI GROSIR': 'NECI GROSIR',
+  'LASERCUT': 'LASERCUT',
+  'RAWIS': 'RAWIS',
+  'SONIC': 'SONIC',
+  'STIK': 'STIK',
+  'PICOT': 'PICOT',
+  'EYELASH': 'EYELASH',
+  'OVERDECK': 'OVERDECK',
+  'PITA': 'PITA',
+  'PASHMINA SINGLE STIK': 'PASHMINA SINGLE STIK',
+  'DOUBLE STIK': 'PASHMINA DOUBLE STIK',
+  'CUSTOM': 'CUSTOM'
+};
+
+export function resolveFinishing(val) {
+  if (!val) return null;
+  return FINISHING_LABELS[val] || val;
+}
+
+/**
  * Pull single order live from Odoo into Supabase
  */
 export async function syncOrderFromOdoo({ user, orderId }) {
@@ -63,6 +87,9 @@ export async function syncOrderFromOdoo({ user, orderId }) {
       'x_studio_no_surat_jalan_sfp', 'x_studio_tanggal_sfp', 'x_studio_qty_masuk_sfp',
       'x_studio_qty_spk', 'x_studio_start_spk', 'x_studio_deadline_spk', 'x_studio_sales_order',
       'x_studio_harga', 'x_studio_total_harga', 'x_studio_status_produksi', 'x_studio_detail_roll_kain',
+      'x_studio_related_field_77l_1k5rj70p4', 'x_studio_related_field_52c_1k5rj7ik0',
+      'x_studio_qc_pass_1', 'x_studio_qty_qc_pass_1', 'x_studio_qc_status',
+      'x_studio_keterangan_qms', 'x_studio_gambar_qc',
       'write_date'
     ]
   });
@@ -183,6 +210,14 @@ export async function syncOrderFromOdoo({ user, orderId }) {
     sisa_potong_panjang: Number(w.x_studio_sisa_potong_panjang || 0),
     sisa_potong_sedang: Number(w.x_studio_sisa_potong_sedang || 0),
     sisa_potong_pendek: Number(w.x_studio_sisa_potong_pendek || 0),
+    finishing: resolveFinishing(w.x_studio_related_field_77l_1k5rj70p4),
+    packing: w.x_studio_related_field_52c_1k5rj7ik0 || null,
+    qc_pass_id: w.x_studio_qc_pass_1 ? (Array.isArray(w.x_studio_qc_pass_1) ? w.x_studio_qc_pass_1[0] : w.x_studio_qc_pass_1) : null,
+    qc_pass_name: w.x_studio_qc_pass_1 && Array.isArray(w.x_studio_qc_pass_1) ? w.x_studio_qc_pass_1[1] : null,
+    qty_qc_pass: Number(w.x_studio_qty_qc_pass_1 || 0),
+    qc_status: w.x_studio_qc_status || null,
+    keterangan_qms: w.x_studio_keterangan_qms || null,
+    gambar_qc: w.x_studio_gambar_qc || null,
     no_surat_jalan_sfp: w.x_studio_no_surat_jalan_sfp || null,
     tanggal_sfp: w.x_studio_tanggal_sfp || null,
     qty_masuk_sfp: qtyMasukSfp,
@@ -239,6 +274,9 @@ export async function syncAllFromOdoo() {
         'x_studio_no_surat_jalan_sfp', 'x_studio_tanggal_sfp', 'x_studio_qty_masuk_sfp',
         'x_studio_qty_spk', 'x_studio_start_spk', 'x_studio_deadline_spk', 'x_studio_sales_order',
         'x_studio_harga', 'x_studio_total_harga', 'x_studio_status_produksi', 'x_studio_detail_roll_kain',
+        'x_studio_related_field_77l_1k5rj70p4', 'x_studio_related_field_52c_1k5rj7ik0',
+        'x_studio_qc_pass_1', 'x_studio_qty_qc_pass_1', 'x_studio_qc_status',
+        'x_studio_keterangan_qms', 'x_studio_gambar_qc',
         'write_date'
       ]
     ]);
@@ -284,6 +322,14 @@ export async function syncAllFromOdoo() {
           sisa_potong_panjang: Number(w.x_studio_sisa_potong_panjang || 0),
           sisa_potong_sedang: Number(w.x_studio_sisa_potong_sedang || 0),
           sisa_potong_pendek: Number(w.x_studio_sisa_potong_pendek || 0),
+          finishing: resolveFinishing(w.x_studio_related_field_77l_1k5rj70p4),
+          packing: w.x_studio_related_field_52c_1k5rj7ik0 || null,
+          qc_pass_id: w.x_studio_qc_pass_1 ? (Array.isArray(w.x_studio_qc_pass_1) ? w.x_studio_qc_pass_1[0] : w.x_studio_qc_pass_1) : null,
+          qc_pass_name: w.x_studio_qc_pass_1 && Array.isArray(w.x_studio_qc_pass_1) ? w.x_studio_qc_pass_1[1] : null,
+          qty_qc_pass: Number(w.x_studio_qty_qc_pass_1 || 0),
+          qc_status: w.x_studio_qc_status || null,
+          keterangan_qms: w.x_studio_keterangan_qms || null,
+          gambar_qc: w.x_studio_gambar_qc || null,
           no_surat_jalan_sfp: w.x_studio_no_surat_jalan_sfp || null,
           tanggal_sfp: w.x_studio_tanggal_sfp || null,
           qty_masuk_sfp: Number(w.x_studio_qty_masuk_sfp || 0),
@@ -348,12 +394,54 @@ export async function ensureDedicatedComponentPickings(moId) {
       if (!pName.includes('/PC/') && !pName.includes('/SPB/') && !pName.includes('/SFP/')) continue;
       if (!pick.move_ids || pick.move_ids.length === 0) continue;
 
+      const isMasterAdmin = pick.create_uid && (
+        Array.isArray(pick.create_uid) ? pick.create_uid[0] === 7 : pick.create_uid === 7
+      );
+      if (isMasterAdmin) continue;
+
+      const isSfp = pName.includes('/SFP/');
+
       const moves = await adminOdooClient._callObject('stock.move', 'read', [pick.move_ids], {
-        fields: ['id', 'product_id', 'product_uom_qty', 'state', 'production_group_id', 'raw_material_production_id', 'move_line_ids', 'origin']
+        fields: ['id', 'product_id', 'product_uom_qty', 'state', 'production_group_id', 'raw_material_production_id', 'move_line_ids', 'origin', 'move_orig_ids', 'production_id']
       });
 
+      // Prefetch move_orig_ids if any moves have them (vital for SFP finished goods)
+      const allOrigMoveIds = [...new Set(moves.flatMap(m => m.move_orig_ids || []))];
+      const origMovesMap = new Map();
+      if (allOrigMoveIds.length > 0) {
+        try {
+          const origMoves = await adminOdooClient._callObject('stock.move', 'read', [
+            allOrigMoveIds,
+            ['id', 'raw_material_production_id', 'production_id', 'production_group_id', 'origin']
+          ]);
+          origMoves.forEach(om => origMovesMap.set(om.id, om));
+        } catch (e) {}
+      }
+
+      // Prefetch MOs matching move origins (e.g. "VDKWS/MO/05189-002")
+      const potentialMoveMoNames = [
+        ...new Set([
+          ...moves.map(m => (m.origin || '').trim()).filter(o => o.includes('/MO/')),
+          ...Array.from(origMovesMap.values()).map(om => (om.origin || '').trim()).filter(o => o.includes('/MO/'))
+        ])
+      ];
+      const moNameMap = new Map();
+      if (potentialMoveMoNames.length > 0) {
+        try {
+          const mosByOrigin = await adminOdooClient._callObject('mrp.production', 'search_read', [
+            [['name', 'in', potentialMoveMoNames]]
+          ], { fields: ['id', 'name'] });
+          mosByOrigin.forEach(m => moNameMap.set(m.name, m));
+        } catch (e) {}
+      }
+
       // Find all distinct production groups across the moves
-      const groupIds = [...new Set(moves.filter(m => m.production_group_id && m.production_group_id[0]).map(m => m.production_group_id[0]))];
+      const groupIds = [
+        ...new Set([
+          ...moves.filter(m => m.production_group_id && m.production_group_id[0]).map(m => m.production_group_id[0]),
+          ...Array.from(origMovesMap.values()).filter(om => om.production_group_id && om.production_group_id[0]).map(om => om.production_group_id[0])
+        ])
+      ];
       const prodGroupMap = new Map();
       if (groupIds.length > 0) {
         try {
@@ -368,18 +456,55 @@ export async function ensureDedicatedComponentPickings(moId) {
       const movesByMo = new Map();
       for (const m of moves) {
         let mMoId = null;
+
+        // 1. Direct raw material MO (PC/SPB components)
         if (m.raw_material_production_id && m.raw_material_production_id[0]) {
           mMoId = m.raw_material_production_id[0];
-        } else if (m.production_group_id && m.production_group_id[0]) {
-          const g = prodGroupMap.get(m.production_group_id[0]);
-          if (g && g.production_ids && g.production_ids.length > 0) {
-            mMoId = typeof g.production_ids[0] === 'object' ? g.production_ids[0].id : g.production_ids[0];
+        }
+
+        // 2. Direct production MO
+        if (!mMoId && m.production_id && m.production_id[0]) {
+          mMoId = m.production_id[0];
+        }
+
+        // 3. For SFP finished moves: check orig move (produced by MO)
+        if (!mMoId && m.move_orig_ids && m.move_orig_ids.length > 0) {
+          for (const omId of m.move_orig_ids) {
+            const om = origMovesMap.get(omId);
+            if (om && om.production_id && om.production_id[0]) {
+              mMoId = om.production_id[0];
+              break;
+            }
           }
         }
+
+        // 4. Exact origin string matching MO name
         if (!mMoId && m.origin) {
-          const origMo = m.origin.trim();
-          if (origMo === mo.name) {
+          const origTrimmed = m.origin.trim();
+          if (origTrimmed === mo.name) {
             mMoId = id;
+          } else if (moNameMap.has(origTrimmed)) {
+            mMoId = moNameMap.get(origTrimmed).id;
+          }
+        }
+
+        // 5. Origin move origin string matching MO
+        if (!mMoId && m.move_orig_ids && m.move_orig_ids.length > 0) {
+          for (const omId of m.move_orig_ids) {
+            const om = origMovesMap.get(omId);
+            const omOrig = (om && om.origin ? om.origin : '').trim();
+            if (omOrig && moNameMap.has(omOrig)) {
+              mMoId = moNameMap.get(omOrig).id;
+              break;
+            }
+          }
+        }
+
+        // 6. Production group fallback ONLY for non-SFP (components) if group has exactly 1 MO
+        if (!mMoId && !isSfp && m.production_group_id && m.production_group_id[0]) {
+          const g = prodGroupMap.get(m.production_group_id[0]);
+          if (g && g.production_ids && g.production_ids.length === 1) {
+            mMoId = typeof g.production_ids[0] === 'object' ? g.production_ids[0].id : g.production_ids[0];
           }
         }
 
@@ -391,17 +516,17 @@ export async function ensureDedicatedComponentPickings(moId) {
       }
 
       // If all moves belong to at most 1 MO, picking is already dedicated
-      const moKeys = Array.from(movesByMo.keys()).filter(k => k !== 'unassigned');
-      if (moKeys.length <= 1) {
+      const entries = Array.from(movesByMo.entries()).filter(([k, list]) => k !== 'unassigned' && list && list.length > 0);
+      if (entries.length <= 1) {
         continue;
       }
 
-      console.log(`[WipSyncService] Shared picking ${pick.name} (#${pick.id}) contains moves for ${moKeys.length} MOs. Splitting into 1 document per MO...`);
+      console.log(`[WipSyncService] Shared picking ${pick.name} (#${pick.id}) contains moves for ${entries.length} MOs. Splitting into 1 document per MO...`);
 
       // 1st MO stays in the original picking, subsequent MOs get new pickings
-      const entries = Array.from(movesByMo.entries()).filter(([k]) => k !== 'unassigned');
-      const [firstMoIdKey] = entries[0];
+      const [firstMoIdKey, firstMoves] = entries[0];
       const firstMoId = Number(firstMoIdKey);
+      if (!firstMoves || firstMoves.length === 0) continue;
 
       // Read MO names for all entries
       const allMoIds = entries.map(([k]) => Number(k)).filter(Boolean);
@@ -412,10 +537,10 @@ export async function ensureDedicatedComponentPickings(moId) {
       } catch (e) {}
 
       // Update original picking origin & references
-      const firstMoName = moInfoMap.get(firstMoId) || `MO#${firstMoId}`;
+      const firstMoName = moInfoMap.get(firstMoId) || (moNameMap.has(firstMoId) ? moNameMap.get(firstMoId).name : `MO#${firstMoId}`);
       const firstMoSo = await resolveSalesOrderForMo(firstMoId);
       const firstPickVals = {
-        origin: `${pick.origin || ''}, ${firstMoName}`.trim(),
+        origin: firstMoName,
         x_studio_manufacturing_order: firstMoId
       };
       if (firstMoSo) {
@@ -432,6 +557,8 @@ export async function ensureDedicatedComponentPickings(moId) {
       // Split all other MOs into dedicated pickings
       for (let i = 1; i < entries.length; i++) {
         const [targetMoIdKey, targetMoves] = entries[i];
+        if (!targetMoves || targetMoves.length === 0) continue;
+
         const targetMoId = Number(targetMoIdKey);
         const targetMoName = moInfoMap.get(targetMoId) || `MO#${targetMoId}`;
         const targetMoSo = await resolveSalesOrderForMo(targetMoId);
@@ -439,16 +566,16 @@ export async function ensureDedicatedComponentPickings(moId) {
         const targetMoveLineIds = targetMoves.flatMap(m => m.move_line_ids || []);
 
         const newPickPayload = {
-          picking_type_id: pick.picking_type_id ? pick.picking_type_id[0] : 383,
-          location_id: pick.location_id ? pick.location_id[0] : 8,
-          location_dest_id: pick.location_dest_id ? pick.location_dest_id[0] : 284,
+          picking_type_id: pick.picking_type_id ? pick.picking_type_id[0] : (isSfp ? 384 : 383),
+          location_id: pick.location_id ? pick.location_id[0] : (isSfp ? 284 : 8),
+          location_dest_id: pick.location_dest_id ? pick.location_dest_id[0] : (isSfp ? 8 : 284),
           move_type: pick.move_type || 'direct',
-          origin: `${pick.origin || ''}, ${targetMoName}`.trim(),
+          origin: targetMoName,
           company_id: pick.company_id ? pick.company_id[0] : 1,
           scheduled_date: pick.scheduled_date,
           date_deadline: pick.date_deadline,
           x_studio_manufacturing_order: targetMoId,
-          x_studio_manufacturing_orders: pick.origin || targetMoName,
+          x_studio_manufacturing_orders: targetMoName,
           x_studio_sales_order: targetMoSo ? targetMoSo.id : (pick.x_studio_sales_order ? pick.x_studio_sales_order[0] : false),
           x_studio_source_warehouse: pick.x_studio_source_warehouse,
           x_studio_destination_warehouse: pick.x_studio_destination_warehouse,
@@ -482,7 +609,7 @@ export async function ensureDedicatedComponentPickings(moId) {
         }
 
         transfersCache.delete(targetMoId);
-        console.log(`[WipSyncService] Created dedicated picking #${newPickId} for MO #${targetMoId} (${targetMoName})`);
+        console.log(`[WipSyncService] Created dedicated picking #${newPickId} for MO #${targetMoId} (${targetMoName}) with ${targetMoveIds.length} move(s)`);
       }
 
       // Ensure all pickings have synchronized references
@@ -908,6 +1035,9 @@ export async function syncWipFromPickings(wipId, moId) {
         'x_studio_many2many_field_869_1k3jdrdl1', 'x_studio_sales_order',
         'x_studio_qty_kirim_a_grade', 'x_studio_qty_kirim_b_grade', 'x_studio_sisa_makloon_kg',
         'x_studio_sisa_potong_panjang', 'x_studio_sisa_potong_sedang', 'x_studio_sisa_potong_pendek',
+        'x_studio_related_field_77l_1k5rj70p4', 'x_studio_related_field_52c_1k5rj7ik0',
+        'x_studio_qc_pass_1', 'x_studio_qty_qc_pass_1', 'x_studio_qc_status',
+        'x_studio_keterangan_qms', 'x_studio_gambar_qc',
         'x_studio_status_produksi', 'x_studio_qty_spk', 'x_studio_start_spk', 'x_studio_deadline_spk'
       ]
     });
@@ -1244,6 +1374,14 @@ export async function syncWipFromPickings(wipId, moId) {
         sisa_potong_panjang: parseFloat(wip.x_studio_sisa_potong_panjang || 0),
         sisa_potong_sedang: parseFloat(wip.x_studio_sisa_potong_sedang || 0),
         sisa_potong_pendek: parseFloat(wip.x_studio_sisa_potong_pendek || 0),
+        finishing: resolveFinishing(wip.x_studio_related_field_77l_1k5rj70p4),
+        packing: wip.x_studio_related_field_52c_1k5rj7ik0 || null,
+        qc_pass_id: wip.x_studio_qc_pass_1 ? (Array.isArray(wip.x_studio_qc_pass_1) ? wip.x_studio_qc_pass_1[0] : wip.x_studio_qc_pass_1) : null,
+        qc_pass_name: wip.x_studio_qc_pass_1 && Array.isArray(wip.x_studio_qc_pass_1) ? wip.x_studio_qc_pass_1[1] : null,
+        qty_qc_pass: Number(wip.x_studio_qty_qc_pass_1 || 0),
+        qc_status: wip.x_studio_qc_status || null,
+        keterangan_qms: wip.x_studio_keterangan_qms || null,
+        gambar_qc: wip.x_studio_gambar_qc || null,
         no_surat_jalan_sfp: sfpVals.x_studio_no_surat_jalan_sfp || null,
         tanggal_sfp: sfpVals.x_studio_tanggal_sfp || null,
         qty_masuk_sfp: sfpVals.x_studio_qty_masuk_sfp || 0,

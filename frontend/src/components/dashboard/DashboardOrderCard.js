@@ -115,6 +115,11 @@ export default function DashboardOrderCard({ order, onClick, onAskWa }) {
               Menunggu SO
             </span>
           )}
+          {order.finishing && (
+            <span className="badge badge-indigo" style={{ fontSize: '0.66rem', padding: '1px 6px', fontWeight: 700 }}>
+              ✨ {order.finishing}
+            </span>
+          )}
         </div>
       </div>
 

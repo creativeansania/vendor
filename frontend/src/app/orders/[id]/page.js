@@ -12,6 +12,7 @@ import FabricTab from '@/components/orders/tabs/FabricTab';
 import AccessoryTab from '@/components/orders/tabs/AccessoryTab';
 import SewingTab from '@/components/orders/tabs/SewingTab';
 import BsklTab from '@/components/orders/tabs/BsklTab';
+import QcTab from '@/components/orders/tabs/QcTab';
 import TransferTab from '@/components/orders/tabs/TransferTab';
 import SafetyConfirmationModal from '@/components/orders/SafetyConfirmationModal';
 
@@ -80,6 +81,7 @@ function OrderDetailContent() {
           activeTab={detail.activeTab}
           setActiveTab={detail.setActiveTab}
           isBackorder={detail.isBackorder}
+          isAdmin={detail.isAdmin}
           fabricLinesCount={detail.fabricLines?.length || 0}
           accessoryLinesCount={detail.accessoryLines?.length || 0}
           transfersCount={detail.transfers?.length || 0}
@@ -177,7 +179,18 @@ function OrderDetailContent() {
           />
         )}
 
-        {/* TAB 5: DOKUMEN TRANSFER ODOO */}
+        {/* TAB 5 (ADMIN ONLY): QUALITY CONTROL (QC) */}
+        {detail.isAdmin && detail.activeTab === 'qc' && (
+          <QcTab
+            order={detail.order}
+            targetSpkQty={detail.targetSpkQty}
+            saving={detail.savingQc}
+            onSaveQc={detail.handleSaveQc}
+            user={detail.user}
+          />
+        )}
+
+        {/* TAB DOKUMEN TRANSFER ODOO */}
         {detail.activeTab === 'transfer' && (
           <TransferTab
             order={detail.order}

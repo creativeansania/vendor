@@ -46,13 +46,16 @@ export class TransferService {
     const allMoveIds = [...new Set(pickings.flatMap(p => p.move_ids || []))];
     const movesMap = new Map();
     const destMovesMap = new Map();
+    const origMovesMap = new Map();
+    const moNameMap = new Map();
+    const moMap = new Map();
 
     if (allMoveIds.length > 0) {
       try {
         logger.debug(`[Transfer MO/SO] Prefetching ${allMoveIds.length} stock.moves for ${pickings.length} pickings in bulk...`);
         const moves = await this.odoo._callObject('stock.move', 'read', [
           allMoveIds,
-          ['id', 'raw_material_production_id', 'production_id', 'move_dest_ids', 'production_group_id', 'move_line_ids', 'origin']
+          ['id', 'raw_material_production_id', 'production_id', 'move_dest_ids', 'move_orig_ids', 'production_group_id', 'move_line_ids', 'origin']
         ]);
         moves.forEach(m => movesMap.set(m.id, m));
 
@@ -62,9 +65,44 @@ export class TransferService {
           logger.debug(`[Transfer MO/SO] Prefetching ${allDestMoveIds.length} dest_moves in bulk...`);
           const destMoves = await this.odoo._callObject('stock.move', 'read', [
             allDestMoveIds,
-            ['id', 'raw_material_production_id', 'production_id', 'production_group_id']
+            ['id', 'raw_material_production_id', 'production_id', 'production_group_id', 'origin']
           ]);
           destMoves.forEach(dm => destMovesMap.set(dm.id, dm));
+        }
+
+        // Batch Prefetch 2b: Read all origin moves across all moves in 1 single XML-RPC call (vital for SFP finished goods)
+        const allOrigMoveIds = [...new Set(moves.flatMap(m => m.move_orig_ids || []))];
+        if (allOrigMoveIds.length > 0) {
+          logger.debug(`[Transfer MO/SO] Prefetching ${allOrigMoveIds.length} orig_moves in bulk...`);
+          const origMoves = await this.odoo._callObject('stock.move', 'read', [
+            allOrigMoveIds,
+            ['id', 'raw_material_production_id', 'production_id', 'production_group_id', 'origin']
+          ]);
+          origMoves.forEach(om => origMovesMap.set(om.id, om));
+        }
+
+        // Batch Prefetch 2c: Prefetch MOs matching move origins (e.g. "VDKWS/MO/05189-002")
+        const potentialMoveMoNames = [
+          ...new Set([
+            ...moves.map(m => (m.origin || '').trim()).filter(o => o.includes('/MO/')),
+            ...Array.from(origMovesMap.values()).map(om => (om.origin || '').trim()).filter(o => o.includes('/MO/'))
+          ])
+        ];
+        if (potentialMoveMoNames.length > 0) {
+          try {
+            logger.debug(`[Transfer MO/SO] Prefetching ${potentialMoveMoNames.length} MOs by move origin names in bulk...`);
+            const mosByOrigin = await this.odoo._callObject('mrp.production', 'search_read', [
+              [['name', 'in', potentialMoveMoNames]]
+            ], {
+              fields: ['id', 'name', 'x_studio_sales_order', 'origin']
+            });
+            mosByOrigin.forEach(m => {
+              moNameMap.set(m.name, m);
+              moMap.set(m.id, m);
+            });
+          } catch (errMoOrig) {
+            logger.debug(`[Transfer MO/SO] Error prefetching MOs by origin name: ${errMoOrig.message}`);
+          }
         }
       } catch (errMoves) {
         logger.warn(`[Transfer MO/SO] Warning during bulk prefetch of moves: ${errMoves.message}`);
@@ -75,7 +113,8 @@ export class TransferService {
     const allProdGroupIds = [
       ...new Set([
         ...Array.from(movesMap.values()).filter(m => m.production_group_id && m.production_group_id[0]).map(m => m.production_group_id[0]),
-        ...Array.from(destMovesMap.values()).filter(dm => dm.production_group_id && dm.production_group_id[0]).map(dm => dm.production_group_id[0])
+        ...Array.from(destMovesMap.values()).filter(dm => dm.production_group_id && dm.production_group_id[0]).map(dm => dm.production_group_id[0]),
+        ...Array.from(origMovesMap.values()).filter(om => om.production_group_id && om.production_group_id[0]).map(om => om.production_group_id[0])
       ])
     ];
     const prodGroupMap = new Map();
@@ -93,8 +132,41 @@ export class TransferService {
     }
 
     // Helper: Resolve which MO a given stock.move feeds or belongs to
-    const getMoRefForMove = (m) => {
+    const getMoRefForMove = (m, isSfp = false) => {
       if (!m) return null;
+
+      // 1. Direct MO link on the move
+      if (m.raw_material_production_id) {
+        return { id: m.raw_material_production_id[0], name: m.raw_material_production_id[1] };
+      }
+      if (m.production_id) {
+        return { id: m.production_id[0], name: m.production_id[1] };
+      }
+
+      // 2. Origin moves (for SFP / finished goods produced by an MO)
+      for (const omid of (m.move_orig_ids || [])) {
+        const om = origMovesMap.get(omid);
+        if (om && om.production_id) {
+          return { id: om.production_id[0], name: om.production_id[1] };
+        }
+        if (om && om.raw_material_production_id) {
+          return { id: om.raw_material_production_id[0], name: om.raw_material_production_id[1] };
+        }
+        const omOrig = (om && om.origin ? om.origin : '').trim();
+        if (omOrig && moNameMap.has(omOrig)) {
+          const matched = moNameMap.get(omOrig);
+          return { id: matched.id, name: matched.name };
+        }
+      }
+
+      // 3. Move origin matching MO name (e.g. VDKWS/MO/05189-002)
+      const mOrig = (m.origin || '').trim();
+      if (mOrig && moNameMap.has(mOrig)) {
+        const matched = moNameMap.get(mOrig);
+        return { id: matched.id, name: matched.name };
+      }
+
+      // 4. Destination moves (for component moves feeding an MO)
       for (const dmid of (m.move_dest_ids || [])) {
         const dm = destMovesMap.get(dmid);
         if (dm && dm.raw_material_production_id) {
@@ -103,25 +175,13 @@ export class TransferService {
         if (dm && dm.production_id) {
           return { id: dm.production_id[0], name: dm.production_id[1] };
         }
-        if (dm && dm.production_group_id) {
-          const g = prodGroupMap.get(dm.production_group_id[0]);
-          if (g && g.production_ids && g.production_ids.length > 0) {
-            const pId = typeof g.production_ids[0] === 'object' ? g.production_ids[0].id : g.production_ids[0];
-            return { id: pId, name: g.name };
-          }
-        }
       }
 
-      if (m.raw_material_production_id) {
-        return { id: m.raw_material_production_id[0], name: m.raw_material_production_id[1] };
-      }
-      if (m.production_id) {
-        return { id: m.production_id[0], name: m.production_id[1] };
-      }
-
-      if (m.production_group_id) {
+      // 5. Fallback to production group ONLY for non-SFP moves if group has exactly 1 MO
+      // NEVER use production_group_id[0] for SFP because multiple MOs share 1 group!
+      if (!isSfp && m.production_group_id) {
         const g = prodGroupMap.get(m.production_group_id[0]);
-        if (g && g.production_ids && g.production_ids.length > 0) {
+        if (g && g.production_ids && g.production_ids.length === 1) {
           const pId = typeof g.production_ids[0] === 'object' ? g.production_ids[0].id : g.production_ids[0];
           return { id: pId, name: g.name };
         }
@@ -149,6 +209,7 @@ export class TransferService {
         upperName.includes('/SFP/') ||
         upperName.includes('/INT/');
 
+      const isSfp = upperName.includes('/SFP/');
       const originClean = picking.origin ? picking.origin.split(',')[0].trim() : '';
       const namePrefix = pickingName.includes('/') ? pickingName.split('/')[0].trim() : '';
 
@@ -156,7 +217,7 @@ export class TransferService {
       const movesByMo = new Map();
 
       for (const m of pMoves) {
-        const moRef = getMoRefForMove(m);
+        const moRef = getMoRefForMove(m, isSfp);
         if (moRef && moRef.id) {
           if (!movesByMo.has(moRef.id)) {
             movesByMo.set(moRef.id, {
@@ -184,9 +245,11 @@ export class TransferService {
         Array.isArray(picking.create_uid) ? picking.create_uid[0] === 7 : picking.create_uid === 7
       );
 
+      const validMoGroups = Array.from(movesByMo.values()).filter(g => g.moveIds && g.moveIds.length > 0);
+
       const canAutoSplit =
         isMatchedType &&
-        movesByMo.size > 1 &&
+        validMoGroups.length > 1 &&
         pMoves.length > 1 &&
         !isMasterAdmin &&
         !['done', 'cancel'].includes(picking.state);
@@ -211,8 +274,7 @@ export class TransferService {
         ...pickingPlans.filter(p => p.resolvedMo && p.resolvedMo.id).map(p => p.resolvedMo.id),
         ...pickingPlans.flatMap(p => Array.from(p.movesByMo.keys()))
       ])
-    ];
-    const moMap = new Map();
+    ].filter(id => !moMap.has(id));
     if (moIdsToRead.length > 0) {
       try {
         const moList = await this.odoo._callObject('mrp.production', 'read', [
@@ -323,9 +385,13 @@ export class TransferService {
 
         // Auto-split logic: 1 MO = 1 Transfer
         if (canAutoSplit) {
-          logger.info(`[Transfer Auto-Split] ✂️ Transfer ${pickingName} (ID: ${picking.id}) contains moves for ${movesByMo.size} distinct MOs! Auto-splitting...`);
+          const moGroups = Array.from(movesByMo.values()).filter(g => g.moveIds && g.moveIds.length > 0);
+          if (moGroups.length <= 1) {
+            continue;
+          }
 
-          const moGroups = Array.from(movesByMo.values());
+          logger.info(`[Transfer Auto-Split] ✂️ Transfer ${pickingName} (ID: ${picking.id}) contains moves for ${moGroups.length} distinct MOs! Auto-splitting...`);
+
           const firstMoGroup = moGroups[0];
           const newCreatedPickings = [];
 

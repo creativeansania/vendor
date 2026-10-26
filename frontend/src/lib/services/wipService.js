@@ -12,6 +12,7 @@ import { withWipLock } from './wip/wipLock.js';
 import * as queryService from './wip/wipQueryService.js';
 import * as cuttingService from './wip/wipCuttingService.js';
 import * as productionService from './wip/wipProductionService.js';
+import * as qcService from './wip/wipQcService.js';
 import * as syncService from './wip/wipSyncService.js';
 
 export class WipService {
@@ -92,6 +93,15 @@ export class WipService {
     return productionService.adminRelockOrder(params);
   }
 
+  // --- Quality Control (QC) Services (Admin Only) ---
+
+  async submitQcResult(params) {
+    return qcService.submitQcResult(params);
+  }
+
+  async getQcInspectors() {
+    return qcService.getQcInspectors();
+  }
 
   // --- Sync & ERP Webhook Services ---
 

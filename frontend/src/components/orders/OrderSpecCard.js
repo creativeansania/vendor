@@ -95,6 +95,39 @@ export default function OrderSpecCard({
           </div>
         </div>
       </div>
+
+      {/* Finishing & Packing Specification Strip */}
+      {(order.finishing || order.packing) && (
+        <div
+          style={{
+            marginTop: '12px',
+            paddingTop: '12px',
+            borderTop: '1px solid var(--border-color)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px',
+            flexWrap: 'wrap',
+            fontSize: '0.82rem'
+          }}
+        >
+          {order.finishing && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ color: 'var(--text-muted)' }}>✨ Finishing:</span>
+              <span className="badge badge-indigo" style={{ fontWeight: 700, fontSize: '0.76rem', padding: '3px 8px' }}>
+                {order.finishing}
+              </span>
+            </div>
+          )}
+          {order.packing && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ color: 'var(--text-muted)' }}>📦 Packing:</span>
+              <span className="badge badge-cyan" style={{ fontWeight: 700, fontSize: '0.76rem', padding: '3px 8px' }}>
+                {order.packing}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
