@@ -1,15 +1,56 @@
-import http from 'http';
-import https from 'https';
-import xmlrpc from 'xmlrpc';
 import {
   getWebSessionCookie,
   getDocumentDetails,
   downloadDocumentPdf,
   getOrCreatePublicAttachment
 } from './odooReportHelper.js';
+import {
+  getCachedAuthSession,
+  setCachedAuthSession,
+  clearCachedAuthSession,
+  getCachedCompanyByName,
+  setCachedCompanyByName,
+  getCachedWarehouseByName,
+  setCachedWarehouseByName
+} from './odooStaticCache.js';
 
-const sharedHttpAgent = new http.Agent({ keepAlive: true, maxSockets: 25 });
-const sharedHttpsAgent = new https.Agent({ keepAlive: true, maxSockets: 25 });
+const RPC_TIMEOUT_MS = 20000;
+const MAX_CONCURRENT_RPC = 6;
+const MAX_RETRIES = 3;
+
+let activeRpcCount = 0;
+const rpcWaitQueue = [];
+let rpcSeq = 1;
+
+function acquireRpcSlot() {
+  if (activeRpcCount < MAX_CONCURRENT_RPC) {
+    activeRpcCount++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    rpcWaitQueue.push(resolve);
+  });
+}
+
+function releaseRpcSlot() {
+  if (rpcWaitQueue.length > 0) {
+    const next = rpcWaitQueue.shift();
+    next();
+  } else {
+    activeRpcCount = Math.max(0, activeRpcCount - 1);
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientNetworkError(err) {
+  if (!err) return false;
+  if (err.isRateLimit || err.isTransientGateway) return true;
+  const msg = String(err.message || err.cause?.message || '');
+  return /ECONNRESET|ETIMEDOUT|UND_ERR_SOCKET|fetch failed|network|socket hang up/i.test(msg);
+}
 
 export class OdooClient {
   constructor(options = {}) {
@@ -22,10 +63,13 @@ export class OdooClient {
       db = 'kanti-sehati-sukses';
     }
 
-    this.url = url;
+    this.url = url.replace(/\/+$/, '');
+    this.jsonRpcUrl = `${this.url}/jsonrpc`;
     this.db = db;
     this.username = options.username || process.env.ODOO_USERNAME || '';
     this.password = options.password || process.env.ODOO_PASSWORD || '';
+    this.authCacheKey = `${this.url}|${this.db}|${this.username}`;
+
     this.uid = null;
     this._authPromise = null;
     this.companyId = null;
@@ -34,67 +78,111 @@ export class OdooClient {
     this.sessionCookieExpires = 0;
   }
 
-  async _callCommon(method, params) {
-    const urlParts = new URL(this.url);
-    const isSecure = urlParts.protocol === 'https:';
-    const clientOptions = {
-      host: urlParts.hostname,
-      port: urlParts.port || (isSecure ? 443 : 80),
-      path: '/xmlrpc/2/common',
-      agent: isSecure ? sharedHttpsAgent : sharedHttpAgent
-    };
+  /**
+   * High-efficiency JSON-RPC 2.0 transport with concurrency cap & jittered 429/5xx backoff
+   */
+  async _jsonRpc(service, method, args) {
+    let lastError = null;
 
-    const client = isSecure
-      ? xmlrpc.createSecureClient(clientOptions)
-      : xmlrpc.createClient(clientOptions);
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      await acquireRpcSlot();
+      let retryDelayMs = 0;
 
-    return new Promise((resolve, reject) => {
-      let isSettled = false;
-      const timer = setTimeout(() => {
-        if (!isSettled) {
-          isSettled = true;
-          reject(new Error(`Odoo XML-RPC timeout (${method}) after 20s`));
+      try {
+        const res = await fetch(this.jsonRpcUrl, {
+          method: 'POST',
+          cache: 'no-store',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'call',
+            params: { service, method, args },
+            id: rpcSeq++
+          }),
+          signal: AbortSignal.timeout(RPC_TIMEOUT_MS)
+        });
+
+        if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
+          const retryAfterHeader = Number(res.headers.get('retry-after') || 0);
+          const baseBackoff = retryAfterHeader > 0
+            ? retryAfterHeader * 1000
+            : [900, 2000, 4000][attempt] || 4000;
+          retryDelayMs = baseBackoff + Math.floor(Math.random() * 400);
+
+          const err = new Error(
+            res.status === 429
+              ? 'Odoo RPC Rate Limit Exceeded (HTTP 429). Server Odoo membatasi kuota sementara.'
+              : `Odoo Gateway Temporary Error (HTTP ${res.status}).`
+          );
+          if (res.status === 429) err.isRateLimit = true;
+          else err.isTransientGateway = true;
+          err.code = res.status;
+          throw err;
         }
-      }, 20000);
-      if (timer && timer.unref) timer.unref();
 
-      client.methodCall(method, params, (error, value) => {
-        if (isSettled) return;
-        isSettled = true;
-        clearTimeout(timer);
-
-        if (error) {
-          if (error.message && (error.message.includes("tag 'TITLE'") || error.message.includes("tag 'title'"))) {
-            const rateErr = new Error('Odoo XML-RPC Rate Limit Exceeded (HTTP 429). Server Odoo membatasi kuota sementara.');
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          const textBody = await res.text();
+          if (res.status === 429 || /<title>.*429|Too Many Requests/i.test(textBody)) {
+            retryDelayMs = ([900, 2000, 4000][attempt] || 4000) + Math.floor(Math.random() * 400);
+            const rateErr = new Error('Odoo RPC Rate Limit Exceeded (HTTP 429). Server Odoo membatasi kuota sementara.');
             rateErr.isRateLimit = true;
             rateErr.code = 429;
-            return reject(rateErr);
+            throw rateErr;
           }
-          reject(error);
-        } else {
-          resolve(value);
+          throw new Error(`Unexpected non-JSON response from Odoo (HTTP ${res.status})`);
         }
-      });
-    });
+
+        const payload = await res.json();
+        if (payload.error) {
+          const errData = payload.error.data || {};
+          const detail = errData.message || payload.error.message || 'Odoo JSON-RPC Error';
+          const errName = errData.name || '';
+          const rpcErr = new Error(errName ? `${errName}: ${detail}` : detail);
+          rpcErr.odooErrorName = errName;
+          rpcErr.odooDebug = errData.debug;
+          throw rpcErr;
+        }
+
+        return payload.result;
+      } catch (err) {
+        if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+          lastError = new Error(`Odoo JSON-RPC timeout (${service}.${method}) after ${RPC_TIMEOUT_MS / 1000}s`);
+        } else {
+          lastError = err;
+        }
+
+        const canRetry = attempt < MAX_RETRIES && isTransientNetworkError(lastError);
+        if (!canRetry) {
+          throw lastError;
+        }
+        if (!retryDelayMs) {
+          retryDelayMs = ([800, 1800, 3500][attempt] || 3500) + Math.floor(Math.random() * 350);
+        }
+      } finally {
+        releaseRpcSlot();
+      }
+
+      if (retryDelayMs > 0) {
+        console.warn(`[Odoo RPC] Transient error (${lastError?.message}). Retrying ${service}.${method} in ${retryDelayMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`);
+        await sleep(retryDelayMs);
+      }
+    }
+
+    throw lastError;
+  }
+
+  async _callCommon(method, params) {
+    return this._jsonRpc('common', method, params);
   }
 
   async _callObject(model, method, args, kwargs = {}, _retriedAuth = false) {
     if (!this.uid) {
       await this.authenticate();
     }
-
-    const urlParts = new URL(this.url);
-    const isSecure = urlParts.protocol === 'https:';
-    const clientOptions = {
-      host: urlParts.hostname,
-      port: urlParts.port || (isSecure ? 443 : 80),
-      path: '/xmlrpc/2/object',
-      agent: isSecure ? sharedHttpsAgent : sharedHttpAgent
-    };
-
-    const client = isSecure
-      ? xmlrpc.createSecureClient(clientOptions)
-      : xmlrpc.createClient(clientOptions);
 
     const context = {
       ...(this.allowedCompanyIds && this.allowedCompanyIds.length > 0 ? { allowed_company_ids: this.allowedCompanyIds } : {}),
@@ -117,37 +205,11 @@ export class OdooClient {
     ];
 
     try {
-      return await new Promise((resolve, reject) => {
-        let isSettled = false;
-        const timer = setTimeout(() => {
-          if (!isSettled) {
-            isSettled = true;
-            reject(new Error(`Odoo XML-RPC timeout (${model}.${method}) after 20s`));
-          }
-        }, 20000);
-        if (timer && timer.unref) timer.unref();
-
-        client.methodCall('execute_kw', params, (error, value) => {
-          if (isSettled) return;
-          isSettled = true;
-          clearTimeout(timer);
-
-          if (error) {
-            if (error.message && (error.message.includes("tag 'TITLE'") || error.message.includes("tag 'title'"))) {
-              const rateErr = new Error('Odoo XML-RPC Rate Limit Exceeded (HTTP 429). Server Odoo membatasi kuota sementara.');
-              rateErr.isRateLimit = true;
-              rateErr.code = 429;
-              return reject(rateErr);
-            }
-            reject(error);
-          } else {
-            resolve(value);
-          }
-        });
-      });
+      return await this._jsonRpc('object', 'execute_kw', params);
     } catch (err) {
       if (!_retriedAuth && err.message && /AccessDenied|SessionExpired/i.test(err.message)) {
         this.uid = null;
+        clearCachedAuthSession(this.authCacheKey);
         await this.authenticate(true);
         return this._callObject(model, method, args, kwargs, true);
       }
@@ -163,6 +225,35 @@ export class OdooClient {
     if (!force && this.uid) {
       return this.uid;
     }
+
+    if (!force) {
+      const cachedSession = getCachedAuthSession(this.authCacheKey);
+      if (cachedSession && cachedSession.uid) {
+        this.uid = cachedSession.uid;
+        this.companyId = cachedSession.companyId || this.companyId;
+        this.allowedCompanyIds = cachedSession.allowedCompanyIds || [];
+        return this.uid;
+      }
+
+      // Zero-call cold start shortcut when static ODOO_UID is provided in env for the default admin account
+      const envUid = Number(process.env.ODOO_UID || 0);
+      if (envUid > 0 && this.username === (process.env.ODOO_USERNAME || '')) {
+        const envCompanyId = Number(process.env.ODOO_COMPANY_ID || 0) || null;
+        const envAllowedIds = process.env.ODOO_ALLOWED_COMPANY_IDS
+          ? process.env.ODOO_ALLOWED_COMPANY_IDS.split(',').map((n) => Number(n.trim())).filter(Boolean)
+          : (envCompanyId ? [envCompanyId] : []);
+        this.uid = envUid;
+        if (envCompanyId) this.companyId = envCompanyId;
+        if (envAllowedIds.length > 0) this.allowedCompanyIds = envAllowedIds;
+        setCachedAuthSession(this.authCacheKey, {
+          uid: this.uid,
+          companyId: this.companyId,
+          allowedCompanyIds: this.allowedCompanyIds
+        });
+        return this.uid;
+      }
+    }
+
     if (!force && this._authPromise) {
       return this._authPromise;
     }
@@ -198,6 +289,12 @@ export class OdooClient {
           }
         } catch {}
 
+        setCachedAuthSession(this.authCacheKey, {
+          uid: this.uid,
+          companyId: this.companyId,
+          allowedCompanyIds: this.allowedCompanyIds
+        });
+
         return this.uid;
       } catch (error) {
         this.uid = null;
@@ -213,6 +310,11 @@ export class OdooClient {
 
   async getCompanyId(companyName = process.env.ODOO_COMPANY_NAME || 'Ansania') {
     if (this.companyId) return this.companyId;
+    const cached = getCachedCompanyByName(companyName);
+    if (cached) {
+      this.companyId = cached;
+      return cached;
+    }
 
     try {
       const companies = await this._callObject('res.company', 'search_read', [
@@ -221,15 +323,7 @@ export class OdooClient {
 
       if (companies && companies.length > 0) {
         this.companyId = companies[0].id;
-        return this.companyId;
-      }
-
-      const users = await this._callObject('res.users', 'search_read', [
-        [['id', '=', this.uid]]
-      ], { fields: ['company_id'] });
-
-      if (users && users.length > 0 && users[0].company_id) {
-        this.companyId = users[0].company_id[0];
+        setCachedCompanyByName(companyName, this.companyId);
         return this.companyId;
       }
 
@@ -240,6 +334,10 @@ export class OdooClient {
   }
 
   async getWarehouseId(warehouseName = process.env.ODOO_WAREHOUSE_NAME || 'Gudang Online', companyId = null) {
+    const cacheKey = `${warehouseName}|${companyId || ''}`;
+    const cached = getCachedWarehouseByName(cacheKey);
+    if (cached) return cached;
+
     try {
       const domain = [['name', 'ilike', warehouseName]];
       if (companyId) domain.push(['company_id', '=', companyId]);
@@ -250,6 +348,7 @@ export class OdooClient {
       });
 
       if (warehouses && warehouses.length > 0) {
+        setCachedWarehouseByName(cacheKey, warehouses[0].id);
         return warehouses[0].id;
       }
       return null;

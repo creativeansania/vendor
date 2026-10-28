@@ -38,7 +38,8 @@ export async function fetchVendorPriceFromOdoo(warehouseId, productId, workcente
 }
 
 /**
- * Triggered when Vendor Pricing (x_vendor_production) is created or updated in Odoo
+ * Triggered when Vendor Pricing (x_vendor_production) is created or updated in Odoo.
+ * Groups matching WIPs by computed totalHarga to batch Odoo writes & Supabase updates.
  */
 export async function onVendorPriceUpdated(vendorPriceId) {
   await adminOdooClient.authenticate();
@@ -69,10 +70,15 @@ export async function onVendorPriceUpdated(vendorPriceId) {
     return { success: false, reason: 'Missing warehouse or product' };
   }
 
+  // Filter directly in Odoo search domain: exclude 'Selesai' & only fetch WIPs where price <= 0!
   const wips = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'search_read', [
     [
       ['x_studio_warehouse', '=', warehouseId],
-      ['x_studio_product', '=', productId]
+      ['x_studio_product', '=', productId],
+      ['x_studio_status_produksi', 'not in', ['Selesai', 'selesai']],
+      '|',
+      ['x_studio_harga', '=', false],
+      ['x_studio_harga', '<=', 0]
     ]
   ], {
     fields: [
@@ -84,15 +90,15 @@ export async function onVendorPriceUpdated(vendorPriceId) {
   });
 
   const updatedWips = [];
+  const groupsByTotalHarga = new Map();
 
-  for (const w of wips) {
+  for (const w of wips || []) {
     if (vpWorkcenterIds.length > 0 && w.x_studio_many2many_field_869_1k3jdrdl1 && w.x_studio_many2many_field_869_1k3jdrdl1.length > 0) {
       const wipWcSet = new Set(w.x_studio_many2many_field_869_1k3jdrdl1);
       const matchesWc = vpWorkcenterIds.every((cid) => wipWcSet.has(cid));
       if (!matchesWc) continue;
     }
 
-    // Kombinasi A (Strict): skip 'Selesai' and skip SPKs that already have price > 0
     const statusProduksi = (w.x_studio_status_produksi || '').trim().toLowerCase();
     if (statusProduksi === 'selesai') continue;
 
@@ -100,10 +106,26 @@ export async function onVendorPriceUpdated(vendorPriceId) {
     if (currentPrice > 0) continue;
 
     const sfpQty = parseFloat(w.x_studio_qty_masuk_sfp) || 0.0;
-    const totalHarga = newPrice * sfpQty;
+    const totalHarga = Number((newPrice * sfpQty).toFixed(2));
 
+    if (!groupsByTotalHarga.has(totalHarga)) {
+      groupsByTotalHarga.set(totalHarga, []);
+    }
+    groupsByTotalHarga.get(totalHarga).push(w.id);
+
+    updatedWips.push({
+      wipId: w.id,
+      moName: w.x_name,
+      hargaVendor: newPrice,
+      sfpQty,
+      totalHarga
+    });
+  }
+
+  // Batch write to Odoo & Supabase per distinct totalHarga group (usually 1 single call for all open WIPs!)
+  for (const [totalHarga, wipIds] of groupsByTotalHarga.entries()) {
     await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [
-      [w.id],
+      wipIds,
       {
         x_studio_harga: newPrice,
         x_studio_total_harga: totalHarga
@@ -112,21 +134,9 @@ export async function onVendorPriceUpdated(vendorPriceId) {
       context: { tracking_disable: true, no_automation: true }
     });
 
-    try {
-      await wipRepo.updateWipPricingByOdooId(w.id, {
-        harga_vendor: newPrice,
-        total_harga: totalHarga
-      });
-    } catch (errDb) {
-      console.warn(`[WipSyncService] Note on updating Supabase pricing for WIP #${w.id}: ${errDb.message}`);
-    }
-
-    updatedWips.push({
-      wipId: w.id,
-      moName: w.x_name,
-      hargaVendor: newPrice,
-      sfpQty,
-      totalHarga
+    await wipRepo.updateWipPricingByOdooIds(wipIds, {
+      harga_vendor: newPrice,
+      total_harga: totalHarga
     });
   }
 
@@ -138,4 +148,3 @@ export async function onVendorPriceUpdated(vendorPriceId) {
     updatedWips
   };
 }
-

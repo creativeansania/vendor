@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
-import { after } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { wipService } from '@/lib/services/wipService';
 import { verifyOdooWebhook } from '@/lib/webhookAuth';
+import { acquireDistributedWebhookLock } from '@/lib/services/wip/distributedWebhookLock';
 
 export const maxDuration = 60;
 
@@ -28,11 +28,20 @@ export async function POST(req) {
 
     const priceId = Number(rawId);
 
-    console.log('[Vendor Price Webhook] Received event:', { priceId, payload });
-
     if (!priceId || isNaN(priceId)) {
       return NextResponse.json({ success: false, message: 'Vendor Price ID is required' }, { status: 400 });
     }
+
+    const acquired = await acquireDistributedWebhookLock(`vendor_price:${priceId}`, 15000);
+    if (!acquired) {
+      return NextResponse.json({
+        success: true,
+        deduplicated: true,
+        message: `Vendor Price #${priceId} already queued within cooldown window`
+      });
+    }
+
+    console.log('[Vendor Price Webhook] Received event:', { priceId });
 
     after(async () => {
       try {

@@ -1,11 +1,12 @@
 import { supabaseServer } from '../../../supabaseServer.js';
-import { rawMovesCache } from '../wipCache.js';
+import { invalidateOrderCache } from '../wipCache.js';
 import { getOrderDetails } from '../wipQueryService.js';
 import { syncGradeAToOdoo, syncGradeBToOdoo } from './odooGradeSync.js';
 import { syncBsklToOdoo, syncProductionToOdoo } from './odooBsklSync.js';
+import { enqueueOutboxTask, scheduleOutboxExecution } from '../outboxService.js';
 
 /**
- * Submit final production results (locks result stage)
+ * Submit final production results (locks result stage, pushes to Odoo in background via sync_outbox)
  */
 export async function submitProductionResult({
   user,
@@ -31,7 +32,6 @@ export async function submitProductionResult({
   const totalSisaKg = hasCategories ? calculatedTotal : Math.max(0, Number(sisaMakloonKg || 0));
   const suratJalan = (noSuratJalan || '').trim();
 
-  // Enforce stage locks consistent with individual tabs
   const isChangingGradeA = aGrade !== Number(order.qty_grade_a || 0);
   if (isChangingGradeA && !order.can_edit_grade_a) {
     throw new Error('Input Grade A terkunci karena produksi telah selesai dan MO Odoo berstatus Done.');
@@ -73,7 +73,6 @@ export async function submitProductionResult({
 
   const { error: updateErr } = await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
   if (updateErr && (updateErr.message?.includes('sisa_potong') || updateErr.details?.includes('sisa_potong') || updateErr.message?.includes('grade_b_submit_count'))) {
-    console.warn('[WipProductionService] Fallback update without optional columns:', updateErr.message);
     delete updatePayload.sisa_potong_panjang;
     delete updatePayload.sisa_potong_sedang;
     delete updatePayload.sisa_potong_pendek;
@@ -81,84 +80,7 @@ export async function submitProductionResult({
     await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
   }
 
-  await supabaseServer.from('audit_logs').insert({
-    user_id: user.id,
-    wip_order_id: orderId,
-    action: 'submit_result',
-    before_data: {
-      qty_grade_a: order.qty_grade_a,
-      qty_grade_b: order.qty_grade_b,
-      sisa_makloon_kg: order.sisa_makloon_kg,
-      sisa_potong_panjang: order.sisa_potong_panjang,
-      sisa_potong_sedang: order.sisa_potong_sedang,
-      sisa_potong_pendek: order.sisa_potong_pendek
-    },
-    after_data: {
-      qtyGradeA: aGrade,
-      qtyGradeB: bGrade,
-      sisaPotongPanjang: panjangKg,
-      sisaPotongSedang: sedangKg,
-      sisaPotongPendek: pendekKg,
-      sisaMakloonKg: totalSisaKg,
-      noSuratJalan: suratJalan
-    }
-  });
-
-  const { data: outboxRow } = await supabaseServer
-    .from('sync_outbox')
-    .insert({
-      wip_order_id: orderId,
-      action: 'production_result',
-      status: 'processing',
-      attempts: 1,
-      payload: {
-        qtyGradeA: aGrade,
-        qtyGradeB: bGrade,
-        sisaPotongPanjang: panjangKg,
-        sisaPotongSedang: sedangKg,
-        sisaPotongPendek: pendekKg,
-        sisaMakloonKg: totalSisaKg,
-        noSuratJalan: suratJalan
-      },
-      created_by: user.id
-    })
-    .select('id')
-    .maybeSingle();
-
-  let odooSyncWarning = null;
-  try {
-    await syncProductionToOdoo(order, aGrade, bGrade, totalSisaKg, {
-      sisaPanjang: panjangKg,
-      sisaSedang: sedangKg,
-      sisaPendek: pendekKg
-    });
-    if (order.odoo_mo_id) {
-      rawMovesCache.delete(order.odoo_mo_id);
-    }
-    if (outboxRow?.id) {
-      await supabaseServer
-        .from('sync_outbox')
-        .update({ status: 'synced', synced_at: new Date().toISOString(), last_error: null })
-        .eq('id', outboxRow.id);
-    }
-  } catch (err) {
-    odooSyncWarning = err.message;
-    console.warn(`[WipProductionService] Odoo async production push warning: ${err.message}`);
-    if (outboxRow?.id) {
-      await supabaseServer
-        .from('sync_outbox')
-        .update({ status: 'failed', last_error: String(err.message).slice(0, 500) })
-        .eq('id', outboxRow.id);
-    }
-  }
-
-  return {
-    success: true,
-    odooSynced: !odooSyncWarning,
-    odooSyncWarning,
-    message: odooSyncWarning
-      ? `Hasil produksi tersimpan di aplikasi, namun sinkronisasi ke Odoo tertunda: ${odooSyncWarning}`
-      : 'Hasil jahit dan rincian sisa potong berhasil dilaporkan dan disinkronkan ke Odoo.',
+  const outboxPayload = {
     qtyGradeA: aGrade,
     qtyGradeB: bGrade,
     sisaPotongPanjang: panjangKg,
@@ -166,6 +88,50 @@ export async function submitProductionResult({
     sisaPotongPendek: pendekKg,
     sisaMakloonKg: totalSisaKg,
     noSuratJalan: suratJalan
+  };
+
+  const [, outboxId] = await Promise.all([
+    supabaseServer.from('audit_logs').insert({
+      user_id: user.id,
+      wip_order_id: orderId,
+      action: 'submit_result',
+      before_data: {
+        qty_grade_a: order.qty_grade_a,
+        qty_grade_b: order.qty_grade_b,
+        sisa_makloon_kg: order.sisa_makloon_kg,
+        sisa_potong_panjang: order.sisa_potong_panjang,
+        sisa_potong_sedang: order.sisa_potong_sedang,
+        sisa_potong_pendek: order.sisa_potong_pendek
+      },
+      after_data: outboxPayload
+    }),
+    enqueueOutboxTask({
+      wipOrderId: orderId,
+      action: 'production_result',
+      payload: outboxPayload,
+      createdBy: user.id
+    })
+  ]);
+
+  invalidateOrderCache(order.odoo_mo_id, order.id);
+
+  scheduleOutboxExecution({
+    outboxId,
+    order,
+    taskFn: () =>
+      syncProductionToOdoo(order, aGrade, bGrade, totalSisaKg, {
+        sisaPanjang: panjangKg,
+        sisaSedang: sedangKg,
+        sisaPendek: pendekKg
+      })
+  });
+
+  return {
+    success: true,
+    odooSynced: true,
+    queuedInBackground: true,
+    message: 'Hasil jahit dan rincian sisa potong berhasil disimpan dan sedang disinkronkan ke Odoo.',
+    ...outboxPayload
   };
 }
 
@@ -192,24 +158,34 @@ export async function submitGradeA({ user, orderId, qtyGradeA, noSuratJalan }) {
 
   await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
 
-  await supabaseServer.from('audit_logs').insert({
-    user_id: user.id,
-    wip_order_id: orderId,
-    action: 'submit_grade_a',
-    before_data: { qty_grade_a: order.qty_grade_a, no_surat_jalan_sfp: order.no_surat_jalan_sfp },
-    after_data: { qtyGradeA: aGrade, noSuratJalan: suratJalan }
-  });
+  const [, outboxId] = await Promise.all([
+    supabaseServer.from('audit_logs').insert({
+      user_id: user.id,
+      wip_order_id: orderId,
+      action: 'submit_grade_a',
+      before_data: { qty_grade_a: order.qty_grade_a, no_surat_jalan_sfp: order.no_surat_jalan_sfp },
+      after_data: { qtyGradeA: aGrade, noSuratJalan: suratJalan }
+    }),
+    enqueueOutboxTask({
+      wipOrderId: orderId,
+      action: 'grade_a',
+      payload: { qtyGradeA: aGrade, noSuratJalan: suratJalan },
+      createdBy: user.id
+    })
+  ]);
 
-  try {
-    await syncGradeAToOdoo(order, aGrade);
-    if (order.odoo_mo_id) rawMovesCache.delete(order.odoo_mo_id);
-  } catch (err) {
-    console.warn(`[WipProductionService] Odoo Grade A push warning: ${err.message}`);
-  }
+  invalidateOrderCache(order.odoo_mo_id, order.id);
+
+  scheduleOutboxExecution({
+    outboxId,
+    order,
+    taskFn: () => syncGradeAToOdoo(order, aGrade)
+  });
 
   return {
     success: true,
-    message: 'Qty Grade A dan Surat Jalan berhasil disimpan dan disinkronkan ke Odoo!',
+    queuedInBackground: true,
+    message: 'Qty Grade A dan Surat Jalan berhasil disimpan dan sedang disinkronkan ke Odoo!',
     qtyGradeA: aGrade,
     noSuratJalan: suratJalan
   };
@@ -251,29 +227,38 @@ export async function submitGradeB({ user, orderId, qtyGradeB, noSuratJalanGrade
 
   const { error: updErr } = await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
   if (updErr && (updErr.message?.includes('grade_b') || updErr.details?.includes('grade_b'))) {
-    console.warn('[WipProductionService] Fallback update without new grade_b columns:', updErr.message);
     delete updatePayload.grade_b_submit_count;
     delete updatePayload.no_surat_jalan_grade_b;
     await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
   }
 
-  await supabaseServer.from('audit_logs').insert({
-    user_id: user.id,
-    wip_order_id: orderId,
-    action: 'submit_grade_b',
-    before_data: { qty_grade_b: order.qty_grade_b, count: currentCount },
-    after_data: { qtyGradeB: bGrade, noSuratJalanGradeB: sjB, count: newCount }
-  });
+  const [, outboxId] = await Promise.all([
+    supabaseServer.from('audit_logs').insert({
+      user_id: user.id,
+      wip_order_id: orderId,
+      action: 'submit_grade_b',
+      before_data: { qty_grade_b: order.qty_grade_b, count: currentCount },
+      after_data: { qtyGradeB: bGrade, noSuratJalanGradeB: sjB, count: newCount }
+    }),
+    enqueueOutboxTask({
+      wipOrderId: orderId,
+      action: 'grade_b',
+      payload: { qtyGradeB: bGrade, noSuratJalanGradeB: sjB },
+      createdBy: user.id
+    })
+  ]);
 
-  try {
-    await syncGradeBToOdoo(order, bGrade);
-    if (order.odoo_mo_id) rawMovesCache.delete(order.odoo_mo_id);
-  } catch (err) {
-    console.warn(`[WipProductionService] Odoo Grade B push warning: ${err.message}`);
-  }
+  invalidateOrderCache(order.odoo_mo_id, order.id);
+
+  scheduleOutboxExecution({
+    outboxId,
+    order,
+    taskFn: () => syncGradeBToOdoo(order, bGrade)
+  });
 
   return {
     success: true,
+    queuedInBackground: true,
     message: newCount === 1
       ? 'Qty Grade B berhasil disubmit! Anda memiliki jatah 1x revisi.'
       : 'Revisi Grade B berhasil disimpan. Input Grade B kini terkunci.',
@@ -286,7 +271,15 @@ export async function submitGradeB({ user, orderId, qtyGradeB, noSuratJalanGrade
 /**
  * Submit BSKL only (locks when internal transfer is validated in Odoo)
  */
-export async function submitBskl({ user, orderId, sisaPotongPanjang, sisaPotongSedang, sisaPotongPendek, sisaMakloonKg, noSuratJalanBskl }) {
+export async function submitBskl({
+  user,
+  orderId,
+  sisaPotongPanjang,
+  sisaPotongSedang,
+  sisaPotongPendek,
+  sisaMakloonKg,
+  noSuratJalanBskl
+}) {
   const { order } = await getOrderDetails({ user, orderId, includeRawMoves: false, includeTransfers: true });
 
   if (order.is_bskl_locked && user.role !== 'master_admin' && !order.is_unlocked_by_admin) {
@@ -314,7 +307,6 @@ export async function submitBskl({ user, orderId, sisaPotongPanjang, sisaPotongS
 
   const { error: updErr } = await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
   if (updErr && (updErr.message?.includes('sisa_potong') || updErr.message?.includes('no_surat_jalan_bskl'))) {
-    console.warn('[WipProductionService] Fallback update without sisa_potong/sj columns:', updErr.message);
     delete updatePayload.sisa_potong_panjang;
     delete updatePayload.sisa_potong_sedang;
     delete updatePayload.sisa_potong_pendek;
@@ -322,40 +314,49 @@ export async function submitBskl({ user, orderId, sisaPotongPanjang, sisaPotongS
     await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
   }
 
-  await supabaseServer.from('audit_logs').insert({
-    user_id: user.id,
-    wip_order_id: orderId,
-    action: 'submit_bskl',
-    before_data: { sisa_makloon_kg: order.sisa_makloon_kg },
-    after_data: {
-      sisaPotongPanjang: panjangKg,
-      sisaPotongSedang: sedangKg,
-      sisaPotongPendek: pendekKg,
-      sisaMakloonKg: totalSisaKg,
-      noSuratJalanBskl: sjBskl
-    }
-  });
-
-  try {
-    await syncBsklToOdoo(order, {
-      pKg: panjangKg,
-      sKg: sedangKg,
-      pdkKg: pendekKg,
-      totalSisa: totalSisaKg,
-      noSuratJalanBskl: sjBskl
-    });
-  } catch (err) {
-    console.warn(`[WipProductionService] Odoo BSKL transfer push warning: ${err.message}`);
-  }
-
-  return {
-    success: true,
-    message: 'Rincian sisa potong (BSKL) berhasil disimpan dan transfer Odoo berhasil dibuat/diperbarui!',
+  const outboxPayload = {
     sisaPotongPanjang: panjangKg,
     sisaPotongSedang: sedangKg,
     sisaPotongPendek: pendekKg,
     sisaMakloonKg: totalSisaKg,
     noSuratJalanBskl: sjBskl
   };
-}
 
+  const [, outboxId] = await Promise.all([
+    supabaseServer.from('audit_logs').insert({
+      user_id: user.id,
+      wip_order_id: orderId,
+      action: 'submit_bskl',
+      before_data: { sisa_makloon_kg: order.sisa_makloon_kg },
+      after_data: outboxPayload
+    }),
+    enqueueOutboxTask({
+      wipOrderId: orderId,
+      action: 'bskl',
+      payload: outboxPayload,
+      createdBy: user.id
+    })
+  ]);
+
+  invalidateOrderCache(order.odoo_mo_id, order.id);
+
+  scheduleOutboxExecution({
+    outboxId,
+    order,
+    taskFn: () =>
+      syncBsklToOdoo(order, {
+        pKg: panjangKg,
+        sKg: sedangKg,
+        pdkKg: pendekKg,
+        totalSisa: totalSisaKg,
+        noSuratJalanBskl: sjBskl
+      })
+  });
+
+  return {
+    success: true,
+    queuedInBackground: true,
+    message: 'Rincian Sisa Potong (BSKL) berhasil disimpan dan sedang dibuatkan dokumen transfer ke WHGB di Odoo!',
+    ...outboxPayload
+  };
+}

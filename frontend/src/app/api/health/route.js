@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, connection } from 'next/server';
 import { defaultOdooClient } from '@/lib/odoo/odooClient';
 import { config } from '@/lib/config';
 
@@ -7,6 +7,7 @@ let cachedAt = 0;
 const HEALTH_TTL_MS = 30 * 1000; // 30 seconds
 
 export async function GET() {
+  await connection();
   const now = Date.now();
   if (cachedHealth && now - cachedAt < HEALTH_TTL_MS) {
     return NextResponse.json({

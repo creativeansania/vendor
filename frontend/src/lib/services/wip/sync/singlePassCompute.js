@@ -3,6 +3,7 @@ import { wipRepo } from '../../wipRepository.js';
 import { withWipLock } from '../wipLock.js';
 import { classifyMaterialLine } from '../../../utils/materialClassifier.js';
 import { resolveFinishing } from './syncMapper.js';
+import { fetchVendorPriceFromOdoo } from './vendorPricingSync.js';
 
 async function reconcileAndBuildRollLines(wipId, wip, moName, pcMoveLines) {
   const rawRollLines = wip.x_studio_detail_roll_kain && wip.x_studio_detail_roll_kain.length > 0
@@ -13,14 +14,15 @@ async function reconcileAndBuildRollLines(wipId, wip, moName, pcMoveLines) {
     : [];
 
   const seenRollKeys = new Map();
-  const duplicateLineIdsToDelete = [];
+  const rollWriteCommands = [];
   const existingRollLines = [];
 
   for (const line of rawRollLines) {
     const key = `${line.x_name || ''}:::${line.x_studio_kode_warna_roll || 'Tanpa Lot'}`;
     if (seenRollKeys.has(key)) {
       if ((parseFloat(line.x_studio_qty_berat_kg) || 0) === 0) {
-        duplicateLineIdsToDelete.push(line.id);
+        // One2many command [2, id, 0] deletes duplicate roll line inside the single parent write!
+        rollWriteCommands.push([2, line.id, 0]);
         continue;
       }
     } else {
@@ -29,25 +31,11 @@ async function reconcileAndBuildRollLines(wipId, wip, moName, pcMoveLines) {
 
     if ((parseFloat(line.x_studio_qty_penerimaan) || 0) === 0 && (parseFloat(line.x_studio_yards) || 0) > 0) {
       line.x_studio_qty_penerimaan = line.x_studio_yards;
-      try {
-        await adminOdooClient._callObject('x_monitoring_wip_vendo_line_4c93a', 'write', [
-          [line.id],
-          { x_studio_qty_penerimaan: line.x_studio_yards }
-        ]);
-      } catch (writeErr) {
-        console.warn(`[WipSyncService] Failed to set default Qty Penerimaan for line #${line.id}: ${writeErr.message}`);
-      }
+      // One2many command [1, id, {...}] batches default Qty Penerimaan into the single parent write!
+      rollWriteCommands.push([1, line.id, { x_studio_qty_penerimaan: line.x_studio_yards }]);
     }
 
     existingRollLines.push(line);
-  }
-
-  if (duplicateLineIdsToDelete.length > 0) {
-    try {
-      await adminOdooClient._callObject('x_monitoring_wip_vendo_line_4c93a', 'unlink', [duplicateLineIdsToDelete]);
-    } catch (delErr) {
-      console.warn(`[WipSyncService] Failed to unlink duplicate lines: ${delErr.message}`);
-    }
   }
 
   const newRollLines = [];
@@ -108,49 +96,61 @@ async function reconcileAndBuildRollLines(wipId, wip, moName, pcMoveLines) {
     }
   }
 
-  return { existingRollLines, newRollLines };
+  return {
+    existingRollLines,
+    newRollLines,
+    rollCommands: [...rollWriteCommands, ...newRollLines]
+  };
 }
 
 /**
- * Single-Pass Compute: Synchronizes all data and formulas for a WIP record
+ * Single-Pass Compute: Synchronizes all data and formulas for a WIP record.
+ * Accepts optional `preloadedMo` & `preloadedWorkcenterIds` to avoid duplicate RPC reads.
  */
-export async function syncWipFromPickings(wipId, moId) {
+export async function syncWipFromPickings(wipId, moId, { preloadedMo = null, preloadedWorkcenterIds = null } = {}) {
   return withWipLock(`wip_${wipId}`, async () => {
     console.log(`[WipSyncService] Executing Single-Pass Compute for WIP #${wipId} (MO #${moId})...`);
 
-    const wips = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'read', [[wipId]], {
-      fields: [
-        'id', 'x_name', 'x_studio_manufacturing_order', 'x_studio_detail_roll_kain',
-        'x_studio_warehouse', 'x_studio_product', 'x_studio_consumption_per_pcs_1',
-        'x_studio_qty_kebutuhan_kain', 'x_studio_unit_kain_dari_gudang',
-        'x_studio_unit_consumption_per_pcs', 'x_studio_actual_cutting',
-        'x_studio_harga', 'x_studio_total_harga', 'x_studio_daftar_transfer',
-        'x_studio_many2many_field_869_1k3jdrdl1', 'x_studio_sales_order',
-        'x_studio_qty_kirim_a_grade', 'x_studio_qty_kirim_b_grade', 'x_studio_sisa_makloon_kg',
-        'x_studio_sisa_potong_panjang', 'x_studio_sisa_potong_sedang', 'x_studio_sisa_potong_pendek',
-        'x_studio_related_field_77l_1k5rj70p4', 'x_studio_related_field_52c_1k5rj7ik0',
-        'x_studio_qc_pass_1', 'x_studio_qty_qc_pass_1', 'x_studio_qc_status',
-        'x_studio_keterangan_qms', 'x_studio_gambar_qc',
-        'x_studio_status_produksi', 'x_studio_qty_spk', 'x_studio_start_spk', 'x_studio_deadline_spk'
-      ],
-      context: { bin_size: true }
-    });
+    const canReuseMo = preloadedMo && Array.isArray(preloadedMo.picking_ids);
+
+    // Parallel read of WIP and MO (when MO not already preloaded)
+    const [wips, mos] = await Promise.all([
+      adminOdooClient._callObject('x_monitoring_wip_vendo', 'read', [[wipId]], {
+        fields: [
+          'id', 'x_name', 'x_studio_manufacturing_order', 'x_studio_detail_roll_kain',
+          'x_studio_warehouse', 'x_studio_product', 'x_studio_consumption_per_pcs_1',
+          'x_studio_qty_kebutuhan_kain', 'x_studio_unit_kain_dari_gudang',
+          'x_studio_unit_consumption_per_pcs', 'x_studio_actual_cutting',
+          'x_studio_harga', 'x_studio_total_harga', 'x_studio_daftar_transfer',
+          'x_studio_many2many_field_869_1k3jdrdl1', 'x_studio_sales_order',
+          'x_studio_qty_kirim_a_grade', 'x_studio_qty_kirim_b_grade', 'x_studio_sisa_makloon_kg',
+          'x_studio_sisa_potong_panjang', 'x_studio_sisa_potong_sedang', 'x_studio_sisa_potong_pendek',
+          'x_studio_related_field_77l_1k5rj70p4', 'x_studio_related_field_52c_1k5rj7ik0',
+          'x_studio_qc_pass_1', 'x_studio_qty_qc_pass_1', 'x_studio_qc_status',
+          'x_studio_keterangan_qms', 'x_studio_gambar_qc',
+          'x_studio_status_produksi', 'x_studio_qty_spk', 'x_studio_start_spk', 'x_studio_deadline_spk'
+        ],
+        context: { bin_size: true }
+      }),
+      canReuseMo
+        ? Promise.resolve([preloadedMo])
+        : adminOdooClient._callObject('mrp.production', 'read', [[moId]], {
+            fields: [
+              'id', 'name', 'product_id', 'product_qty', 'picking_ids',
+              'warehouse_id', 'bom_id', 'workorder_ids', 'company_id',
+              'state', 'x_studio_sales_order', 'date_start', 'date_deadline'
+            ]
+          })
+    ]);
 
     if (!wips || wips.length === 0) {
       throw new Error(`WIP record #${wipId} not found`);
     }
-    const wip = wips[0];
-
-    const mos = await adminOdooClient._callObject('mrp.production', 'read', [[moId]], {
-      fields: [
-        'id', 'name', 'product_id', 'product_qty', 'picking_ids',
-        'warehouse_id', 'bom_id', 'workorder_ids', 'company_id',
-        'state', 'x_studio_sales_order', 'date_start', 'date_deadline'
-      ]
-    });
     if (!mos || mos.length === 0) {
       throw new Error(`MO record #${moId} not found`);
     }
+
+    const wip = wips[0];
     const mo = mos[0];
     const moName = mo.name || '';
 
@@ -184,17 +184,27 @@ export async function syncWipFromPickings(wipId, moId) {
       return origins.includes(moName);
     }).sort((a, b) => new Date(a.date_done || 0) - new Date(b.date_done || 0));
 
+    // Combine PC/SPB move_line_ids AND latest SFP move_line_ids into ONE SINGLE stock.move.line read!
     const pcMoveLineIds = [...new Set(donePcSpb.flatMap((p) => p.move_line_ids || []))];
+    const latestSfp = doneSfp.length > 0 ? doneSfp[doneSfp.length - 1] : null;
+    const sfpMoveLineIds = latestSfp && latestSfp.move_line_ids ? latestSfp.move_line_ids : [];
+    const combinedMoveLineIds = [...new Set([...pcMoveLineIds, ...sfpMoveLineIds])];
+
     let kainQty = 0.0;
     let totalMaterialQty = 0.0;
     let pcMoveLines = [];
+    const moveLinesById = new Map();
 
-    if (pcMoveLineIds.length > 0) {
-      pcMoveLines = await adminOdooClient._callObject('stock.move.line', 'read', [
-        pcMoveLineIds,
+    if (combinedMoveLineIds.length > 0) {
+      const fetchedMoveLines = await adminOdooClient._callObject('stock.move.line', 'read', [
+        combinedMoveLineIds,
         ['id', 'product_id', 'lot_id', 'quantity', 'product_uom_id']
       ]);
+      for (const ml of fetchedMoveLines || []) {
+        moveLinesById.set(ml.id, ml);
+      }
 
+      pcMoveLines = pcMoveLineIds.map((id) => moveLinesById.get(id)).filter(Boolean);
       const activeMoveLines = pcMoveLines.filter((l) => (parseFloat(l.quantity) || 0) > 0);
       for (const l of activeMoveLines) {
         const q = parseFloat(l.quantity) || 0.0;
@@ -208,18 +218,14 @@ export async function syncWipFromPickings(wipId, moId) {
     }
 
     const accsQty = Math.max(0, totalMaterialQty - kainQty);
-    const { existingRollLines, newRollLines } = await reconcileAndBuildRollLines(wipId, wip, moName, pcMoveLines);
+    const { existingRollLines, newRollLines, rollCommands } = await reconcileAndBuildRollLines(wipId, wip, moName, pcMoveLines);
 
     let sfpVals = {};
     let sfpQtyMasuk = 0.0;
-    if (doneSfp.length > 0) {
-      const latestSfp = doneSfp[doneSfp.length - 1];
+    if (latestSfp) {
       let sfpLineQty = 0.0;
-      if (latestSfp.move_line_ids && latestSfp.move_line_ids.length > 0) {
-        const sfpLines = await adminOdooClient._callObject('stock.move.line', 'read', [
-          latestSfp.move_line_ids,
-          ['quantity', 'product_id']
-        ]);
+      if (sfpMoveLineIds.length > 0) {
+        const sfpLines = sfpMoveLineIds.map((id) => moveLinesById.get(id)).filter(Boolean);
         const moProdId = mo.product_id ? mo.product_id[0] : null;
         const relevantLines = moProdId
           ? sfpLines.filter((l) => l.product_id && l.product_id[0] === moProdId)
@@ -250,7 +256,6 @@ export async function syncWipFromPickings(wipId, moId) {
       ...existingRollLines,
       ...newRollLines.map((r) => r[2])
     ];
-    // Preserve actual_cutting (in pcs) stored on WIP rather than overwriting with kg sum if already filled
     const existingActualCuttingPcs = parseFloat(wip.x_studio_actual_cutting) || 0.0;
     const actualCutting = existingActualCuttingPcs > 0
       ? existingActualCuttingPcs
@@ -260,8 +265,8 @@ export async function syncWipFromPickings(wipId, moId) {
 
     const selisihCutting = actualCutting - estimasiDariSpb;
 
-    let workcenterIds = [];
-    if (mo.workorder_ids && mo.workorder_ids.length > 0) {
+    let workcenterIds = Array.isArray(preloadedWorkcenterIds) ? preloadedWorkcenterIds : [];
+    if (!preloadedWorkcenterIds && mo.workorder_ids && mo.workorder_ids.length > 0) {
       try {
         const wos = await adminOdooClient._callObject('mrp.workorder', 'read', [
           mo.workorder_ids,
@@ -278,30 +283,8 @@ export async function syncWipFromPickings(wipId, moId) {
     const productId = mo.product_id ? mo.product_id[0] : (wip.x_studio_product ? wip.x_studio_product[0] : null);
 
     const wipStatusProduksi = (wip.x_studio_status_produksi || '').trim().toLowerCase();
-    if (hargaVendor === 0 && wipStatusProduksi !== 'selesai' && warehouseId && productId && workcenterIds.length > 0) {
-      try {
-        const vendorPrices = await adminOdooClient._callObject('x_vendor_production', 'search_read', [
-          [
-            ['x_studio_warehouse', '=', warehouseId],
-            ['x_studio_product', '=', productId]
-          ]
-        ], { fields: ['id', 'x_studio_value', 'x_studio_many2many_field_7h1_1k3jdkeub'] });
-
-        if (vendorPrices && vendorPrices.length > 0) {
-          const targetWcSet = new Set(workcenterIds);
-          const matched = vendorPrices.find((vp) => {
-            const vpWcIds = vp.x_studio_many2many_field_7h1_1k3jdkeub || [];
-            if (vpWcIds.length !== targetWcSet.size) return false;
-            return vpWcIds.every((id) => targetWcSet.has(id));
-          }) || vendorPrices[0];
-
-          if (matched && matched.x_studio_value !== undefined) {
-            hargaVendor = parseFloat(matched.x_studio_value) || 0.0;
-          }
-        }
-      } catch (errPrice) {
-        console.warn(`[WipSyncService] Could not fetch vendor pricing: ${errPrice.message}`);
-      }
+    if (hargaVendor === 0 && wipStatusProduksi !== 'selesai' && warehouseId && productId) {
+      hargaVendor = await fetchVendorPriceFromOdoo(warehouseId, productId, workcenterIds);
     }
 
     const totalHarga = hargaVendor * sfpQtyMasuk;
@@ -324,8 +307,8 @@ export async function syncWipFromPickings(wipId, moId) {
     if (workcenterIds.length > 0) {
       vals.x_studio_many2many_field_869_1k3jdrdl1 = [[6, 0, workcenterIds]];
     }
-    if (newRollLines.length > 0) {
-      vals.x_studio_detail_roll_kain = newRollLines;
+    if (rollCommands.length > 0) {
+      vals.x_studio_detail_roll_kain = rollCommands;
     }
 
     await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [[wipId], vals], {
@@ -386,7 +369,7 @@ export async function syncWipFromPickings(wipId, moId) {
       });
 
       if (allLinesToSum.length > 0) {
-        let linesToSave = allLinesToSum;
+        let linesToSave = existingRollLines;
         if (newRollLines.length > 0) {
           try {
             const freshWip = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'read', [[wipId]], {
@@ -423,4 +406,3 @@ export async function syncWipFromPickings(wipId, moId) {
     };
   });
 }
-

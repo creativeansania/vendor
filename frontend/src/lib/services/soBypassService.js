@@ -9,44 +9,75 @@ export class SOBypassService {
     if (!pickingIds || pickingIds.length === 0) return [];
     const validatedPickings = [];
 
-    for (const pickingId of pickingIds) {
+    // Batch read all pickings in ONE RPC call
+    const pickings = await this.odoo._callObject('stock.picking', 'read', [pickingIds], {
+      fields: ['id', 'name', 'state', 'move_ids']
+    });
+
+    const activePickings = [];
+    for (const picking of pickings || []) {
+      if (picking.state === 'done') {
+        validatedPickings.push(picking.name);
+      } else if (picking.state !== 'cancel') {
+        activePickings.push(picking);
+      }
+    }
+
+    if (activePickings.length === 0) {
+      return validatedPickings;
+    }
+
+    // Batch read all moves across active pickings in ONE RPC call
+    const allMoveIds = [...new Set(activePickings.flatMap((p) => p.move_ids || []))];
+    const movesById = new Map();
+    if (allMoveIds.length > 0) {
+      const moves = await this.odoo._callObject('stock.move', 'read', [allMoveIds], {
+        fields: ['id', 'product_uom_qty', 'quantity', 'picked']
+      });
+      for (const m of moves || []) {
+        movesById.set(m.id, m);
+      }
+    }
+
+    for (const picking of activePickings) {
       try {
-        const pickings = await this.odoo._callObject('stock.picking', 'read', [[pickingId]], {
-          fields: ['id', 'name', 'state', 'move_ids']
-        });
-
-        if (!pickings || pickings.length === 0) continue;
-        const picking = pickings[0];
-
-        if (picking.state === 'done') {
-          validatedPickings.push(picking.name);
-          continue;
-        }
-
         if (picking.state === 'draft') {
-          await this.odoo._callObject('stock.picking', 'action_confirm', [[pickingId]]);
+          await this.odoo._callObject('stock.picking', 'action_confirm', [[picking.id]]);
         }
 
-        if (picking.move_ids && picking.move_ids.length > 0) {
-          const moves = await this.odoo._callObject('stock.move', 'read', [picking.move_ids], {
-            fields: ['id', 'product_uom_qty', 'quantity', 'picked']
-          });
+        const pMoves = (picking.move_ids || [])
+          .map((mid) => movesById.get(mid))
+          .filter(Boolean);
 
-          for (const m of moves) {
-            try {
-              await this.odoo._callObject('stock.move', 'write', [[m.id], {
-                quantity: m.product_uom_qty,
-                picked: true
-              }]);
-            } catch (moveErr) {
-              await this.odoo._callObject('stock.move', 'write', [[m.id], {
-                quantity_done: m.product_uom_qty
-              }]);
+        if (pMoves.length > 0) {
+          const moveCommands = pMoves.map((m) => [
+            1,
+            m.id,
+            { quantity: m.product_uom_qty, picked: true }
+          ]);
+          try {
+            // Single One2many write per picking instead of N individual stock.move writes
+            await this.odoo._callObject('stock.picking', 'write', [
+              [picking.id],
+              { move_ids: moveCommands }
+            ]);
+          } catch {
+            for (const m of pMoves) {
+              try {
+                await this.odoo._callObject('stock.move', 'write', [[m.id], {
+                  quantity: m.product_uom_qty,
+                  picked: true
+                }]);
+              } catch {
+                await this.odoo._callObject('stock.move', 'write', [[m.id], {
+                  quantity_done: m.product_uom_qty
+                }]);
+              }
             }
           }
         }
 
-        const validateRes = await this.odoo._callObject('stock.picking', 'button_validate', [[pickingId]], {
+        const validateRes = await this.odoo._callObject('stock.picking', 'button_validate', [[picking.id]], {
           context: {
             skip_backorder: true,
             skip_immediate: true,
@@ -60,14 +91,14 @@ export class SOBypassService {
             await this.odoo._callObject('stock.backorder.confirmation', 'process_cancel_backorder', [[wizardId]], {
               context: { skip_backorder: true }
             });
-          } catch (wizErr) {
+          } catch {
             await this.odoo._callObject('stock.backorder.confirmation', 'process', [[wizardId]]);
           }
         }
 
         validatedPickings.push(picking.name);
       } catch (err) {
-        console.error(`[SO Bypass] Error validating picking ${pickingId}:`, err.message);
+        console.error(`[SO Bypass] Error validating picking ${picking.id}:`, err.message);
       }
     }
 
@@ -82,8 +113,8 @@ export class SOBypassService {
         }]);
         try {
           await this.odoo._callObject('sale.advance.payment.inv', 'create_invoices', [[wizardId]]);
-        } catch (wizErr) {}
-      } catch (wizardCreateErr) {}
+        } catch {}
+      } catch {}
 
       const soRecords = await this.odoo._callObject('sale.order', 'read', [[soId]], {
         fields: ['name', 'invoice_ids']
@@ -92,33 +123,38 @@ export class SOBypassService {
       const invoiceIds = soRecords && soRecords[0] ? soRecords[0].invoice_ids : [];
       if (!invoiceIds || invoiceIds.length === 0) return [];
 
+      // Batch read all invoices in ONE RPC call
+      const invList = await this.odoo._callObject('account.move', 'read', [invoiceIds], {
+        fields: ['id', 'name', 'state']
+      });
+
       const postedInvoices = [];
+      let formattedDateStr = null;
+      if (invoiceDate) {
+        const d = new Date(invoiceDate);
+        if (!isNaN(d.getTime())) {
+          formattedDateStr = d.toISOString().split('T')[0];
+        }
+      }
 
-      for (const invId of invoiceIds) {
+      const draftIds = [];
+      for (const inv of invList || []) {
+        if (inv.state === 'draft' && forcePost) {
+          draftIds.push(inv.id);
+          postedInvoices.push(inv.name || `INV#${inv.id}`);
+        } else if (inv.state === 'posted') {
+          postedInvoices.push(inv.name);
+        }
+      }
+
+      if (draftIds.length > 0) {
         try {
-          const invList = await this.odoo._callObject('account.move', 'read', [[invId]], {
-            fields: ['id', 'name', 'state']
-          });
-
-          if (!invList || invList.length === 0) continue;
-          const inv = invList[0];
-
-          if (inv.state === 'draft' && forcePost) {
-            if (invoiceDate) {
-              const d = new Date(invoiceDate);
-              if (!isNaN(d.getTime())) {
-                const dateStr = d.toISOString().split('T')[0];
-                await this.odoo._callObject('account.move', 'write', [[invId], { invoice_date: dateStr }]);
-              }
-            }
-
-            await this.odoo._callObject('account.move', 'action_post', [[invId]]);
-            postedInvoices.push(inv.name || `INV#${invId}`);
-          } else if (inv.state === 'posted') {
-            postedInvoices.push(inv.name);
+          if (formattedDateStr) {
+            await this.odoo._callObject('account.move', 'write', [draftIds, { invoice_date: formattedDateStr }]);
           }
+          await this.odoo._callObject('account.move', 'action_post', [draftIds]);
         } catch (invErr) {
-          console.error(`[SO Bypass] Error posting invoice ${invId}:`, invErr.message);
+          console.error(`[SO Bypass] Error posting invoices [${draftIds.join(', ')}]:`, invErr.message);
         }
       }
 
@@ -162,21 +198,23 @@ export class SOBypassService {
       return {
         success: true,
         skipped: true,
-        reason: `Skipped: PT. KANTI SEHATI SUKSES rule`,
+        reason: 'Skipped: PT. KANTI SEHATI SUKSES rule',
         soId,
         soName,
         companyName
       };
     }
 
+    let pickingIds = so.picking_ids || [];
     if (so.state === 'draft' || so.state === 'sent') {
       await this.odoo._callObject('sale.order', 'action_confirm', [[soId]]);
+      const refreshedSO = await this.odoo._callObject('sale.order', 'read', [[soId]], {
+        fields: ['picking_ids']
+      });
+      if (refreshedSO && refreshedSO[0]) {
+        pickingIds = refreshedSO[0].picking_ids || [];
+      }
     }
-
-    const refreshedSO = await this.odoo._callObject('sale.order', 'read', [[soId]], {
-      fields: ['picking_ids', 'invoice_ids']
-    });
-    const pickingIds = refreshedSO && refreshedSO[0] ? refreshedSO[0].picking_ids : (so.picking_ids || []);
 
     let pickings = [];
     if (pickingIds && pickingIds.length > 0) {

@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
-import { after } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { soBypassService } from '@/lib/services/soBypassService';
 import { verifyOdooWebhook } from '@/lib/webhookAuth';
+import { acquireDistributedWebhookLock } from '@/lib/services/wip/distributedWebhookLock';
 
 export const maxDuration = 60;
 
@@ -43,12 +43,33 @@ export async function POST(req) {
 
     const isSync = Boolean(body.sync || searchParams.get('sync'));
 
+    // 0ms fast-filter when company name is already provided in webhook payload
+    const payloadCompanyName = Array.isArray(body.company_id)
+      ? String(body.company_id[1] || '')
+      : String(body.company_name || '');
+    if (payloadCompanyName && payloadCompanyName.toUpperCase().includes('KANTI SEHATI SUKSES')) {
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        message: 'Skipped: PT. KANTI SEHATI SUKSES rule (0 Odoo RPC calls)'
+      });
+    }
+
     if (isSync) {
       const result = await soBypassService.processSOBypass(soIdentifier);
       return NextResponse.json({
         success: !result.error,
         message: result.message || 'SO Bypass processed synchronously',
         data: result
+      });
+    }
+
+    const acquired = await acquireDistributedWebhookLock(`so_bypass:${soIdentifier}`, 20000);
+    if (!acquired) {
+      return NextResponse.json({
+        success: true,
+        deduplicated: true,
+        message: `Sales Order "${soIdentifier}" already queued within cooldown window`
       });
     }
 

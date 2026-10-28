@@ -14,6 +14,7 @@ import * as cuttingService from './wip/wipCuttingService.js';
 import * as productionService from './wip/wipProductionService.js';
 import * as qcService from './wip/wipQcService.js';
 import * as syncService from './wip/wipSyncService.js';
+import { processPendingOutbox } from './wip/outboxService.js';
 
 export class WipService {
   constructor() {
@@ -139,6 +140,10 @@ export class WipService {
 
   async onVendorPriceUpdated(vendorPriceId) {
     return syncService.onVendorPriceUpdated(vendorPriceId);
+  }
+
+  async processPendingOutbox(limit) {
+    return processPendingOutbox(limit);
   }
 }
 

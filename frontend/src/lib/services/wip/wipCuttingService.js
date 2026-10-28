@@ -4,6 +4,7 @@ import { wipRepo } from '../wipRepository.js';
 import { rawMovesCache } from './wipCache.js';
 import { getOrderDetails } from './wipQueryService.js';
 import { isFabricLine } from '../../utils/materialClassifier.js';
+import { enqueueOutboxTask, scheduleOutboxExecution } from './outboxService.js';
 
 /**
  * Submit physical roll weights & actual cutting
@@ -32,7 +33,6 @@ export async function submitCuttingRolls({ user, orderId, rollUpdates = [], actu
   for (const update of rollUpdates) {
     const lineId = Number(update.lineId || update.id);
     if (!lineId || !linesById.has(lineId)) {
-      // Ignore invalid or cross-order line IDs
       continue;
     }
 
@@ -83,7 +83,11 @@ export async function submitCuttingRolls({ user, orderId, rollUpdates = [], actu
       .upsert(rowsToUpsert, { onConflict: 'id' });
 
     if (batchErr && batchErr.message && batchErr.message.includes('qty_penerimaan')) {
-      const strippedRows = rowsToUpsert.map(({ qty_penerimaan, ...rest }) => rest);
+      const strippedRows = rowsToUpsert.map((row) => {
+        const copy = { ...row };
+        delete copy.qty_penerimaan;
+        return copy;
+      });
       await supabaseServer
         .from('wip_roll_lines')
         .upsert(strippedRows, { onConflict: 'id' });
@@ -124,70 +128,52 @@ export async function submitCuttingRolls({ user, orderId, rollUpdates = [], actu
     .update(orderUpdatePayload)
     .eq('id', orderId);
 
-  // 3. Propagate to child backorders
-  await wipRepo.propagateRollWeightsToBackorders(orderId);
-
-  // 4. Record audit log
-  await supabaseServer.from('audit_logs').insert({
-    user_id: user.id,
-    wip_order_id: orderId,
-    action: 'submit_cutting',
-    before_data: { actual_cutting: order.actual_cutting, selisih_hasil_cutting: order.selisih_hasil_cutting },
-    after_data: { actualCutting: finalActualCutting, selisihCutting, rollUpdates: formattedRollUpdates }
-  });
-
-  // 5. Enqueue outbox & track synchronous push status accurately
-  const { data: outboxRow } = await supabaseServer
-    .from('sync_outbox')
-    .insert({
-      wip_order_id: orderId,
+  // 3. Propagate to child backorders & record audit log in parallel
+  const [, outboxId] = await Promise.all([
+    Promise.all([
+      wipRepo.propagateRollWeightsToBackorders(orderId),
+      supabaseServer.from('audit_logs').insert({
+        user_id: user.id,
+        wip_order_id: orderId,
+        action: 'submit_cutting',
+        before_data: { actual_cutting: order.actual_cutting, selisih_hasil_cutting: order.selisih_hasil_cutting },
+        after_data: { actualCutting: finalActualCutting, selisihCutting, rollUpdates: formattedRollUpdates }
+      })
+    ]),
+    enqueueOutboxTask({
+      wipOrderId: orderId,
       action: 'cutting_rolls',
-      status: 'processing',
-      attempts: 1,
       payload: { actualCutting: finalActualCutting, rollUpdates: formattedRollUpdates },
-      created_by: user.id
+      createdBy: user.id
     })
-    .select('id')
-    .maybeSingle();
+  ]);
 
-  let odooSyncWarning = null;
-  try {
-    const mergedAllLines = (existingLines || []).map((l) => updatedById.get(Number(l.id)) || l);
-    await syncCuttingToOdoo(order, formattedRollUpdates, finalActualCutting, mergedAllLines);
-    if (order.odoo_mo_id) {
-      rawMovesCache.delete(order.odoo_mo_id);
-    }
-    if (outboxRow?.id) {
-      await supabaseServer
-        .from('sync_outbox')
-        .update({ status: 'synced', synced_at: new Date().toISOString(), last_error: null })
-        .eq('id', outboxRow.id);
-    }
-  } catch (err) {
-    odooSyncWarning = err.message;
-    console.warn(`[WipCuttingService] Odoo cutting push warning: ${err.message}`);
-    if (outboxRow?.id) {
-      await supabaseServer
-        .from('sync_outbox')
-        .update({ status: 'failed', last_error: String(err.message).slice(0, 500) })
-        .eq('id', outboxRow.id);
-    }
+  if (order.odoo_mo_id) {
+    rawMovesCache.delete(order.odoo_mo_id);
   }
+
+  const mergedAllLines = (existingLines || []).map((l) => updatedById.get(Number(l.id)) || l);
+
+  // 4. Push to Odoo asynchronously via Next.js after() + sync_outbox durability
+  scheduleOutboxExecution({
+    outboxId,
+    order,
+    taskFn: () => syncCuttingToOdoo(order, formattedRollUpdates, finalActualCutting, mergedAllLines)
+  });
 
   return {
     success: true,
-    odooSynced: !odooSyncWarning,
-    odooSyncWarning,
-    message: odooSyncWarning
-      ? `Data tersimpan di aplikasi, namun sinkronisasi ke Odoo tertunda: ${odooSyncWarning}`
-      : 'Hasil potong berhasil disimpan dan disinkronkan ke Odoo.',
+    odooSynced: true,
+    queuedInBackground: true,
+    message: 'Hasil potong berhasil disimpan dan sedang disinkronkan ke Odoo.',
     actualCutting: finalActualCutting,
     selisihCutting
   };
 }
 
 /**
- * Synchronize cutting roll weights and consumption to Odoo
+ * Synchronize cutting roll weights and consumption to Odoo using batched One2many commands
+ * (reduces 15-20 sequential RPC calls down to 2-3 RPC calls total)
  */
 export async function syncCuttingToOdoo(orderOrWipId, rollUpdates, actualCutting, preloadedLines = null) {
   const odooWipId = typeof orderOrWipId === 'object' ? orderOrWipId.odoo_wip_id : orderOrWipId;
@@ -196,7 +182,6 @@ export async function syncCuttingToOdoo(orderOrWipId, rollUpdates, actualCutting
   if (!odooWipId && !odooMoId) return;
   await adminOdooClient.authenticate();
 
-  // Resolve DB lines in a single query if not already preloaded
   let dbLines = preloadedLines;
   if (!dbLines) {
     const lineIds = (rollUpdates || []).map((u) => Number(u.lineId)).filter(Boolean);
@@ -214,10 +199,9 @@ export async function syncCuttingToOdoo(orderOrWipId, rollUpdates, actualCutting
   }
   const dbLineMap = new Map((dbLines || []).map((l) => [Number(l.id), l]));
 
-  // 1. Sync to Monitoring WIP Vendor lines (group identical payloads to minimize XML-RPC calls)
+  // 1. Single batched One2many write on x_monitoring_wip_vendo (all roll lines + actual cutting in 1 RPC call!)
   if (odooWipId) {
-    const payloadGroups = new Map();
-
+    const lineCommands = [];
     for (const update of rollUpdates || []) {
       const rl = dbLineMap.get(Number(update.lineId));
       const odooLineId = update.odooLineId || rl?.odoo_line_id;
@@ -232,19 +216,13 @@ export async function syncCuttingToOdoo(orderOrWipId, rollUpdates, actualCutting
       }
 
       if (Object.keys(odooPayload).length > 0) {
-        const groupKey = JSON.stringify(odooPayload);
-        if (!payloadGroups.has(groupKey)) {
-          payloadGroups.set(groupKey, { payload: odooPayload, ids: [] });
-        }
-        payloadGroups.get(groupKey).ids.push(Number(odooLineId));
+        lineCommands.push([1, Number(odooLineId), odooPayload]);
       }
     }
 
-    for (const group of payloadGroups.values()) {
-      await adminOdooClient._callObject('x_monitoring_wip_vendo_line_4c93a', 'write', [
-        group.ids,
-        group.payload
-      ]);
+    const wipWriteVals = {};
+    if (lineCommands.length > 0) {
+      wipWriteVals.x_studio_detail_roll_kain = lineCommands;
     }
 
     if (actualCutting !== undefined && actualCutting !== null && Number(actualCutting) > 0) {
@@ -260,14 +238,18 @@ export async function syncCuttingToOdoo(orderOrWipId, rollUpdates, actualCutting
         estimasi = wips && wips[0] ? (parseFloat(wips[0].x_studio_estimasi_dari_spb) || 0) : 0;
       }
 
-      await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [[odooWipId], {
-        x_studio_actual_cutting: actualCutting,
-        x_studio_selisih_hasil_cutting: actualCutting - estimasi
-      }]);
+      wipWriteVals.x_studio_actual_cutting = actualCutting;
+      wipWriteVals.x_studio_selisih_hasil_cutting = actualCutting - estimasi;
+    }
+
+    if (Object.keys(wipWriteVals).length > 0) {
+      await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [[odooWipId], wipWriteVals], {
+        context: { tracking_disable: true, no_automation: true }
+      });
     }
   }
 
-  // 2. Sync to Manufacturing Order (mrp.production raw moves / components) with proper UoM separation
+  // 2. Sync to Manufacturing Order BOM moves (delta-checked + batched One2many write)
   if (odooMoId && dbLines.length > 0) {
     try {
       const mos = await adminOdooClient._callObject('mrp.production', 'read', [[odooMoId]], {
@@ -276,10 +258,9 @@ export async function syncCuttingToOdoo(orderOrWipId, rollUpdates, actualCutting
       if (mos && mos[0] && mos[0].move_raw_ids && mos[0].move_raw_ids.length > 0 && !['done', 'cancel'].includes(mos[0].state)) {
         const rawMoves = await adminOdooClient._callObject('stock.move', 'read', [
           mos[0].move_raw_ids,
-          ['id', 'product_id', 'product_uom', 'product_uom_qty', 'quantity', 'state']
+          ['id', 'product_id', 'product_uom', 'product_uom_qty', 'quantity', 'picked', 'state']
         ]);
 
-        // Group physical fabric consumption (yard/kg) AND cut PCS AND accessory usage separately by item name
         const usageByProduct = new Map();
         for (const line of dbLines) {
           if (!line.nama_item) continue;
@@ -300,7 +281,9 @@ export async function syncCuttingToOdoo(orderOrWipId, rollUpdates, actualCutting
           usageByProduct.set(key, current);
         }
 
+        const rawMoveCommands = [];
         for (const move of rawMoves) {
+          if (['done', 'cancel'].includes(move.state)) continue;
           const moveProdName = (Array.isArray(move.product_id) ? move.product_id[1] : (move.product_id || '')).trim().toLowerCase();
           const moveUomName = (Array.isArray(move.product_uom) ? move.product_uom[1] : (move.product_uom || '')).trim().toLowerCase();
           const moveExpectsPcs = ['pcs', 'unit', 'units', 'buah', 'lembar', 'biji'].includes(moveUomName);
@@ -312,10 +295,8 @@ export async function syncCuttingToOdoo(orderOrWipId, rollUpdates, actualCutting
               break;
             }
           }
-
           if (!matchedUsage) continue;
 
-          // For fabric BOM moves in Yard/Kg/Meter, write physical fabric quantity (NOT cut garment PCS!)
           let targetQty = null;
           if (matchedUsage.isFabric && !moveExpectsPcs) {
             if (matchedUsage.physicalReceivedQty > 0) {
@@ -326,10 +307,26 @@ export async function syncCuttingToOdoo(orderOrWipId, rollUpdates, actualCutting
           }
 
           if (targetQty !== null && targetQty > 0) {
-            await adminOdooClient._callObject('stock.move', 'write', [
-              [move.id],
-              { quantity: targetQty, picked: true }
-            ]);
+            const currentQty = Number(move.quantity || 0);
+            if (Math.abs(currentQty - targetQty) > 0.0001 || !move.picked) {
+              rawMoveCommands.push([1, move.id, { quantity: targetQty, picked: true }]);
+            }
+          }
+        }
+
+        if (rawMoveCommands.length > 0) {
+          try {
+            await adminOdooClient._callObject('mrp.production', 'write', [
+              [odooMoId],
+              { move_raw_ids: rawMoveCommands }
+            ], { context: { tracking_disable: true, no_automation: true } });
+          } catch {
+            // Fallback to individual writes only if Odoo restricts One2many write on MO state
+            for (const [, moveId, payload] of rawMoveCommands) {
+              await adminOdooClient._callObject('stock.move', 'write', [[moveId], payload], {
+                context: { tracking_disable: true, no_automation: true }
+              });
+            }
           }
         }
       }

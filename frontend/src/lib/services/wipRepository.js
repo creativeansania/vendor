@@ -6,6 +6,17 @@ class WipRepository {
     this.vendorCache = new Map();
   }
 
+  async preloadVendors() {
+    const { data } = await supabaseServer
+      .from('vendors')
+      .select('id, odoo_warehouse_id');
+    for (const v of data || []) {
+      if (v.odoo_warehouse_id) {
+        this.vendorCache.set(Number(v.odoo_warehouse_id), v.id);
+      }
+    }
+  }
+
   async ensureVendor(odooWarehouseId, warehouseName = 'UNKNOWN VENDOR') {
     if (!odooWarehouseId) return null;
     const whId = Number(odooWarehouseId);
@@ -325,6 +336,11 @@ class WipRepository {
 
   async updateWipPricingByOdooId(odooWipId, { harga_vendor, total_harga }) {
     if (!odooWipId) return;
+    return this.updateWipPricingByOdooIds([odooWipId], { harga_vendor, total_harga });
+  }
+
+  async updateWipPricingByOdooIds(odooWipIds, { harga_vendor, total_harga }) {
+    if (!Array.isArray(odooWipIds) || odooWipIds.length === 0) return;
     const { error } = await supabaseServer
       .from('wip_orders')
       .update({
@@ -332,10 +348,10 @@ class WipRepository {
         total_harga: Number(total_harga || 0),
         updated_at: new Date().toISOString()
       })
-      .eq('odoo_wip_id', odooWipId);
+      .in('odoo_wip_id', odooWipIds);
 
     if (error) {
-      console.warn(`[WipRepo] updateWipPricingByOdooId error: ${error.message}`);
+      console.warn(`[WipRepo] updateWipPricingByOdooIds error: ${error.message}`);
     }
   }
 

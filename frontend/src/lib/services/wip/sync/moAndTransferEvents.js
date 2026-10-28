@@ -5,10 +5,40 @@ import { resolveSalesOrderForMo } from './soMoResolver.js';
 import { ensureDedicatedComponentPickings } from './pickingSplitter.js';
 import { syncWipFromPickings } from './singlePassCompute.js';
 
+const FULL_MO_EVENT_FIELDS = [
+  'id',
+  'name',
+  'state',
+  'origin',
+  'sale_line_id',
+  'x_studio_sales_order',
+  'x_studio_origin_mo',
+  'product_id',
+  'product_qty',
+  'bom_id',
+  'workorder_ids',
+  'picking_ids',
+  'production_group_id',
+  'company_id',
+  'warehouse_id',
+  'picking_type_id',
+  'date_start',
+  'date_deadline'
+];
+
+export function isVendorMoRecord(mo) {
+  const moName = (mo.name || '').trim();
+  const ptName = (mo.picking_type_id && mo.picking_type_id[1]) ? mo.picking_type_id[1].toUpperCase() : '';
+  const whName = (mo.warehouse_id && mo.warehouse_id[1]) ? mo.warehouse_id[1].toUpperCase() : '';
+  return ptName.includes('VENDOR') || whName.includes('VENDOR') || moName.startsWith('VD');
+}
+
 /**
- * 1. Triggered when Manufacturing Order is Confirmed
+ * 1. Triggered when Manufacturing Order is Confirmed.
+ * Reads MO ONCE, filters non-vendor MOs immediately (1 RPC call vs 6+ wasted calls),
+ * and passes preloaded MO + workcenters downstream to eliminate redundant reads.
  */
-export async function onMoConfirmed(moId, { autoSync = true } = {}) {
+export async function onMoConfirmed(moId, { autoSync = true, preloadedMo = null } = {}) {
   await adminOdooClient.authenticate();
   const id = Number(moId);
   if (!id || isNaN(id)) {
@@ -16,65 +46,61 @@ export async function onMoConfirmed(moId, { autoSync = true } = {}) {
   }
 
   return withWipLock(`mo_${id}`, async () => {
-    await resolveSalesOrderForMo(id);
-
-    const existingWips = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'search_read', [
-      [['x_studio_manufacturing_order', '=', id]]
-    ], { fields: ['id', 'x_name'] });
-
-    if (existingWips && existingWips.length > 0) {
-      await ensureDedicatedComponentPickings(id);
-      return { success: true, alreadyExists: true, wipId: existingWips[0].id };
+    let mo = preloadedMo;
+    if (!mo || mo.bom_id === undefined) {
+      const mos = await adminOdooClient._callObject('mrp.production', 'read', [[id]], {
+        fields: FULL_MO_EVENT_FIELDS
+      });
+      if (!mos || mos.length === 0) {
+        throw new Error(`Manufacturing Order #${id} not found in Odoo`);
+      }
+      mo = mos[0];
     }
 
-    const mos = await adminOdooClient._callObject('mrp.production', 'read', [[id]], {
-      fields: ['id', 'name', 'product_id', 'product_qty', 'bom_id', 'workorder_ids', 'picking_ids', 'company_id', 'warehouse_id', 'picking_type_id']
-    });
-
-    if (!mos || mos.length === 0) {
-      throw new Error(`Manufacturing Order #${id} not found in Odoo`);
-    }
-
-    const mo = mos[0];
-    const moName = mo.name || `MO#${id}`;
-    const ptName = (mo.picking_type_id && mo.picking_type_id[1]) ? mo.picking_type_id[1].toUpperCase() : '';
-    const whName = (mo.warehouse_id && mo.warehouse_id[1]) ? mo.warehouse_id[1].toUpperCase() : '';
-    const isVendorMo = ptName.includes('VENDOR') || whName.includes('VENDOR') || moName.startsWith('VD');
-
-    if (!isVendorMo) {
+    // Fast exit BEFORE resolving SO or searching WIP if this is an internal/non-vendor MO!
+    if (!isVendorMoRecord(mo)) {
+      const ptName = (mo.picking_type_id && mo.picking_type_id[1]) ? mo.picking_type_id[1] : 'Internal';
       return { success: true, skipped: true, reason: `Non-vendor operation type: ${ptName}` };
     }
 
-    let consumptionPerPcs = 0.0;
-    if (mo.bom_id && mo.bom_id[0]) {
-      try {
-        const bomLines = await adminOdooClient._callObject('mrp.bom.line', 'search_read', [
-          [['bom_id', '=', mo.bom_id[0]]]
-        ], { fields: ['id', 'product_id', 'product_qty'] });
+    // Resolve SO (reusing preloaded mo) & check existing WIP in parallel
+    const [, existingWips] = await Promise.all([
+      resolveSalesOrderForMo(id, { preloadedMo: mo }),
+      adminOdooClient._callObject('x_monitoring_wip_vendo', 'search_read', [
+        [['x_studio_manufacturing_order', '=', id]]
+      ], { fields: ['id', 'x_name'], limit: 1 })
+    ]);
 
-        if (bomLines && bomLines.length > 0) {
-          const clothLine = bomLines.find((bl) => bl.product_id && bl.product_id[1] && bl.product_id[1].toUpperCase().includes('KAIN')) || bomLines[0];
-          consumptionPerPcs = parseFloat(clothLine.product_qty) || 0.0;
-        }
-      } catch (errBom) {
-        console.warn(`[WipSyncService] Could not fetch BoM lines for BoM #${mo.bom_id[0]}: ${errBom.message}`);
-      }
+    if (existingWips && existingWips.length > 0) {
+      await ensureDedicatedComponentPickings(id, { preloadedMo: mo });
+      return { success: true, alreadyExists: true, wipId: existingWips[0].id };
+    }
+
+    const moName = mo.name || `MO#${id}`;
+
+    // Fetch BoM lines and Workorders in parallel (1 round-trip instead of 2)
+    const [bomLines, workorders] = await Promise.all([
+      mo.bom_id && mo.bom_id[0]
+        ? adminOdooClient._callObject('mrp.bom.line', 'search_read', [
+            [['bom_id', '=', mo.bom_id[0]]]
+          ], { fields: ['id', 'product_id', 'product_qty'] }).catch(() => [])
+        : Promise.resolve([]),
+      mo.workorder_ids && mo.workorder_ids.length > 0
+        ? adminOdooClient._callObject('mrp.workorder', 'read', [
+            mo.workorder_ids,
+            ['workcenter_id']
+          ]).catch(() => [])
+        : Promise.resolve([])
+    ]);
+
+    let consumptionPerPcs = 0.0;
+    if (bomLines && bomLines.length > 0) {
+      const clothLine = bomLines.find((bl) => bl.product_id && bl.product_id[1] && bl.product_id[1].toUpperCase().includes('KAIN')) || bomLines[0];
+      consumptionPerPcs = parseFloat(clothLine.product_qty) || 0.0;
     }
 
     const qtyKebutuhanKain = (parseFloat(mo.product_qty) || 0.0) * consumptionPerPcs;
-
-    let workcenterIds = [];
-    if (mo.workorder_ids && mo.workorder_ids.length > 0) {
-      try {
-        const workorders = await adminOdooClient._callObject('mrp.workorder', 'read', [
-          mo.workorder_ids,
-          ['workcenter_id']
-        ]);
-        workcenterIds = [...new Set(workorders.filter((wo) => wo.workcenter_id).map((wo) => wo.workcenter_id[0]))];
-      } catch (errWo) {
-        console.warn(`[WipSyncService] Could not fetch workcenters for MO #${id}: ${errWo.message}`);
-      }
-    }
+    const workcenterIds = [...new Set((workorders || []).filter((wo) => wo.workcenter_id).map((wo) => wo.workcenter_id[0]))];
 
     const newWipPayload = {
       x_name: moName,
@@ -88,11 +114,15 @@ export async function onMoConfirmed(moId, { autoSync = true } = {}) {
     }
 
     const newWipId = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'create', [newWipPayload]);
-    await ensureDedicatedComponentPickings(id);
+    const splitResult = await ensureDedicatedComponentPickings(id, { preloadedMo: mo });
 
     if (autoSync && mo.picking_ids && mo.picking_ids.length > 0) {
       try {
-        await syncWipFromPickings(newWipId, id);
+        // Only force fresh MO read if a split actually added new pickings to the MO
+        await syncWipFromPickings(newWipId, id, {
+          preloadedMo: splitResult?.splitOccurred ? null : mo,
+          preloadedWorkcenterIds: workcenterIds
+        });
       } catch (syncErr) {
         console.warn(`[WipSyncService] Post-creation sync warning for WIP #${newWipId}: ${syncErr.message}`);
       }
@@ -106,7 +136,7 @@ export async function onMoConfirmed(moId, { autoSync = true } = {}) {
           odoo_warehouse_id: whId,
           vendor_name: whNameStr,
           mo_name: moName,
-          mo_state: 'confirmed',
+          mo_state: mo.state || 'confirmed',
           product_name: mo.product_id ? mo.product_id[1] : null,
           qty_spk: parseFloat(mo.product_qty || 0),
           qty_kebutuhan_kain: qtyKebutuhanKain,
@@ -183,40 +213,49 @@ export async function onTransferDone(pickingId) {
     return { success: true, skipped: true, reason: 'No linked MO found' };
   }
 
-  const vendorMoIds = [];
+  // Read full MO fields once so downstream syncWipFromPickings / onMoConfirmed don't re-read MOs!
   const targetMos = await adminOdooClient._callObject('mrp.production', 'read', [
     moIds,
-    ['id', 'name', 'warehouse_id', 'picking_type_id']
+    FULL_MO_EVENT_FIELDS
   ]);
-  for (const m of targetMos) {
-    const mPt = (m.picking_type_id && m.picking_type_id[1]) ? m.picking_type_id[1].toUpperCase() : '';
-    const mWh = (m.warehouse_id && m.warehouse_id[1]) ? m.warehouse_id[1].toUpperCase() : '';
-    const name = m.name || '';
-    if (mPt.includes('VENDOR') || mWh.includes('VENDOR') || name.startsWith('VD')) {
-      vendorMoIds.push(m.id);
+
+  const vendorMosById = new Map();
+  for (const m of targetMos || []) {
+    if (isVendorMoRecord(m)) {
+      vendorMosById.set(m.id, m);
     }
   }
 
+  const vendorMoIds = Array.from(vendorMosById.keys());
   if (vendorMoIds.length === 0) {
     return { success: true, skipped: true, reason: 'No vendor MO found' };
   }
 
+  // Batch lookup all existing WIPs for vendorMoIds in ONE single search_read instead of N queries!
+  const existingWips = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'search_read', [
+    [['x_studio_manufacturing_order', 'in', vendorMoIds]]
+  ], { fields: ['id', 'x_name', 'x_studio_manufacturing_order'] });
+
+  const wipIdByMoId = new Map();
+  for (const w of existingWips || []) {
+    if (w.x_studio_manufacturing_order) {
+      wipIdByMoId.set(w.x_studio_manufacturing_order[0], w.id);
+    }
+  }
+
   const syncedWips = [];
   for (const moId of vendorMoIds) {
-    const wips = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'search_read', [
-      [['x_studio_manufacturing_order', '=', moId]]
-    ], { fields: ['id', 'x_name'] });
-
-    let wipId = wips && wips.length > 0 ? wips[0].id : null;
+    const moRecord = vendorMosById.get(moId);
+    let wipId = wipIdByMoId.get(moId) || null;
     if (!wipId) {
-      const created = await onMoConfirmed(moId, { autoSync: false });
+      const created = await onMoConfirmed(moId, { autoSync: false, preloadedMo: moRecord });
       if (created && created.wipId) {
         wipId = created.wipId;
       }
     }
 
     if (wipId) {
-      const syncRes = await syncWipFromPickings(wipId, moId);
+      const syncRes = await syncWipFromPickings(wipId, moId, { preloadedMo: moRecord });
       syncedWips.push(syncRes);
     }
   }
@@ -228,4 +267,3 @@ export async function onTransferDone(pickingId) {
     syncedWips
   };
 }
-

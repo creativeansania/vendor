@@ -1,13 +1,11 @@
-import { NextResponse } from 'next/server';
-import { after } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { transferService } from '@/lib/services/transferService';
 import { verifyOdooWebhook } from '@/lib/webhookAuth';
+import { acquireDistributedWebhookLock } from '@/lib/services/wip/distributedWebhookLock';
 
 export const maxDuration = 60;
 
-// In-memory debounce & lock cache to prevent concurrent race condition loops
-const activeTransferLocks = new Map();
-const LOCK_TTL_MS = 25000; // 25 seconds
+const LOCK_TTL_MS = 25000; // 25 seconds distributed cooldown across serverless instances
 
 export async function POST(req) {
   try {
@@ -43,14 +41,12 @@ export async function POST(req) {
 
     let ids = [];
     if (Array.isArray(rawIds)) {
-      ids = rawIds.map(id => Number(id)).filter(id => !isNaN(id) && id > 0);
+      ids = rawIds.map((id) => Number(id)).filter((id) => !isNaN(id) && id > 0);
     } else if (typeof rawIds === 'string' && rawIds.includes(',')) {
-      ids = rawIds.split(',').map(s => Number(s.trim())).filter(id => !isNaN(id) && id > 0);
+      ids = rawIds.split(',').map((s) => Number(s.trim())).filter((id) => !isNaN(id) && id > 0);
     } else if (rawIds !== undefined && rawIds !== null && !isNaN(Number(rawIds))) {
       ids = [Number(rawIds)];
     }
-
-    console.log('[Transfer Webhook] Received request:', { ids });
 
     if (ids.length === 0) {
       return NextResponse.json({
@@ -59,22 +55,15 @@ export async function POST(req) {
       }, { status: 400 });
     }
 
-    // Clean up expired locks
-    const now = Date.now();
-    for (const [lockId, lockTime] of activeTransferLocks.entries()) {
-      if (now - lockTime > LOCK_TTL_MS) {
-        activeTransferLocks.delete(lockId);
-      }
-    }
+    // Distributed L1 + L2 cooldown check per picking ID
+    const lockResults = await Promise.all(
+      ids.map(async (id) => ({
+        id,
+        acquired: await acquireDistributedWebhookLock(`transfer_ref:${id}`, LOCK_TTL_MS)
+      }))
+    );
 
-    // Filter out IDs that are currently locked / recently processed
-    const pendingIds = ids.filter(id => {
-      if (activeTransferLocks.has(id)) {
-        console.log(`[Transfer Webhook] Picking #${id} is currently locked/debounced. Skipping to prevent loop.`);
-        return false;
-      }
-      return true;
-    });
+    const pendingIds = lockResults.filter((r) => r.acquired).map((r) => r.id);
 
     if (pendingIds.length === 0) {
       return NextResponse.json({
@@ -82,11 +71,6 @@ export async function POST(req) {
         message: 'All requested transfer IDs are already locked or in cooldown (feedback loop prevented).',
         skippedIds: ids
       });
-    }
-
-    // Acquire lock for pending IDs
-    for (const id of pendingIds) {
-      activeTransferLocks.set(id, now);
     }
 
     const isSync = Boolean(payload.sync || searchParams.get('sync'));
@@ -101,7 +85,6 @@ export async function POST(req) {
       });
     }
 
-    // Use Next.js after() to keep Vercel serverless context alive
     after(async () => {
       try {
         console.log(`[Transfer Webhook] Processing transfers: [${pendingIds.join(', ')}]`);

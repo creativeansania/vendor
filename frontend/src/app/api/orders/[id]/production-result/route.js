@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/auth';
 import { wipService } from '@/lib/services/wipService';
 
+export const maxDuration = 60;
+
 export async function POST(req, { params }) {
   try {
     const auth = await authenticateRequest(req);

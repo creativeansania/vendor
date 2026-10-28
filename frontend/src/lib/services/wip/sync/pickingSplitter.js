@@ -3,23 +3,29 @@ import { transfersCache } from '../wipCache.js';
 import { transferService } from '../../transferService.js';
 import { resolveSalesOrderForMo } from './soMoResolver.js';
 
+const NO_TRACK_CTX = { tracking_disable: true, no_automation: true, mail_auto_delete: true };
+
 /**
  * Ensures all component transfers (PC/SPB/SFP) for an MO are dedicated 1:1 to this MO.
- * If Odoo grouped moves of multiple MOs into one picking, splits them into 1 document per MO.
+ * Accepts optional `preloadedMo` to eliminate redundant mrp.production reads.
  */
-export async function ensureDedicatedComponentPickings(moId) {
+export async function ensureDedicatedComponentPickings(moId, { preloadedMo = null } = {}) {
   try {
     const id = Number(moId);
-    if (!id || isNaN(id)) return;
+    if (!id || isNaN(id)) return { splitOccurred: false };
 
     await adminOdooClient.authenticate();
-    const mos = await adminOdooClient._callObject('mrp.production', 'read', [[id]], {
-      fields: ['id', 'name', 'picking_ids', 'production_group_id', 'origin', 'company_id']
-    });
-    if (!mos || !mos[0]) return;
-    const mo = mos[0];
+    let mo = preloadedMo;
+    if (!mo || !Array.isArray(mo.picking_ids)) {
+      const mos = await adminOdooClient._callObject('mrp.production', 'read', [[id]], {
+        fields: ['id', 'name', 'picking_ids', 'production_group_id', 'origin', 'company_id']
+      });
+      if (!mos || !mos[0]) return { splitOccurred: false };
+      mo = mos[0];
+    }
+
     const pickingIds = mo.picking_ids || [];
-    if (pickingIds.length === 0) return;
+    if (pickingIds.length === 0) return { splitOccurred: false };
 
     const pickings = await adminOdooClient._callObject('stock.picking', 'read', [pickingIds], {
       fields: [
@@ -29,11 +35,13 @@ export async function ensureDedicatedComponentPickings(moId) {
       ]
     });
 
+    let splitOccurred = false;
+
     for (const pick of pickings) {
       if (pick.state === 'done' || pick.state === 'cancel') continue;
       const pName = (pick.name || '').toUpperCase();
       if (!pName.includes('/PC/') && !pName.includes('/SPB/') && !pName.includes('/SFP/')) continue;
-      if (!pick.move_ids || pick.move_ids.length === 0) continue;
+      if (!pick.move_ids || pick.move_ids.length <= 1) continue; // Single-move picking cannot span multiple MOs!
 
       const isMasterAdmin = pick.create_uid && (
         Array.isArray(pick.create_uid) ? pick.create_uid[0] === 7 : pick.create_uid === 7
@@ -64,31 +72,29 @@ export async function ensureDedicatedComponentPickings(moId) {
           ...Array.from(origMovesMap.values()).map((om) => (om.origin || '').trim()).filter((o) => o.includes('/MO/'))
         ])
       ];
-      const moNameMap = new Map();
-      if (potentialMoveMoNames.length > 0) {
-        try {
-          const mosByOrigin = await adminOdooClient._callObject('mrp.production', 'search_read', [
-            [['name', 'in', potentialMoveMoNames]]
-          ], { fields: ['id', 'name'] });
-          mosByOrigin.forEach((m) => moNameMap.set(m.name, m));
-        } catch {}
-      }
-
       const groupIds = [
         ...new Set([
           ...moves.filter((m) => m.production_group_id && m.production_group_id[0]).map((m) => m.production_group_id[0]),
           ...Array.from(origMovesMap.values()).filter((om) => om.production_group_id && om.production_group_id[0]).map((om) => om.production_group_id[0])
         ])
       ];
-      const prodGroupMap = new Map();
-      if (groupIds.length > 0) {
-        try {
-          const groups = await adminOdooClient._callObject('mrp.production.group', 'read', [groupIds], {
-            fields: ['id', 'name', 'production_ids']
-          });
-          groups.forEach((g) => prodGroupMap.set(g.id, g));
-        } catch {}
-      }
+
+      // Fetch origin MOs and production groups in parallel
+      const [mosByOrigin, groups] = await Promise.all([
+        potentialMoveMoNames.length > 0
+          ? adminOdooClient._callObject('mrp.production', 'search_read', [
+              [['name', 'in', potentialMoveMoNames]]
+            ], { fields: ['id', 'name'] }).catch(() => [])
+          : Promise.resolve([]),
+        groupIds.length > 0
+          ? adminOdooClient._callObject('mrp.production.group', 'read', [groupIds], {
+              fields: ['id', 'name', 'production_ids']
+            }).catch(() => [])
+          : Promise.resolve([])
+      ]);
+
+      const moNameMap = new Map((mosByOrigin || []).map((m) => [m.name, m]));
+      const prodGroupMap = new Map((groups || []).map((g) => [g.id, g]));
 
       const movesByMo = new Map();
       for (const m of moves) {
@@ -144,6 +150,7 @@ export async function ensureDedicatedComponentPickings(moId) {
       const entries = Array.from(movesByMo.entries()).filter(([k, list]) => k !== 'unassigned' && list && list.length > 0);
       if (entries.length <= 1) continue;
 
+      splitOccurred = true;
       console.log(`[WipSyncService] Shared picking ${pick.name} (#${pick.id}) contains moves for ${entries.length} MOs. Splitting into 1 document per MO...`);
 
       const [firstMoIdKey, firstMoves] = entries[0];
@@ -153,12 +160,15 @@ export async function ensureDedicatedComponentPickings(moId) {
       const allMoIds = entries.map(([k]) => Number(k)).filter(Boolean);
       const moInfoMap = new Map();
       try {
-        const moList = await adminOdooClient._callObject('mrp.production', 'read', [allMoIds], { fields: ['id', 'name'] });
-        moList.forEach((item) => moInfoMap.set(item.id, item.name));
+        const moList = await adminOdooClient._callObject('mrp.production', 'read', [allMoIds], {
+          fields: ['id', 'name', 'origin', 'sale_line_id', 'x_studio_sales_order', 'x_studio_origin_mo']
+        });
+        moList.forEach((item) => moInfoMap.set(item.id, item));
       } catch {}
 
-      const firstMoName = moInfoMap.get(firstMoId) || `MO#${firstMoId}`;
-      const firstMoSo = await resolveSalesOrderForMo(firstMoId);
+      const firstMoObj = moInfoMap.get(firstMoId);
+      const firstMoName = firstMoObj?.name || `MO#${firstMoId}`;
+      const firstMoSo = await resolveSalesOrderForMo(firstMoId, { preloadedMo: firstMoObj });
       const firstPickVals = {
         origin: firstMoName,
         x_studio_manufacturing_order: firstMoId
@@ -166,18 +176,35 @@ export async function ensureDedicatedComponentPickings(moId) {
       if (firstMoSo) {
         firstPickVals.x_studio_sales_order = firstMoSo.id;
       }
-      await adminOdooClient._callObject('stock.picking', 'write', [[pick.id], firstPickVals]);
+      await adminOdooClient._callObject('stock.picking', 'write', [[pick.id], firstPickVals], { context: NO_TRACK_CTX });
       transfersCache.delete(firstMoId);
 
       const createdPickIds = [];
+
+      // Preload existing WIP records for all split MOs in 1 query instead of N queries
+      const targetMoIdsForWip = entries.slice(1).map(([k]) => Number(k)).filter(Boolean);
+      const wipByMoId = new Map();
+      if (targetMoIdsForWip.length > 0) {
+        try {
+          const targetWips = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'search_read', [
+            [['x_studio_manufacturing_order', 'in', targetMoIdsForWip]]
+          ], { fields: ['id', 'x_studio_manufacturing_order'] });
+          for (const tw of targetWips || []) {
+            if (tw.x_studio_manufacturing_order) {
+              wipByMoId.set(tw.x_studio_manufacturing_order[0], tw.id);
+            }
+          }
+        } catch {}
+      }
 
       for (let i = 1; i < entries.length; i++) {
         const [targetMoIdKey, targetMoves] = entries[i];
         if (!targetMoves || targetMoves.length === 0) continue;
 
         const targetMoId = Number(targetMoIdKey);
-        const targetMoName = moInfoMap.get(targetMoId) || `MO#${targetMoId}`;
-        const targetMoSo = await resolveSalesOrderForMo(targetMoId);
+        const targetMoObj = moInfoMap.get(targetMoId);
+        const targetMoName = targetMoObj?.name || `MO#${targetMoId}`;
+        const targetMoSo = await resolveSalesOrderForMo(targetMoId, { preloadedMo: targetMoObj });
         const targetMoveIds = targetMoves.map((m) => m.id);
         const targetMoveLineIds = targetMoves.flatMap((m) => m.move_line_ids || []);
 
@@ -198,29 +225,29 @@ export async function ensureDedicatedComponentPickings(moId) {
           note: pick.note
         };
 
-        const newPickId = await adminOdooClient._callObject('stock.picking', 'create', [newPickPayload]);
+        const newPickId = await adminOdooClient._callObject('stock.picking', 'create', [newPickPayload], {
+          context: NO_TRACK_CTX
+        });
         createdPickIds.push(newPickId);
 
         await adminOdooClient._callObject('stock.move', 'write', [
           targetMoveIds,
           { picking_id: newPickId }
-        ]);
+        ], { context: NO_TRACK_CTX });
 
         if (targetMoveLineIds.length > 0) {
           await adminOdooClient._callObject('stock.move.line', 'write', [
             targetMoveLineIds,
             { picking_id: newPickId }
-          ]);
+          ], { context: NO_TRACK_CTX });
         }
 
-        const targetWips = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'search_read', [
-          [['x_studio_manufacturing_order', '=', targetMoId]]
-        ], { fields: ['id'] });
-        if (targetWips && targetWips[0]) {
+        const linkedWipId = wipByMoId.get(targetMoId);
+        if (linkedWipId) {
           await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [
-            [targetWips[0].id],
+            [linkedWipId],
             { x_studio_daftar_transfer: [[6, 0, [newPickId]]] }
-          ], { context: { tracking_disable: true, no_automation: true } });
+          ], { context: NO_TRACK_CTX });
         }
 
         transfersCache.delete(targetMoId);
@@ -233,8 +260,10 @@ export async function ensureDedicatedComponentPickings(moId) {
         console.warn(`[WipSyncService] Transfer reference resolution warning: ${errSyncRefs.message}`);
       }
     }
+
+    return { splitOccurred, pickings };
   } catch (splitErr) {
     console.warn(`[WipSyncService] Warning in ensureDedicatedComponentPickings for MO #${moId}:`, splitErr.message);
+    return { splitOccurred: false };
   }
 }
-
