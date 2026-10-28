@@ -46,9 +46,13 @@ function OrderDetailContent() {
 
       {/* Main Content Area */}
       <main className="main-content">
-        {/* Alerts / Feedback Message, Master Admin Unlock Control & Backorder Banner */}
+        {/* Alerts / Feedback Message, Outbox Sync Monitor, Master Admin Unlock Control & Backorder Banner */}
         <OrderBanner
           feedback={detail.feedback}
+          outboxStatus={detail.order?.outbox_status}
+          isAdmin={detail.isAdmin}
+          retryingOutbox={detail.retryingOutbox}
+          handleRetryOutbox={detail.handleRetryOutbox}
           isBackorder={detail.isBackorder}
           isMasterAdmin={detail.isMasterAdmin}
           isUnlockedByAdmin={detail.isUnlockedByAdmin}

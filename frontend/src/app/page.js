@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useDashboardOrders } from '@/lib/hooks/useDashboardOrders';
 import InstallPwaPrompt from '@/components/InstallPwaPrompt';
 import DashboardNavbar from '@/components/dashboard/DashboardNavbar';
+import AdminOutboxBanner from '@/components/dashboard/AdminOutboxBanner';
 import DashboardMetricsGrid from '@/components/dashboard/DashboardMetricsGrid';
 import DashboardFilters from '@/components/dashboard/DashboardFilters';
 import DashboardContextBanners from '@/components/dashboard/DashboardContextBanners';
@@ -36,6 +37,7 @@ export default function DashboardPage() {
     activeKainKurangBadge,
     displayedOrders,
     pageNumbers,
+    loadOrders,
     handleSearchSubmit,
     handleClearSearch,
     handleToggleStatus,
@@ -55,6 +57,9 @@ export default function DashboardPage() {
       <main className="main-content">
         {/* PWA Home Screen Install Banner for Older Operators */}
         <InstallPwaPrompt />
+
+        {/* Admin Background Outbox Sync Monitor & One-Click Retry */}
+        <AdminOutboxBanner user={user} onAfterSync={() => loadOrders(true)} />
 
         {/* KPI Summary Cards (Interactive Filters) */}
         <DashboardMetricsGrid

@@ -80,7 +80,8 @@ export function useOrderDetail(orderId) {
     setActualCutting: cuttingState.setActualCutting,
     setRollWeights: cuttingState.setRollWeights,
     setPenerimaanQtys: cuttingState.setPenerimaanQtys,
-    setFeedback
+    setFeedback,
+    onReloadOrder: () => loadData()
   });
 
   const { setActualCutting, setRollWeights, setPenerimaanQtys } = cuttingState;
@@ -301,6 +302,8 @@ export function useOrderDetail(orderId) {
     savingQc,
     handleSaveQc,
     syncingOdoo: transferState.syncingOdoo,
+    retryingOutbox: transferState.retryingOutbox,
+    handleRetryOutbox: transferState.handleRetryOutbox,
     feedback,
     activeTab: resolvedActiveTab,
     setActiveTab,

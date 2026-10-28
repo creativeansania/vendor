@@ -9,12 +9,14 @@ export function useTransferState({
   setActualCutting,
   setRollWeights,
   setPenerimaanQtys,
-  setFeedback
+  setFeedback,
+  onReloadOrder
 }) {
   const [transfers, setTransfers] = useState([]);
   const [transferFilter, setTransferFilter] = useState('all');
   const [copiedTransferId, setCopiedTransferId] = useState(null);
   const [syncingOdoo, setSyncingOdoo] = useState(false);
+  const [retryingOutbox, setRetryingOutbox] = useState(false);
 
   // Filtered transfers
   const filteredTransfers = useMemo(() => {
@@ -94,6 +96,45 @@ export function useTransferState({
     }
   };
 
+  // Retry pending/failed sync_outbox job specifically for this order
+  const handleRetryOutbox = async () => {
+    if (retryingOutbox || !orderId) return;
+    setRetryingOutbox(true);
+    setFeedback({ text: '', type: '' });
+    try {
+      const res = await fetchApi('/admin/sync-outbox', {
+        method: 'POST',
+        body: JSON.stringify({ orderId: Number(orderId), limit: 10 })
+      });
+      if (res?.success) {
+        if ((res.failed || 0) > 0) {
+          setFeedback({
+            text: res.message || 'Pengiriman ulang ke Odoo masih terkendala.',
+            type: 'warning'
+          });
+        } else {
+          setFeedback({
+            text: res.message || 'Perubahan SPK berhasil dikirim ulang ke Odoo!',
+            type: 'success'
+          });
+          setOrder((prev) => (prev ? { ...prev, outbox_status: null } : prev));
+          if (onReloadOrder) {
+            await onReloadOrder();
+          }
+        }
+      } else {
+        throw new Error(res?.message || 'Gagal mengirim ulang antrean Odoo.');
+      }
+    } catch (err) {
+      setFeedback({
+        text: 'Gagal kirim ulang ke Odoo: ' + err.message,
+        type: 'error'
+      });
+    } finally {
+      setRetryingOutbox(false);
+    }
+  };
+
   return {
     transfers,
     setTransfers,
@@ -103,9 +144,11 @@ export function useTransferState({
     setCopiedTransferId,
     syncingOdoo,
     setSyncingOdoo,
+    retryingOutbox,
     filteredTransfers,
     transferCounts,
     handleCopyTransferName,
-    handleForceSyncOdoo
+    handleForceSyncOdoo,
+    handleRetryOutbox
   };
 }

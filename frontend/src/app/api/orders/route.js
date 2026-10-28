@@ -18,6 +18,7 @@ export async function GET(req) {
     const sort = searchParams.get('sort') || 'latest';
     const period = searchParams.get('period');
     const backorder = searchParams.get('backorder');
+    const includeMetrics = searchParams.get('includeMetrics') !== '0';
 
     const result = await wipService.getOrders({
       user: auth.user,
@@ -28,7 +29,8 @@ export async function GET(req) {
       limit,
       sort,
       period,
-      backorder
+      backorder,
+      includeMetrics
     });
 
     return NextResponse.json({ success: true, ...result });

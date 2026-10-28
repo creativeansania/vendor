@@ -1,216 +1,136 @@
-# Webhook Jubelio -> Odoo (Ansania)
+# Ansania Vendor Portal & Odoo 19 Webhook Hub
 
-Aplikasi Webhook berbasis **Express.js** untuk mengintegrasikan acara faktur (*Invoice*) dari **Jubelio** ke pembuatan **Sales Order** otomatis di **Odoo ERP** berdasarkan kecocokan **SKU** produk khusus untuk Perusahaan **Ansania**.
+Aplikasi **Progressive Web App (PWA) Monitoring Produksi Makloon (WIP Vendor)** sekaligus **Webhook Hub Odoo 19 & Jubelio** berbasis **Next.js 16 (App Router)** dan **Supabase PostgreSQL**.
+
+Seluruh arsitektur berjalan *full-stack serverless* di dalam direktori `frontend/` (tanpa server Express terpisah), menggunakan **100% Native `fetch` JSON-RPC 2.0** untuk komunikasi berkecepatan tinggi dengan **Odoo 19 Enterprise**.
 
 ---
 
 ## 🌟 Fitur Utama
 
-1. **Odoo Multi-Company Support**: Otomatis mendeteksi dan mengikat data Sales Order (`sale.order`) serta Customer (`res.partner`) ke Perusahaan **Ansania** (`ODOO_COMPANY_NAME=Ansania`).
-2. **Pencarian Produk Berdasarkan SKU**: Mencari produk di Odoo (`product.product`) menggunakan `default_code` (atau `barcode`) yang sesuai dengan SKU dari Jubelio.
-3. **Marketplace Channel Customer Mapping (Anti Database Bloat)**:
-   - Order dari marketplace (Shopee, Tokopedia, TikTok Shop, Blibli, Lazada, Evermos) otomatis di-map ke **Generic Customer Partner** (misal: `Shopee - Ansania`).
-   - Mencegah database partner Odoo membengkak dengan ribuan kontak buyer retail sekali-pakai (*one-time buyers*).
-   - Detail pembeli asli (Nama, No. HP, Kurir, No. Resi, Alamat) otomatis dicatat di **Keterangan / Notes** Sales Order Odoo.
-   - Order B2B / Internal / Offline tetap mempertahankan nama customer aslinya.
-4. **Idempotency Check**: Mencegah duplikasi pembuatan Sales Order jika webhook terkirim lebih dari sekali untuk nomor faktur yang sama.
-5. **Verifikasi Keamanan Webhook**: Mendukung verifikasi `x-jubelio-signature` (HMAC SHA-256).
-6. **Flexibility API Fetch**: Jika payload webhook dari Jubelio tidak menyertakan rincian item lengkap, aplikasi akan mengambil rincian faktur langsung via API Jubelio.
+1. **Portal Produksi Vendor (Native Installable PWA)**:
+   - Input bertahap untuk vendor makloon: **Penerimaan & Potong Kain (`FabricTab`)**, **Aksesoris (`AccessoryTab`)**, **Hasil Jahit Grade A & Grade B (`SewingTab`)**, **Sisa Potong / BSKL (`BsklTab`)**, **Quality Control Admin (`QcTab`)**, dan **Pelacakan Dokumen Transfer (`TransferTab`)**.
+   - Mendukung instalasi aplikasi ke layar utama ponsel Android/iOS (`manifest.json`, Service Worker `sw.js`, *Dark/Light Theme*).
+   - Keamanan autentikasi berbasis **`HttpOnly` Cookie JWT (`pwa_token`)** dan proteksi rute tingkat server (`src/proxy.js`).
+
+2. **Sinkronisasi Dua Arah Odoo 19 Berkecepatan Tinggi**:
+   - **JSON-RPC 2.0 Native `fetch`**: Koneksi ringan ke `/jsonrpc` Odoo 19 dengan *concurrency limiter* (`MAX_CONCURRENT_RPC = 6`), *jittered exponential backoff* untuk auto-retry (`429`/`502`/`503`/`504`), dan *warm session caching*.
+   - **Batch One2many Commands**: Pembaruan belasan baris roll kain dan *stock move* dilakukan dalam 1 panggilan RPC terpadu (bebas *N+1 query*).
+   - **Durable Non-Blocking Outbox (`sync_outbox`)**: Setiap submit dari vendor langsung tersimpan ke Supabase (~200ms respon UI) dan dikirim ke Odoo di latar belakang menggunakan Next.js `after()`, dilengkapi **Panel Monitoring & Tombol Retry Admin** serta pembersihan terjadwal via **Vercel Cron (`vercel.json`)**.
+
+3. **Odoo & Jubelio Webhook Automation Hub**:
+   - **Distributed Webhook Lock**: Deduplikasi *2-tier* (L1 *in-memory* + L2 Supabase `audit_logs`) mencegah *race condition* atau pemrosesan ganda lintas *serverless instance*.
+   - **Odoo Webhooks**: Sinkronisasi otomatis MO terkonfirmasi (`mo-confirmed`), validasi Surat Jalan (`transfer-done`), resolusi otomatis referensi MO & SO pada Transfer PC/SFP/INT (`transfer-mo-reference`), sinkronisasi tarif makloon (`vendor-price-updated`), auto-confirm SO (`so-confirm`), duplikasi Landed Cost (`duplicate-landed-cost`), dan pengiriman PDF Invoice/SO via WhatsApp Wablas.
+   - **Jubelio → Odoo Sales Order**: Konversi faktur Jubelio ke `sale.order` Odoo lengkap dengan pemetaan *Generic Marketplace Channel Customer* (anti *partner bloat*) dan verifikasi HMAC signature.
 
 ---
 
-## 📁 Struktur Monorepo (`backend/` & `frontend/`)
+## 📁 Struktur Proyek
 
-```
+```text
 d:\webhook jubelio odoo\
-├── README.md                    # Dokumentasi Monorepo
-├── .gitignore                   # Git ignore root
-│
-├── backend/                     # 🚀 REST API Express.js (Deploy di cPanel: api.kantiss.com)
-│   ├── app.js                   # Entry point Phusion Passenger / cPanel Node.js
-│   ├── package.json
-│   ├── .env.example
-│   ├── src/
-│   │   ├── index.js             # Express server setup & background outbox worker
-│   │   ├── core/                # MySQL connection pool & Odoo XML-RPC client
-│   │   ├── middlewares/         # JWT Auth, Token Invalidation, Role Guard
-│   │   ├── modules/
-│   │   │   ├── auth/            # Login JWT & session verify
-│   │   │   ├── pwa/             # SPK listing, timbang roll, hasil jahit, outbox worker
-│   │   │   ├── admin/           # Manajemen user & vendor role
-│   │   │   ├── jubelio/         # Webhook Jubelio invoice -> Odoo SO
-│   │   │   ├── so-bypass/       # Bypass SO auto-confirm & delivery
-│   │   │   └── landed-cost/     # Landed Cost helper
-│   │   └── utils/               # Channel helper & logger
-│   └── scripts/                 # Migrasi MySQL, backfill WIP, seed Master Admin
-│
-└── frontend/                    # 📱 PWA Next.js 16 (Deploy di Vercel: vendor.kantiss.com)
-    ├── package.json
-    ├── next.config.mjs
-    ├── public/                  # manifest.json, icon.svg (PWA mobile installable)
+├── README.md                                  # Dokumentasi Utama Proyek
+├── PROPOSAL_MIGRASI_AUTOMATION_WIP_VENDOR.md  # Catatan Teknis Otomasi Odoo
+└── frontend/                                  # Full-Stack Next.js 16.4+ App (Root Deploy Vercel)
+    ├── vercel.json                            # Jadwal Vercel Cron (/api/admin/sync-outbox)
+    ├── next.config.mjs                        # Security Headers & Next.js Config
+    ├── public/                                # PWA Icons, manifest.json, sw.js
+    ├── scripts/                               # Utilitas CLI Backfill & Konfigurasi Odoo
     └── src/
-        ├── lib/api.js           # API client with token injector & 401 interceptor
-        └── app/
-            ├── page.js          # Dashboard SPK list, status filter & search
-            ├── login/page.js    # Halaman login multi-role
-            ├── orders/[id]/     # Timbang roll potong, hasil jahit, stage locks
-            └── admin/users/     # Manajemen akun vendor & staf (Master Admin)
+        ├── proxy.js                           # Server Route Guard (Next.js 16 Proxy)
+        ├── app/
+        │   ├── page.js                        # Dashboard SPK, KPI Metrics & Admin Outbox Monitor
+        │   ├── login/page.js                  # Login Multi-Role (Master Admin, Admin, Vendor)
+        │   ├── orders/[id]/page.js            # Halaman Detail & Input Operasional SPK
+        │   ├── admin/users/page.js            # Manajemen Akun Pengguna & Vendor
+        │   └── api/
+        │       ├── auth/                      # Login, Logout, Me (HttpOnly JWT Cookie)
+        │       ├── orders/ & pwa/             # REST Endpoints SPK, Cutting, Produksi, QC, Sync
+        │       ├── admin/                     # Manajemen User & Endpoint Retry sync_outbox
+        │       ├── reports/                   # Streaming PDF Invoice Odoo Terproteksi HMAC/JWT
+        │       └── webhooks/                  # Endpoint Webhook Odoo 19 & Jubelio
+        ├── components/
+        │   ├── common/                        # Komponen UI DRY (StatusBadge, dsb.)
+        │   ├── dashboard/                     # Komponen Modular Dashboard & AdminOutboxBanner
+        │   ├── orders/                        # Komponen Modular Detail SPK & Tab Produksi
+        │   └── admin/                         # Komponen Modular Manajemen Pengguna
+        └── lib/
+            ├── odoo/                          # JSON-RPC 2.0 Client, Static Cache & PDF Helper
+            ├── hooks/                         # Custom React Hooks Terpisah per Domain
+            └── services/
+                ├── wip/                       # Domain, Query, Outbox, Lock, Cutting, Produksi & Sync
+                ├── jubelioService.js          # Integrasi Faktur Jubelio -> Sales Order Odoo
+                └── wablasService.js           # Pengiriman Pesan & Dokumen WhatsApp (Native fetch)
 ```
 
 ---
 
-## 🚀 Panduan Installasi & Penggunaan
+## ⚙️ Konfigurasi Environment Variables (`.env`)
 
-### 1. Install Dependencies
-
-Buka terminal di direktori proyek dan jalankan:
-
-```bash
-npm install
-```
-
-### 2. Konfigurasi `.env`
-
-Edit file `.env` di root direktori dan sesuaikan kredensial server Anda:
+Buat file `frontend/.env.local` (atau set pada **Vercel Project Environment Variables** dengan Root Directory `frontend`):
 
 ```env
-# App Configuration
-PORT=3000
-NODE_ENV=development
+# Keamanan Autentikasi & Cron
+JWT_SECRET=rahasia_jwt_minimal_32_karakter
+CRON_SECRET=rahasia_cron_vercel_anda
 
-# Kredensial API Jubelio
-JUBELIO_API_URL=https://api2.jubelio.com
-JUBELIO_EMAIL=admin@ansania.com
-JUBELIO_PASSWORD=password_jubelio_anda
-JUBELIO_WEBHOOK_SECRET=
+# Supabase PostgreSQL (Server-Only)
+SUPABASE_URL=https://project-id-anda.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=service_role_key_supabase_anda
 
-# Kredensial Odoo ERP
-ODOO_URL=http://localhost:8069
+# Odoo 19 Enterprise JSON-RPC
+ODOO_URL=https://odoo-instance-anda.odoo.com
 ODOO_DB=nama_database_odoo
-ODOO_USERNAME=admin@ansania.com
-ODOO_PASSWORD=password_atau_api_key_odoo
+ODOO_USERNAME=email_bot_atau_admin_odoo
+ODOO_PASSWORD=api_key_atau_password_odoo
+ODOO_UID=                                      # Opsional: isi UID numerik user Odoo untuk 0ms cold-start auth
 ODOO_COMPANY_NAME=Ansania
+ODOO_WEBHOOK_SECRET=                           # Opsional: token rahasia verifikasi webhook Odoo
 
-# Integration Settings
-AUTO_CONFIRM_SO=false
-FALLBACK_CUSTOMER_NAME=Pelanggan Jubelio
-DEFAULT_PRICELIST_ID=1
-
-# Marketplace Channel Mapping
+# Integrasi Jubelio -> Odoo
+JUBELIO_API_URL=https://api2.jubelio.com
+JUBELIO_EMAIL=email_jubelio
+JUBELIO_PASSWORD=password_jubelio
+JUBELIO_WEBHOOK_SECRET=secret_hmac_jubelio
 USE_CHANNEL_CUSTOMER=true
-CHANNEL_CUSTOMER_SHOPEE="Shopee - Ansania"
-CHANNEL_CUSTOMER_TOKOPEDIA="Tokopedia - Ansania"
-CHANNEL_CUSTOMER_TIKTOK="TikTok Shop - Ansania"
-CHANNEL_CUSTOMER_BLIBLI="Blibli - Ansania"
-CHANNEL_CUSTOMER_LAZADA="Lazada - Ansania"
-CHANNEL_CUSTOMER_EVERMOS="Evermos - Ansania"
+
+# WhatsApp Gateway (Wablas)
+WABLAS_BASE_URL=https://bdg.wablas.com
+WABLAS_TOKEN=token_wablas
+WABLAS_SECRET_KEY=secret_key_wablas
 ```
 
-### 3. Menjalankan Server Webhook Lokal
+---
+
+## 🚀 Menjalankan Secara Lokal
 
 ```bash
-# Mode development (auto-reload saat ada perubahan kode)
+cd frontend
+npm install
 npm run dev
-
-# Mode produksi
-npm start
 ```
 
-Server akan berjalan pada URL `http://localhost:3000`.
+Aplikasi berjalan di `http://localhost:3000`.
 
----
+Untuk memverifikasi kualitas kode dan *production build*:
 
-## 🧪 Cara Menguji (Simulation & Testing)
-
-1. **Uji Pemetaan Channel & Customer Resolution**:
 ```bash
-npm run test:channels
-```
-
-2. **Uji Simulasi Webhook ke Server Lokal**:
-   - Pastikan server sudah berjalan (`npm run dev`).
-   - Di terminal lain jalankan:
-```bash
-npm run test:webhook
-```
-
-Script akan mengirimkan dummy payload faktur Jubelio ke `http://localhost:3000/api/webhooks/jubelio/invoice`.
-
----
-
-## 🔗 Menghubungkan Webhook ke Jubelio Live
-
-1. Di Dashboard Jubelio Anda, masuk ke menu **Pengaturan (Settings)** > **Developer** > **Webhook**.
-2. Tambahkan / Buat webhook callback URL untuk event **Invoice Creation** (`postNew Invoice`):
-   - **Callback URL**: `https://domain-server-anda.com/api/webhooks/jubelio/invoice`
-   - *(Catatan: Untuk pengujian dari lokal ke cloud, Anda dapat menggunakan ngrok atau localtunnel: `npx ngrok http 3000`)*.
-
----
-
-## 🏭 Duplikasi Landed Cost dengan MO (stock.landed.cost)
-
-Fitur ini memindahkan eksekusi duplikasi Landed Cost dari Odoo ke server cPanel / Node.js agar lebih ringan, stabil, dan tidak membebani worker Odoo.
-
-### Konfigurasi Action di Odoo (Send Webhook Notification):
-Sama seperti action `[Custom] Send WA Invoice`:
-1. Buat **Server Action** atau **Child Action**:
-   - **Action Name**: `[Custom] Duplicate Landed Cost`
-   - **Model**: `stock.landed.cost`
-   - **Type**: Pilih **`Send Webhook Notification`**
-   - **URL**: `https://api.kantiss.com/api/webhooks/odoo/duplicate-landed-cost` (atau `https://api.kantiss.com/api/odoo/landed-cost/duplicate`)
-   - **Fields**: Kosongkan saja (Odoo otomatis mengirim `_id`, `_model`, `_action`)
-2. Simpan (**Save**).
-3. Buat Contextual Action agar tombol muncul di menu **Action** pada form / list view Landed Cost.
-
-> **Catatan Alur Kerja:**
-> - Saat diklik di Odoo, webhook langsung merespon **200 OK** secara instan (UI Odoo tidak akan freeze / timeout).
-> - Di latar belakang (cPanel), Landed Cost akan diduplikasi lengkap dengan `mrp_production_ids` (MO) dan `target_model: manufacturing`.
-> - Server cPanel otomatis mencatat konfirmasi di **Chatter / Log Note** record Odoo asli dan record baru.
-
-### Menjalankan Test CLI:
-```bash
-node scripts/testDuplicateLandedCost.js
+cd frontend
+npm run lint
+npm run build
 ```
 
 ---
 
-## 📦 Resolusi Otomatis MO & SO di Transfer (`stock.picking` PC, SFP, INT)
+## 🔗 Daftar Endpoint Webhook Utama
 
-Fitur ini memindahkan logika pencarian & penghubungan **Manufacturing Order** (`x_studio_manufacturing_order`) dan **Sales Order** (`sale_id`) dari Odoo Automation ke server cPanel / Node.js agar tidak membebani database Odoo dan menyelesaikan masalah relasi transfer komponen maupun barang jadi.
-
-### Target Operasi:
-- **PC** (*Pick Component* / Pilih Komponen)
-- **SFP** (*Store Finished Product* / Penyimpanan Barang Jadi)
-- **INT** (*Internal Transfer*)
-
-### Konfigurasi Automation Rule di Odoo:
-1. Masuk ke **Settings** > **Technical** > **Automation Rules** (atau via Odoo Studio).
-2. Edit / Buat Automation Rule:
-   - **Model**: `Transfer` (`stock.picking`)
-   - **Trigger**: `On create and edit`
-   - **Apply on**:
-     - *Sales Order is not set*
-     - *Source Document is set*
-3. Di tab **Actions To Do**, tambahkan action:
-   - **Action Name**: `[Custom] MO & SO Reference Webhook`
-   - **Type**: Pilih **`Send Webhook Notification`**
-   - **URL**:
-     ```
-     https://api.kantiss.com/api/webhooks/odoo/transfer-mo-reference
-     ```
-   - **Fields**: Kosongkan (Odoo otomatis mengirim `_id`, `_model`, `_action`).
-
-### Alur Eksekusi di cPanel:
-1. Respon instan `200 OK` ke Odoo (proses transfer di Odoo lancar tanpa loading / timeout).
-2. Di background:
-   - Mendeteksi apakah transfer bertipe `PC`, `SFP`, atau `INT`.
-   - Mencari MO via chain destination moves (`move_dest_ids.raw_material_production_id`), move selesai MO (`production_id`), atau via kecocokan `origin`.
-   - Mengisi `x_studio_manufacturing_order` jika belum terisi.
-   - Mengisi `sale_id` dari SO asal atau dari `mo.x_studio_sales_order`.
-
-### Menjalankan Test CLI:
-```bash
-node scripts/testTransferResolution.js
-```
-
-
+| Sumber | Endpoint | Fungsi |
+| :--- | :--- | :--- |
+| **Odoo** | `POST /api/webhooks/odoo/mo-confirmed` | Sinkronisasi MO baru / perubahan status MO ke daftar SPK |
+| **Odoo** | `POST /api/webhooks/odoo/transfer-done` | Update real-time pengiriman kain, aksesoris, SFP, & validasi BSKL |
+| **Odoo** | `POST /api/webhooks/odoo/transfer-mo-reference` | Pengisian otomatis field MO & Sales Order pada Transfer (`PC`, `SFP`, `INT`) |
+| **Odoo** | `POST /api/webhooks/odoo/vendor-price-updated` | Pembaruan otomatis tarif makloon vendor (`x_daftar_harga_vendor`) |
+| **Odoo** | `POST /api/webhooks/odoo/duplicate-landed-cost` | Duplikasi dokumen Landed Cost beserta relasi `mrp_production_ids` |
+| **Odoo** | `POST /api/webhooks/odoo/invoice-wa` | Kirim PDF Faktur Odoo ke WhatsApp pelanggan via Wablas |
+| **Jubelio** | `POST /api/webhooks/jubelio/invoice` | Pembuatan otomatis Sales Order Odoo dari faktur Jubelio |
+| **Cron / Admin** | `GET/POST /api/admin/sync-outbox` | Sapu bersih & retry antrean sinkronisasi latar belakang `sync_outbox` |

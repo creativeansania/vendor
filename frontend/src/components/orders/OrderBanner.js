@@ -1,9 +1,21 @@
 'use client';
 
-import { CheckCircle2, AlertTriangle, Info, Lock, Unlock } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Info, Lock, Unlock, RefreshCw, Clock } from 'lucide-react';
+
+const OUTBOX_ACTION_LABELS = {
+  cutting_rolls: 'Potong Kain & Roll',
+  grade_a: 'Hasil Jahit Grade A',
+  grade_b: 'Hasil Jahit Grade B',
+  bskl: 'Sisa Potong (BSKL)',
+  production_result: 'Hasil Produksi'
+};
 
 export default function OrderBanner({
   feedback,
+  outboxStatus = null,
+  isAdmin = false,
+  retryingOutbox = false,
+  handleRetryOutbox,
   isBackorder,
   isMasterAdmin = false,
   isUnlockedByAdmin = false,
@@ -35,6 +47,10 @@ export default function OrderBanner({
           color: 'var(--status-rose)'
         };
 
+  const isOutboxFailed = outboxStatus?.status === 'failed';
+  const isOutboxPending = outboxStatus?.status === 'pending' || outboxStatus?.status === 'processing';
+  const outboxLabel = outboxStatus?.action ? (OUTBOX_ACTION_LABELS[outboxStatus.action] || outboxStatus.action) : 'SPK';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       {/* FEEDBACK ALERT */}
@@ -60,6 +76,70 @@ export default function OrderBanner({
             <AlertTriangle size={18} style={{ flexShrink: 0 }} />
           )}
           <span>{feedback.text}</span>
+        </div>
+      )}
+
+      {/* BACKGROUND ODOO OUTBOX STATUS BANNER */}
+      {(isOutboxFailed || isOutboxPending) && (
+        <div
+          style={{
+            padding: '10px 16px',
+            borderRadius: '12px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '10px',
+            background: isOutboxFailed ? 'var(--status-amber-bg)' : 'var(--bg-card-subtle)',
+            border: `1.5px solid ${isOutboxFailed ? 'var(--status-amber-border)' : 'var(--border-strong)'}`,
+            fontSize: '0.82rem'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+            {isOutboxFailed ? (
+              <AlertTriangle size={18} style={{ color: 'var(--status-amber)', flexShrink: 0 }} />
+            ) : (
+              <Clock size={18} style={{ color: 'var(--brand-primary)', flexShrink: 0 }} />
+            )}
+            <div style={{ lineHeight: 1.4 }}>
+              {isOutboxFailed ? (
+                <>
+                  <strong style={{ color: 'var(--status-amber)' }}>
+                    Sinkronisasi Odoo Tertunda ({outboxLabel}):
+                  </strong>{' '}
+                  <span style={{ color: 'var(--text-secondary)' }}>
+                    Data sudah aman tersimpan di server, namun pengiriman ke Odoo belum selesai
+                    {outboxStatus.last_error ? ` (${outboxStatus.last_error})` : ''}.
+                  </span>
+                </>
+              ) : (
+                <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+                  Sedang menyinkronkan data <strong>{outboxLabel}</strong> ke Odoo di latar belakang...
+                </span>
+              )}
+            </div>
+          </div>
+
+          {isAdmin && isOutboxFailed && handleRetryOutbox && (
+            <button
+              type="button"
+              disabled={retryingOutbox}
+              onClick={handleRetryOutbox}
+              className="btn btn-primary"
+              style={{
+                fontSize: '0.78rem',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                flexShrink: 0
+              }}
+            >
+              <RefreshCw size={13} className={retryingOutbox ? 'spin' : ''} />
+              <span>{retryingOutbox ? 'Mengirim Ulang...' : 'Kirim Ulang ke Odoo'}</span>
+            </button>
+          )}
         </div>
       )}
 

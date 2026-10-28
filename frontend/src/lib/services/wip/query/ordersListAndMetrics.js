@@ -1,5 +1,6 @@
 import { supabaseServer } from '../../../supabaseServer.js';
 import { isChildBackorder } from './orderLockCalculator.js';
+import { metricsCache, metricsInFlight, METRICS_CACHE_TTL, setBoundedCache } from '../wipCache.js';
 
 function sanitizePostgrestSearchTerm(raw) {
   if (!raw) return '';
@@ -20,11 +21,7 @@ function getNextMonthFirstDay(periodStr) {
   return `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
 }
 
-/**
- * Aggregate SPK metrics for dashboard using lightweight SQL COUNT(*) head queries
- * (Transfers 0 row payloads over HTTP and avoids PostgREST's 1,000-row truncation limit)
- */
-export async function getMetrics(user, vendorId) {
+async function computeMetricsUncached(vendorId) {
   const buildCountBase = () => {
     let q = supabaseServer
       .from('wip_orders')
@@ -87,9 +84,50 @@ export async function getMetrics(user, vendorId) {
 }
 
 /**
- * Get orders list with pagination, search, status filter, period filter, sorting, and metrics
+ * Aggregate SPK metrics for dashboard with coalesced short-TTL caching (20s, auto-invalidated on writes)
  */
-export async function getOrders({ user, search, status, vendorId, page = 1, limit = 20, sort = 'latest', period, backorder }) {
+export async function getMetrics(user, vendorId) {
+  const cacheKey = vendorId ? `vendor:${Number(vendorId)}` : 'all';
+  const cached = metricsCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.data;
+  }
+
+  if (metricsInFlight.has(cacheKey)) {
+    return metricsInFlight.get(cacheKey);
+  }
+
+  const promise = computeMetricsUncached(vendorId)
+    .then((data) => {
+      setBoundedCache(metricsCache, cacheKey, {
+        data,
+        expiresAt: Date.now() + METRICS_CACHE_TTL
+      });
+      return data;
+    })
+    .finally(() => {
+      metricsInFlight.delete(cacheKey);
+    });
+
+  metricsInFlight.set(cacheKey, promise);
+  return promise;
+}
+
+/**
+ * Get orders list with pagination, search, status filter, period filter, sorting, and optional KPI metrics
+ */
+export async function getOrders({
+  user,
+  search,
+  status,
+  vendorId,
+  page = 1,
+  limit = 20,
+  sort = 'latest',
+  period,
+  backorder,
+  includeMetrics = true
+}) {
   const numLimit = Math.min(100, Math.max(1, Number(limit) || 20));
   const numPage = Math.max(1, Number(page) || 1);
   const offset = (numPage - 1) * numLimit;
@@ -202,7 +240,7 @@ export async function getOrders({ user, search, status, vendorId, page = 1, limi
 
   const [ordersRes, metrics] = await Promise.all([
     query,
-    getMetrics(user, scopedVendorId)
+    includeMetrics ? getMetrics(user, scopedVendorId) : Promise.resolve(null)
   ]);
 
   const { data: rawOrders, count: totalCount, error } = ordersRes;
@@ -211,12 +249,39 @@ export async function getOrders({ user, search, status, vendorId, page = 1, limi
     throw new Error(error.message);
   }
 
+  // Batch-resolve parent sales_order for child backorders whose sales_order is missing
+  const missingParentIds = Array.from(
+    new Set(
+      (rawOrders || [])
+        .filter((o) => (!o.sales_order || o.sales_order === '-') && o.parent_wip_order_id)
+        .map((o) => Number(o.parent_wip_order_id))
+        .filter(Boolean)
+    )
+  );
+
+  const parentSalesOrderMap = new Map();
+  if (missingParentIds.length > 0) {
+    try {
+      const { data: parents } = await supabaseServer
+        .from('wip_orders')
+        .select('id, sales_order')
+        .in('id', missingParentIds);
+      for (const p of parents || []) {
+        if (p.sales_order && p.sales_order !== '-') {
+          parentSalesOrderMap.set(Number(p.id), p.sales_order);
+        }
+      }
+    } catch {}
+  }
+
   const total = totalCount || 0;
   const showPrice = user.role !== 'admin_vendor';
 
   const orders = (rawOrders || []).map((o) => {
     const isBackorder = isChildBackorder(o);
-    const salesOrder = o.sales_order || (o.parent && o.parent.sales_order) || '-';
+    const ownSo = o.sales_order && o.sales_order !== '-' ? o.sales_order : '';
+    const parentSo = o.parent_wip_order_id ? parentSalesOrderMap.get(Number(o.parent_wip_order_id)) : '';
+    const salesOrder = ownSo || parentSo || '-';
     const vendorName = o.vendors ? o.vendors.name : 'Unknown';
 
     return {
@@ -229,16 +294,19 @@ export async function getOrders({ user, search, status, vendorId, page = 1, limi
     };
   });
 
+  const pagination = {
+    total,
+    page: numPage,
+    limit: numLimit,
+    totalPages: Math.ceil(total / numLimit)
+  };
+  if (metrics) {
+    pagination.kainKurangCount = metrics.kain_kurang;
+  }
+
   return {
     orders,
-    pagination: {
-      total,
-      page: numPage,
-      limit: numLimit,
-      totalPages: Math.ceil(total / numLimit),
-      kainKurangCount: metrics.kain_kurang
-    },
-    metrics
+    pagination,
+    ...(metrics ? { metrics } : {})
   };
 }
-

@@ -1,4 +1,5 @@
 import { supabaseServer } from '../../../supabaseServer.js';
+import { invalidateMetricsCache } from '../wipCache.js';
 
 /**
  * Master Admin Explicit Unlock: Buka Kunci agar user/vendor dapat mengedit kembali
@@ -34,6 +35,8 @@ export async function adminUnlockOrder({ user, orderId, reason = '' }) {
     action: 'admin_unlock_order',
     reason: (reason || 'Dibuka manual oleh Master Admin').trim()
   });
+
+  invalidateMetricsCache();
 
   return {
     success: true,
@@ -87,6 +90,8 @@ export async function adminRelockOrder({ user, orderId }) {
     wip_order_id: orderId,
     action: 'admin_relock_order'
   });
+
+  invalidateMetricsCache();
 
   return {
     success: true,

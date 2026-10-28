@@ -1,5 +1,29 @@
-import axios from 'axios';
 import { config } from '../config.js';
+
+async function wablasFetch(url, options = {}, timeoutMs = 20000) {
+  const response = await fetch(url, {
+    ...options,
+    cache: 'no-store',
+    signal: AbortSignal.timeout(timeoutMs)
+  });
+
+  const text = await response.text();
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+
+  if (!response.ok) {
+    const detail = typeof data === 'object' && data !== null ? JSON.stringify(data) : String(data || response.statusText);
+    throw new Error(`Wablas HTTP ${response.status}: ${detail}`);
+  }
+
+  return data;
+}
 
 export class WablasService {
   constructor(options = {}) {
@@ -52,8 +76,7 @@ export class WablasService {
    */
   async getDeviceInfo() {
     const url = `${this.baseUrl}/api/device/info?token=${encodeURIComponent(this.token)}`;
-    const response = await axios.get(url);
-    return response.data;
+    return wablasFetch(url, {}, 15000);
   }
 
   /**
@@ -73,20 +96,21 @@ export class WablasService {
     const url = `${this.baseUrl}/api/send-message`;
     console.log(`[Wablas] Sending WhatsApp text message to ${phone}...`);
 
-    const response = await axios.post(
+    const data = await wablasFetch(
       url,
-      { phone, message },
       {
+        method: 'POST',
         headers: {
           Authorization: authHeader,
           'Content-Type': 'application/json'
         },
-        timeout: 20000
-      }
+        body: JSON.stringify({ phone, message })
+      },
+      20000
     );
 
-    console.log(`[Wablas] Message sent to ${phone}:`, response.data);
-    return response.data;
+    console.log(`[Wablas] Message sent to ${phone}:`, data);
+    return data;
   }
 
   /**
@@ -120,15 +144,20 @@ export class WablasService {
       formData.append('caption', caption);
     }
 
-    const response = await axios.post(url, formData, {
-      headers: {
-        Authorization: authHeader
+    const data = await wablasFetch(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: authHeader
+        },
+        body: formData
       },
-      timeout: 30000
-    });
+      30000
+    );
 
-    console.log(`[Wablas] Document successfully sent to ${phone}:`, response.data);
-    return response.data;
+    console.log(`[Wablas] Document successfully sent to ${phone}:`, data);
+    return data;
   }
 
   /**
@@ -148,24 +177,25 @@ export class WablasService {
     const url = `${this.baseUrl}/api/send-document`;
     console.log(`[Wablas] Sending document URL to ${phone}...`);
 
-    const response = await axios.post(
+    const data = await wablasFetch(
       url,
       {
-        phone,
-        document: documentUrl,
-        caption
-      },
-      {
+        method: 'POST',
         headers: {
           Authorization: authHeader,
           'Content-Type': 'application/json'
         },
-        timeout: 30000
-      }
+        body: JSON.stringify({
+          phone,
+          document: documentUrl,
+          caption
+        })
+      },
+      30000
     );
 
-    console.log(`[Wablas] Document URL sent to ${phone}:`, response.data);
-    return response.data;
+    console.log(`[Wablas] Document URL sent to ${phone}:`, data);
+    return data;
   }
 }
 

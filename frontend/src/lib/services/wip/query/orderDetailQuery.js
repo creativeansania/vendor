@@ -1,6 +1,7 @@
 import { supabaseServer } from '../../../supabaseServer.js';
 import { isChildBackorder, applyLifecycleLocksAndPermissions } from './orderLockCalculator.js';
 import { runCoalescedLazyMetadataSync, fetchOrderRawMoves, fetchOrderTransfers } from './odooOrderAttachments.js';
+import { getOrderOutboxStatus } from '../outboxService.js';
 
 /**
  * Get single order details with roll lines, BOM raw moves, and transfers
@@ -43,19 +44,21 @@ export async function getOrderDetails({ user, orderId, includeRawMoves = true, i
     await runCoalescedLazyMetadataSync(order, showPrice);
   }
 
-  // Fetch roll lines, BOM moves, and Transfers in parallel
-  const [rollLinesRes, rawMoves, transfers] = await Promise.all([
+  // Fetch roll lines, BOM moves, Transfers, and active sync_outbox status in parallel
+  const [rollLinesRes, rawMoves, transfers, outboxStatus] = await Promise.all([
     supabaseServer
       .from('wip_roll_lines')
       .select('*')
       .eq('wip_order_id', order.id)
       .order('id', { ascending: true }),
     includeRawMoves ? fetchOrderRawMoves(order).catch(() => []) : Promise.resolve([]),
-    includeTransfers ? fetchOrderTransfers(order).catch(() => []) : Promise.resolve([])
+    includeTransfers ? fetchOrderTransfers(order).catch(() => []) : Promise.resolve([]),
+    getOrderOutboxStatus(order.id)
   ]);
 
   const rollLines = rollLinesRes.data || [];
   order.roll_lines = rollLines;
+  order.outbox_status = outboxStatus;
   const isBackorder = isChildBackorder(order);
   order.is_backorder = isBackorder;
   order.sales_order = order.sales_order || (order.parent ? order.parent.sales_order : '-') || '-';

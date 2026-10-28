@@ -7,6 +7,7 @@ import { fetchApi, ensureCurrentUser, logout } from '@/lib/api';
 export function useDashboardOrders() {
   const router = useRouter();
   const requestSeqRef = useRef(0);
+  const lastMetricsFetchRef = useRef({ vendorKey: null, at: 0 });
   const [user, setUser] = useState(null);
   const [orders, setOrders] = useState([]);
   const [vendors, setVendors] = useState([]);
@@ -70,15 +71,23 @@ export function useDashboardOrders() {
   }, [user]);
 
   // Fetch orders from API (race-condition guarded via requestSeqRef)
-  const loadOrders = useCallback(async () => {
+  const loadOrders = useCallback(async (forceMetrics = false) => {
     if (!user) return;
     const reqId = ++requestSeqRef.current;
     setLoading(true);
     try {
+      const vendorKey = selectedVendor || 'all';
+      const now = Date.now();
+      const shouldFetchMetrics =
+        forceMetrics ||
+        lastMetricsFetchRef.current.vendorKey !== vendorKey ||
+        now - lastMetricsFetchRef.current.at > 20000;
+
       const queryParams = new URLSearchParams({
         page: String(page),
         limit: '24'
       });
+      if (!shouldFetchMetrics) queryParams.set('includeMetrics', '0');
       if (debouncedSearch.trim()) queryParams.set('search', debouncedSearch.trim());
       if (status !== 'all') queryParams.set('status', status);
       if (selectedVendor) queryParams.set('vendorId', selectedVendor);
@@ -92,9 +101,12 @@ export function useDashboardOrders() {
         setOrders(res.orders || []);
         setTotalPages(res.pagination?.totalPages || 1);
         setTotalCount(res.pagination?.total || 0);
-        setKainKurangCount(res.pagination?.kainKurangCount || 0);
+        if (res.pagination?.kainKurangCount !== undefined) {
+          setKainKurangCount(res.pagination.kainKurangCount);
+        }
         if (res.metrics) {
           setMetrics(res.metrics);
+          lastMetricsFetchRef.current = { vendorKey, at: Date.now() };
         }
       }
     } catch (err) {

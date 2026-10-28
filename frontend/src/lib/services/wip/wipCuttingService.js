@@ -1,7 +1,7 @@
 import { supabaseServer } from '../../supabaseServer.js';
 import { adminOdooClient } from '../../odoo/odooClient.js';
 import { wipRepo } from '../wipRepository.js';
-import { rawMovesCache } from './wipCache.js';
+import { invalidateOrderCache } from './wipCache.js';
 import { getOrderDetails } from './wipQueryService.js';
 import { isFabricLine } from '../../utils/materialClassifier.js';
 import { enqueueOutboxTask, scheduleOutboxExecution } from './outboxService.js';
@@ -148,9 +148,7 @@ export async function submitCuttingRolls({ user, orderId, rollUpdates = [], actu
     })
   ]);
 
-  if (order.odoo_mo_id) {
-    rawMovesCache.delete(order.odoo_mo_id);
-  }
+  invalidateOrderCache(order.odoo_mo_id, order.id);
 
   const mergedAllLines = (existingLines || []).map((l) => updatedById.get(Number(l.id)) || l);
 

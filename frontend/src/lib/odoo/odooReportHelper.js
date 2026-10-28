@@ -1,4 +1,3 @@
-import axios from 'axios';
 import crypto from 'crypto';
 
 export async function getWebSessionCookie(client) {
@@ -7,25 +6,42 @@ export async function getWebSessionCookie(client) {
   }
 
   const authUrl = `${client.url.replace(/\/+$/, '')}/web/session/authenticate`;
-  const response = await axios.post(authUrl, {
-    jsonrpc: '2.0',
-    params: {
-      db: client.db,
-      login: client.username,
-      password: client.password
-    }
+  const response = await fetch(authUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      params: {
+        db: client.db,
+        login: client.username,
+        password: client.password
+      }
+    }),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(15000)
   });
 
-  if (!response.data?.result?.uid) {
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} authenticating web session with Odoo`);
+  }
+
+  const payload = await response.json();
+  if (!payload?.result?.uid) {
     throw new Error('Failed to authenticate web session with Odoo');
   }
 
-  const cookies = response.headers['set-cookie'];
-  if (!cookies || cookies.length === 0) {
+  const rawCookies =
+    typeof response.headers.getSetCookie === 'function'
+      ? response.headers.getSetCookie()
+      : response.headers.get('set-cookie')
+      ? [response.headers.get('set-cookie')]
+      : [];
+
+  if (!rawCookies || rawCookies.length === 0) {
     throw new Error('No session cookies returned by Odoo');
   }
 
-  client.sessionCookie = cookies.map((c) => c.split(';')[0]).join('; ');
+  client.sessionCookie = rawCookies.map((c) => c.split(';')[0]).join('; ');
   client.sessionCookieExpires = Date.now() + 2 * 60 * 60 * 1000;
   return client.sessionCookie;
 }
@@ -140,14 +156,25 @@ export async function downloadDocumentPdf(client, model, recordId, customReportN
       const cookie = await getWebSessionCookie(client);
       const reportUrl = `${client.url.replace(/\/+$/, '')}/report/pdf/${targetReport}/${recordId}`;
 
-      const response = await axios.get(reportUrl, {
+      const response = await fetch(reportUrl, {
         headers: { Cookie: cookie },
-        responseType: 'arraybuffer',
-        timeout: 30000
+        cache: 'no-store',
+        signal: AbortSignal.timeout(30000)
       });
 
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} fetching Odoo report PDF`);
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      // Guard against expired Odoo web session returning HTML login page with HTTP 200
+      if (buffer.length < 5 || buffer.subarray(0, 4).toString('ascii') !== '%PDF') {
+        client.sessionCookie = null;
+        client.sessionCookieExpires = 0;
+        throw new Error('Invalid PDF header from Odoo report endpoint');
+      }
+
       const filename = `${(docInfo.name || 'invoice').replace(/[/\\?%*:|"<>]/g, '_')}.pdf`;
-      const buffer = Buffer.from(response.data);
 
       let publicAttachmentUrl = null;
       try {
@@ -171,13 +198,17 @@ export async function downloadDocumentPdf(client, model, recordId, customReportN
   }
 
   const downloadUrl = `${client.url.replace(/\/+$/, '')}${accessUrl}?report_type=pdf&download=true&access_token=${accessToken}`;
-  const response = await axios.get(downloadUrl, {
-    responseType: 'arraybuffer',
-    timeout: 30000
+  const response = await fetch(downloadUrl, {
+    cache: 'no-store',
+    signal: AbortSignal.timeout(30000)
   });
 
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} downloading portal PDF from Odoo`);
+  }
+
   const filename = `${(name || 'document').replace(/[/\\?%*:|"<>]/g, '_')}.pdf`;
-  const buffer = Buffer.from(response.data);
+  const buffer = Buffer.from(await response.arrayBuffer());
 
   let publicAttachmentUrl = null;
   try {
@@ -193,4 +224,3 @@ export async function downloadDocumentPdf(client, model, recordId, customReportN
     publicAttachmentUrl: publicAttachmentUrl || downloadUrl
   };
 }
-

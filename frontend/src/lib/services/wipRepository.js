@@ -1,5 +1,6 @@
 import { supabaseServer } from '../supabaseServer.js';
 import { classifyMaterialLine } from '../utils/materialClassifier.js';
+import { invalidateMetricsCache } from './wip/wipCache.js';
 
 class WipRepository {
   constructor() {
@@ -219,6 +220,7 @@ class WipRepository {
       throw error;
     }
 
+    invalidateMetricsCache();
     return upserted.id;
   }
 
