@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchApi, getCurrentUser } from '@/lib/api';
+import { fetchApi, ensureCurrentUser, logout } from '@/lib/api';
 
 export function useAdminUsers() {
   const router = useRouter();
@@ -53,17 +53,23 @@ export function useAdminUsers() {
 
   // Guard: Only master_admin allowed
   useEffect(() => {
-    const u = getCurrentUser();
-    if (!u) {
-      router.push('/login');
-      return;
-    }
-    if (u.role !== 'master_admin') {
-      router.push('/');
-      return;
-    }
-    setCurrentUser(u);
-    loadData();
+    let active = true;
+    ensureCurrentUser().then((u) => {
+      if (!active) return;
+      if (!u) {
+        logout();
+        return;
+      }
+      if (u.role !== 'master_admin') {
+        router.replace('/');
+        return;
+      }
+      setCurrentUser(u);
+      loadData();
+    });
+    return () => {
+      active = false;
+    };
   }, [router, loadData]);
 
   async function handleCreateUser(e) {

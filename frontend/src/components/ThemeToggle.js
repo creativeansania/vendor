@@ -1,23 +1,34 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useSyncExternalStore } from 'react';
 import { Sun, Moon } from 'lucide-react';
 
-export default function ThemeToggle({ showLabel = false, className = '' }) {
-  const [theme, setTheme] = useState('light');
-  const [mounted, setMounted] = useState(false);
+function subscribeTheme(callback) {
+  window.addEventListener('theme-change', callback);
+  window.addEventListener('storage', callback);
+  return () => {
+    window.removeEventListener('theme-change', callback);
+    window.removeEventListener('storage', callback);
+  };
+}
 
-  useEffect(() => {
-    setMounted(true);
-    const currentTheme =
-      document.documentElement.getAttribute('data-theme') ||
-      (localStorage.getItem('theme') || 'light');
-    setTheme(currentTheme);
-  }, []);
+function getClientTheme() {
+  return (
+    document.documentElement.getAttribute('data-theme') ||
+    localStorage.getItem('theme') ||
+    'light'
+  );
+}
+
+function getServerTheme() {
+  return null;
+}
+
+export default function ThemeToggle({ showLabel = false, className = '' }) {
+  const theme = useSyncExternalStore(subscribeTheme, getClientTheme, getServerTheme);
 
   const toggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
-    setTheme(nextTheme);
     try {
       localStorage.setItem('theme', nextTheme);
       document.documentElement.setAttribute('data-theme', nextTheme);
@@ -26,7 +37,6 @@ export default function ThemeToggle({ showLabel = false, className = '' }) {
       } else {
         document.documentElement.classList.remove('dark');
       }
-      // Dispatch custom event for listeners if needed
       window.dispatchEvent(new CustomEvent('theme-change', { detail: { theme: nextTheme } }));
     } catch (e) {
       console.error('Failed to save theme:', e);
@@ -34,7 +44,7 @@ export default function ThemeToggle({ showLabel = false, className = '' }) {
   };
 
   // Prevent hydration mismatch
-  if (!mounted) {
+  if (theme === null) {
     return (
       <button
         type="button"

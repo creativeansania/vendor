@@ -1,12 +1,24 @@
 import "./globals.css";
+import PwaRegistrar from "@/components/PwaRegistrar";
 
 export const metadata = {
   title: "WIP Vendor - Ansania",
   description: "Aplikasi Monitoring WIP Vendor & Timbang Roll Kain Ansania",
   manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "WIP Ansania"
+  },
   icons: {
-    icon: "/icon.svg",
-    apple: "/icon.svg"
+    icon: [
+      { url: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512x512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icon.svg", type: "image/svg+xml" }
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }
+    ]
   }
 };
 
@@ -26,7 +38,7 @@ export default function RootLayout({ children }) {
     <html lang="id" suppressHydrationWarning>
       <head>
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-        <link rel="apple-touch-icon" href="/icon.svg" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -48,6 +60,7 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body>
+        <PwaRegistrar />
         <main className="app-shell">{children}</main>
       </body>
     </html>

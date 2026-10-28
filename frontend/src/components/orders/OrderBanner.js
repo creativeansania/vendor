@@ -16,6 +16,25 @@ export default function OrderBanner({
 }) {
   const isAnyLocked = isCuttingLocked || isGradeALocked || isGradeBLocked || isBsklLocked;
 
+  const feedbackStyle =
+    feedback?.type === 'success'
+      ? {
+          bg: 'var(--status-emerald-bg)',
+          border: 'var(--status-emerald-border)',
+          color: 'var(--status-emerald)'
+        }
+      : feedback?.type === 'warning'
+      ? {
+          bg: 'var(--status-amber-bg)',
+          border: 'var(--status-amber-border)',
+          color: 'var(--status-amber)'
+        }
+      : {
+          bg: 'var(--status-rose-bg)',
+          border: 'var(--status-rose-border)',
+          color: 'var(--status-rose)'
+        };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       {/* FEEDBACK ALERT */}
@@ -29,9 +48,9 @@ export default function OrderBanner({
             gap: '12px',
             fontSize: '0.86rem',
             fontWeight: 600,
-            background: feedback.type === 'success' ? 'var(--status-emerald-bg)' : 'var(--status-rose-bg)',
-            border: `1.5px solid ${feedback.type === 'success' ? 'var(--status-emerald-border)' : 'var(--status-rose-border)'}`,
-            color: feedback.type === 'success' ? 'var(--status-emerald)' : 'var(--status-rose)',
+            background: feedbackStyle.bg,
+            border: `1.5px solid ${feedbackStyle.border}`,
+            color: feedbackStyle.color,
             boxShadow: 'var(--shadow-subtle)'
           }}
         >
@@ -55,24 +74,24 @@ export default function OrderBanner({
             alignItems: 'center',
             flexWrap: 'wrap',
             gap: '10px',
-            background: isUnlockedByAdmin ? '#fffbeb' : '#f8fafc',
-            border: `1.5px solid ${isUnlockedByAdmin ? '#fde68a' : '#cbd5e1'}`,
+            background: isUnlockedByAdmin ? 'var(--status-amber-bg)' : 'var(--bg-card-subtle)',
+            border: `1.5px solid ${isUnlockedByAdmin ? 'var(--status-amber-border)' : 'var(--border-strong)'}`,
             fontSize: '0.82rem'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {isUnlockedByAdmin ? (
-              <Unlock size={18} style={{ color: '#d97706', flexShrink: 0 }} />
+              <Unlock size={18} style={{ color: 'var(--status-amber)', flexShrink: 0 }} />
             ) : (
-              <Lock size={18} style={{ color: '#64748b', flexShrink: 0 }} />
+              <Lock size={18} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
             )}
             <div>
               {isUnlockedByAdmin ? (
-                <span style={{ color: '#92400e', fontWeight: 700 }}>
-                  Kunci Dibuka oleh Master Admin: User lain & vendor dapat mengedit kembali seluruh isian.
+                <span style={{ color: 'var(--status-amber)', fontWeight: 700 }}>
+                  Kunci Dibuka oleh Master Admin: User lain &amp; vendor dapat mengedit kembali seluruh isian.
                 </span>
               ) : (
-                <span style={{ color: '#334155', fontWeight: 600 }}>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
                   Panel Master Admin: {isAnyLocked ? 'Sebagian tahapan terkunci sesuai aturan sistem.' : 'Kondisi tahapan saat ini aktif.'}
                 </span>
               )}

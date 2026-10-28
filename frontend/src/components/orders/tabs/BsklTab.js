@@ -1,7 +1,7 @@
 'use client';
 
-import { Scissors, Check, Send, Truck, Lock, AlertCircle, Info } from 'lucide-react';
-import { adjustQty } from '@/lib/utils/formatters';
+import { Send, Truck, Lock } from 'lucide-react';
+import BsklCategoryCard from './bskl/BsklCategoryCard';
 
 export default function BsklTab({
   order,
@@ -25,6 +25,36 @@ export default function BsklTab({
 
   const bsklTransfer = order?.bskl_transfer;
   const isTransferDone = bsklTransfer?.state === 'done' || bsklTransfer?.stateDisplay === 'Selesai';
+
+  const categories = [
+    {
+      indexLabel: '#1',
+      title: 'Sisa Potong Panjang (> 1 Meter)',
+      description: 'Kain utuh potongan panjang untuk dikembalikan ke Gudang WHGB',
+      accentColor: 'var(--brand-gold)',
+      unitBadgeClass: 'badge-gold',
+      value: sisaPanjang,
+      onChange: setSisaPanjang
+    },
+    {
+      indexLabel: '#2',
+      title: 'Sisa Potong Sedang (50cm - 1 Meter)',
+      description: 'Potongan kain perca sedang (kombinasi produk / kerajinan)',
+      accentColor: 'var(--status-amber)',
+      unitBadgeClass: 'badge-amber',
+      value: sisaSedang,
+      onChange: setSisaSedang
+    },
+    {
+      indexLabel: '#3',
+      title: 'Sisa Potong Pendek (< 50cm / Majun)',
+      description: 'Potongan kain kecil, majun, atau limbah kain',
+      accentColor: 'var(--status-rose)',
+      unitBadgeClass: 'badge-rose',
+      value: sisaPendek,
+      onChange: setSisaPendek
+    }
+  ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -50,9 +80,9 @@ export default function BsklTab({
             gap: '10px',
             padding: '12px 16px',
             borderRadius: '10px',
-            background: '#eff6ff',
-            border: '1px solid #bfdbfe',
-            color: '#1e40af',
+            background: 'var(--status-sky-bg)',
+            border: '1px solid var(--status-sky-border)',
+            color: 'var(--status-sky)',
             fontSize: '0.82rem'
           }}
         >
@@ -63,201 +93,25 @@ export default function BsklTab({
         </div>
       )}
 
-      {/* CARD 1: SISA POTONG PANJANG (> 1 METER) */}
-      <div className="card roll-card" style={{ borderLeft: '4px solid var(--brand-gold)', padding: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '8px' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', flexWrap: 'wrap' }}>
-              <span className="badge badge-slate mono-num" style={{ fontSize: '0.7rem' }}>#1</span>
-              <span className="mono-num" style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--brand-gold)' }}>
-                Sisa Potong Panjang (&gt; 1 Meter)
-              </span>
-              <span className="badge badge-gold mono-num" style={{ fontSize: '0.68rem' }}>KG</span>
-            </div>
-            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-              Kain utuh potongan panjang untuk dikembalikan ke Gudang WHGB
-            </div>
-          </div>
+      {/* CARDS 1-3: SISA POTONG CATEGORIES */}
+      {categories.map((cat) => (
+        <BsklCategoryCard
+          key={cat.indexLabel}
+          indexLabel={cat.indexLabel}
+          title={cat.title}
+          description={cat.description}
+          accentColor={cat.accentColor}
+          unitBadgeClass={cat.unitBadgeClass}
+          value={cat.value}
+          onChange={cat.onChange}
+          canEdit={canEditBskl}
+          saving={saving}
+        />
+      ))}
 
-          {canEditBskl && (
-            <button
-              type="button"
-              onClick={() => setSisaPanjang && setSisaPanjang('0')}
-              className={`quick-action-pill ${parseFloat(sisaPanjang) === 0 ? 'quick-action-pill-emerald' : ''}`}
-              style={{ fontSize: '0.68rem', padding: '2px 8px' }}
-            >
-              {parseFloat(sisaPanjang) === 0 ? (
-                <>
-                  <Check size={11} />
-                  <span>Nol (0)</span>
-                </>
-              ) : (
-                <span>Reset 0</span>
-              )}
-            </button>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-          <div style={{ width: '150px' }}>
-            <div className="input-addon-group" style={{ height: '40px', borderColor: parseFloat(sisaPanjang) > 0 ? 'var(--brand-gold)' : 'var(--border-strong)' }}>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                disabled={!canEditBskl || saving}
-                placeholder="0.00"
-                value={sisaPanjang}
-                onChange={(e) => setSisaPanjang && setSisaPanjang(e.target.value)}
-                className="input-addon-field"
-                style={{ fontSize: '1rem', fontWeight: 800 }}
-              />
-              <span className="input-addon-label" style={{ fontSize: '0.72rem', padding: '0 8px' }}>
-                KG
-              </span>
-            </div>
-          </div>
-          {canEditBskl && (
-            <div style={{ display: 'flex', gap: '3px' }}>
-              <button type="button" onClick={() => setSisaPanjang && setSisaPanjang('0')} className="stepper-btn" style={{ padding: '0 8px', height: '40px', fontSize: '0.78rem' }}>0</button>
-              <button type="button" onClick={() => adjustQty(setSisaPanjang, sisaPanjang, +0.5)} className="stepper-btn" style={{ padding: '0 8px', height: '40px', fontSize: '0.78rem' }}>+0.5</button>
-              <button type="button" onClick={() => adjustQty(setSisaPanjang, sisaPanjang, +1.0)} className="stepper-btn" style={{ padding: '0 8px', height: '40px', fontSize: '0.78rem' }}>+1.0</button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* CARD 2: SISA POTONG SEDANG (50 CM - 1 METER) */}
-      <div className="card roll-card" style={{ borderLeft: '4px solid #f59e0b', padding: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '8px' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', flexWrap: 'wrap' }}>
-              <span className="badge badge-slate mono-num" style={{ fontSize: '0.7rem' }}>#2</span>
-              <span className="mono-num" style={{ fontWeight: 800, fontSize: '0.95rem', color: '#f59e0b' }}>
-                Sisa Potong Sedang (50cm - 1 Meter)
-              </span>
-              <span className="badge badge-amber mono-num" style={{ fontSize: '0.68rem' }}>KG</span>
-            </div>
-            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-              Potongan kain perca sedang (kombinasi produk / kerajinan)
-            </div>
-          </div>
-
-          {canEditBskl && (
-            <button
-              type="button"
-              onClick={() => setSisaSedang && setSisaSedang('0')}
-              className={`quick-action-pill ${parseFloat(sisaSedang) === 0 ? 'quick-action-pill-emerald' : ''}`}
-              style={{ fontSize: '0.68rem', padding: '2px 8px' }}
-            >
-              {parseFloat(sisaSedang) === 0 ? (
-                <>
-                  <Check size={11} />
-                  <span>Nol (0)</span>
-                </>
-              ) : (
-                <span>Reset 0</span>
-              )}
-            </button>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-          <div style={{ width: '150px' }}>
-            <div className="input-addon-group" style={{ height: '40px', borderColor: parseFloat(sisaSedang) > 0 ? '#f59e0b' : 'var(--border-strong)' }}>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                disabled={!canEditBskl || saving}
-                placeholder="0.00"
-                value={sisaSedang}
-                onChange={(e) => setSisaSedang && setSisaSedang(e.target.value)}
-                className="input-addon-field"
-                style={{ fontSize: '1rem', fontWeight: 800 }}
-              />
-              <span className="input-addon-label" style={{ fontSize: '0.72rem', padding: '0 8px' }}>
-                KG
-              </span>
-            </div>
-          </div>
-          {canEditBskl && (
-            <div style={{ display: 'flex', gap: '3px' }}>
-              <button type="button" onClick={() => setSisaSedang && setSisaSedang('0')} className="stepper-btn" style={{ padding: '0 8px', height: '40px', fontSize: '0.78rem' }}>0</button>
-              <button type="button" onClick={() => adjustQty(setSisaSedang, sisaSedang, +0.5)} className="stepper-btn" style={{ padding: '0 8px', height: '40px', fontSize: '0.78rem' }}>+0.5</button>
-              <button type="button" onClick={() => adjustQty(setSisaSedang, sisaSedang, +1.0)} className="stepper-btn" style={{ padding: '0 8px', height: '40px', fontSize: '0.78rem' }}>+1.0</button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* CARD 3: SISA POTONG PENDEK (< 50 CM / MAJUN) */}
-      <div className="card roll-card" style={{ borderLeft: '4px solid #ef4444', padding: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '8px' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', flexWrap: 'wrap' }}>
-              <span className="badge badge-slate mono-num" style={{ fontSize: '0.7rem' }}>#3</span>
-              <span className="mono-num" style={{ fontWeight: 800, fontSize: '0.95rem', color: '#ef4444' }}>
-                Sisa Potong Pendek (&lt; 50cm / Majun)
-              </span>
-              <span className="badge badge-rose mono-num" style={{ fontSize: '0.68rem' }}>KG</span>
-            </div>
-            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-              Potongan kain kecil, majun, atau limbah kain
-            </div>
-          </div>
-
-          {canEditBskl && (
-            <button
-              type="button"
-              onClick={() => setSisaPendek && setSisaPendek('0')}
-              className={`quick-action-pill ${parseFloat(sisaPendek) === 0 ? 'quick-action-pill-emerald' : ''}`}
-              style={{ fontSize: '0.68rem', padding: '2px 8px' }}
-            >
-              {parseFloat(sisaPendek) === 0 ? (
-                <>
-                  <Check size={11} />
-                  <span>Nol (0)</span>
-                </>
-              ) : (
-                <span>Reset 0</span>
-              )}
-            </button>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-          <div style={{ width: '150px' }}>
-            <div className="input-addon-group" style={{ height: '40px', borderColor: parseFloat(sisaPendek) > 0 ? '#ef4444' : 'var(--border-strong)' }}>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                disabled={!canEditBskl || saving}
-                placeholder="0.00"
-                value={sisaPendek}
-                onChange={(e) => setSisaPendek && setSisaPendek(e.target.value)}
-                className="input-addon-field"
-                style={{ fontSize: '1rem', fontWeight: 800 }}
-              />
-              <span className="input-addon-label" style={{ fontSize: '0.72rem', padding: '0 8px' }}>
-                KG
-              </span>
-            </div>
-          </div>
-          {canEditBskl && (
-            <div style={{ display: 'flex', gap: '3px' }}>
-              <button type="button" onClick={() => setSisaPendek && setSisaPendek('0')} className="stepper-btn" style={{ padding: '0 8px', height: '40px', fontSize: '0.78rem' }}>0</button>
-              <button type="button" onClick={() => adjustQty(setSisaPendek, sisaPendek, +0.5)} className="stepper-btn" style={{ padding: '0 8px', height: '40px', fontSize: '0.78rem' }}>+0.5</button>
-              <button type="button" onClick={() => adjustQty(setSisaPendek, sisaPendek, +1.0)} className="stepper-btn" style={{ padding: '0 8px', height: '40px', fontSize: '0.78rem' }}>+1.0</button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* CARD 4: NO SURAT JALAN / DELIVERY SLIP PABRIK (x_studio_delivery_slip_pabrikvendor) */}
-      <div className="card roll-card" style={{ borderLeft: '4px solid var(--status-sky)', padding: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '8px' }}>
+      {/* CARD 4: NO SURAT JALAN / DELIVERY SLIP PABRIK */}
+      <div className="card roll-card" style={{ borderLeft: '4px solid var(--status-sky)', padding: '16px', flexDirection: 'column', alignItems: 'stretch' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', flexWrap: 'wrap' }}>
               <span className="badge badge-slate mono-num" style={{ fontSize: '0.7rem' }}>#4</span>
@@ -272,7 +126,7 @@ export default function BsklTab({
           </div>
         </div>
 
-        <div style={{ marginTop: '8px' }}>
+        <div style={{ marginTop: '4px' }}>
           <input
             type="text"
             disabled={!canEditBskl || saving}
@@ -319,13 +173,13 @@ export default function BsklTab({
 
         <button
           type="button"
-          disabled={!canEditBskl || saving || currentTotalSisa <= 0}
+          disabled={!canEditBskl || saving || Number(currentTotalSisa) <= 0}
           onClick={handleRequestSubmitBskl}
           className="btn btn-gold"
           style={{ fontSize: '0.88rem', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}
         >
           <Send size={15} />
-          <span>Simpan & Buat Transfer BSKL ke WHGB</span>
+          <span>Simpan &amp; Buat Transfer BSKL ke WHGB</span>
         </button>
       </div>
     </div>

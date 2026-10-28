@@ -1,0 +1,441 @@
+/* ==========================================================================
+   Feature Modules: Filters, Segmented Tabs, Roll Cards, Grids, Pagination, Steppers
+   ========================================================================== */
+.filter-bar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+  width: 100%;
+  max-width: 100%;
+}
+
+.filter-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.filter-chip {
+  padding: 8px 16px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  border-radius: 20px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  border: 1.5px solid var(--border-default);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-subtle);
+}
+
+.filter-chip:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.filter-chip.active {
+  background: var(--brand-gold-light);
+  color: var(--brand-gold);
+  border-color: var(--brand-gold);
+  font-weight: 700;
+  box-shadow: 0 2px 8px var(--brand-gold-glow);
+}
+
+/* Segmented Pill Tabs (Apple / Linear Executive Style) */
+.segmented-tabs-wrapper {
+  background: var(--bg-card-subtle);
+  padding: 5px;
+  border-radius: 14px;
+  display: flex;
+  gap: 4px;
+  border: 1px solid var(--border-default);
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.segmented-tabs-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
+.segmented-tab-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+}
+
+@media (min-width: 640px) {
+  .segmented-tab-btn {
+    font-size: 0.88rem;
+    padding: 11px 18px;
+    gap: 10px;
+  }
+}
+
+.segmented-tab-btn:hover:not(.active) {
+  color: var(--text-primary);
+  background: var(--bg-card-hover);
+}
+
+.segmented-tab-btn.active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-weight: 700;
+  box-shadow: var(--shadow-card);
+}
+
+.segmented-tab-btn.active .tab-icon {
+  color: var(--brand-gold);
+}
+
+/* Roll / Material Item Cards */
+.roll-card {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  transition: all 0.15s ease;
+}
+
+.roll-card:hover {
+  box-shadow: var(--shadow-elevated);
+}
+
+@media (min-width: 640px) {
+  .roll-card {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    gap: 16px;
+  }
+}
+
+.roll-input-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .roll-input-row {
+    width: auto;
+    justify-content: flex-end;
+  }
+}
+
+/* Dashboard Metric Cards Grid */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+@media (min-width: 768px) {
+  .metrics-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+}
+
+.metric-card {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: var(--radius-md);
+}
+
+@media (min-width: 640px) {
+  .metric-card {
+    padding: 16px 18px;
+    gap: 8px;
+  }
+}
+
+.metric-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.metric-value {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.85rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.05;
+}
+
+/* Orders Responsive Grid */
+.orders-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 900px) {
+  .orders-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+}
+
+/* Sticky Bottom Action Pill */
+.sticky-bottom-action {
+  position: sticky;
+  bottom: 14px;
+  z-index: 40;
+  width: 100%;
+  margin-top: 8px;
+  filter: drop-shadow(0 6px 16px rgba(217, 119, 6, 0.3));
+}
+
+/* Numbered Pagination */
+.pagination-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 10px 0 24px;
+  width: 100%;
+}
+
+.pagination-list {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.pagination-item {
+  min-width: 38px;
+  height: 38px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
+  font-weight: 700;
+  border: 1.5px solid var(--border-default);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-subtle);
+  user-select: none;
+}
+
+.pagination-item:hover:not(:disabled):not(.active) {
+  background: var(--bg-card-hover);
+  border-color: var(--border-strong);
+  color: var(--brand-gold);
+  transform: translateY(-1px);
+}
+
+.pagination-item.active {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #ffffff;
+  border-color: #d97706;
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3);
+  cursor: default;
+}
+
+.pagination-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.pagination-item-nav {
+  padding: 0 14px;
+  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  gap: 6px;
+}
+
+.pagination-ellipsis {
+  min-width: 28px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  color: var(--text-muted);
+  user-select: none;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 640px) {
+  .pagination-item {
+    min-width: 34px;
+    height: 34px;
+    font-size: 0.82rem;
+    padding: 0 6px;
+  }
+  .pagination-item-nav {
+    padding: 0 10px;
+  }
+  .hide-on-mobile {
+    display: none !important;
+  }
+}
+
+/* Ergonomic Quick-Action Pills & Tactile Stepper Buttons */
+.quick-action-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  background: var(--bg-card-subtle);
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  min-height: 30px;
+}
+
+.quick-action-pill:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+  border-color: var(--brand-gold);
+}
+
+.quick-action-pill:active {
+  transform: scale(0.96);
+}
+
+.quick-action-pill-amber {
+  background: var(--brand-gold-light);
+  border-color: var(--brand-gold-border);
+  color: var(--brand-gold);
+}
+
+.quick-action-pill-amber:hover {
+  background: var(--brand-gold-border);
+  color: var(--brand-gold);
+}
+
+.quick-action-pill-emerald {
+  background: var(--status-emerald-bg);
+  border-color: var(--status-emerald-border);
+  color: var(--status-emerald);
+}
+
+.quick-action-pill-emerald:hover {
+  background: var(--status-emerald-border);
+  color: var(--status-emerald);
+}
+
+/* Tactile steppers for easy tapping by older operators */
+.stepper-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border-default);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.stepper-btn:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.stepper-btn:active {
+  background: var(--bg-card-hover);
+  transform: scale(0.95);
+}
+
+.stepper-btn-primary {
+  background: var(--brand-gold-light);
+  border-color: var(--brand-gold-border);
+  color: var(--brand-gold);
+}
+
+.stepper-btn-primary:hover {
+  border-color: var(--brand-gold);
+}
+
+/* Comparison Card in Confirmation Modal */
+.comparison-card {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  background: var(--bg-card-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 12px;
+  text-align: center;
+  margin: 14px 0;
+}
+
+.comparison-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.comparison-box-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.comparison-box-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+

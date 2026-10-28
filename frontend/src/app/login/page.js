@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchApi, setToken, setCurrentUser } from '@/lib/api';
+import { fetchApi, setCurrentUser } from '@/lib/api';
 import ThemeToggle from '@/components/ThemeToggle';
-import { Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,10 +25,9 @@ export default function LoginPage() {
         body: JSON.stringify({ email: email.trim(), password })
       });
 
-      if (res.success && res.token) {
-        setToken(res.token);
+      if (res.success && res.user) {
         setCurrentUser(res.user);
-        router.push('/');
+        router.replace('/');
       } else {
         setError(res.message || 'Email atau password tidak sesuai.');
       }

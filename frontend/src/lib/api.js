@@ -1,31 +1,40 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
-export function getToken() {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('pwa_token');
+let inflightMePromise = null;
+let isLoggingOut = false;
+
+export function clearLegacyToken() {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem('pwa_token');
+  } catch {}
 }
 
-export function setToken(token) {
-  if (typeof window === 'undefined') return;
-  if (token) {
-    localStorage.setItem('pwa_token', token);
-  } else {
-    localStorage.removeItem('pwa_token');
-  }
+export function getToken() {
+  // Session JWT is stored in HttpOnly cookie (`pwa_token`), never in localStorage
+  clearLegacyToken();
+  return null;
+}
+
+export function setToken() {
+  // Deprecated no-op kept for backward import safety; purges any legacy localStorage token
+  clearLegacyToken();
 }
 
 export function getCurrentUser() {
   if (typeof window === 'undefined') return null;
+  clearLegacyToken();
   const userJson = localStorage.getItem('pwa_user');
   try {
     return userJson ? JSON.parse(userJson) : null;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
 
 export function setCurrentUser(user) {
   if (typeof window === 'undefined') return;
+  clearLegacyToken();
   if (user) {
     localStorage.setItem('pwa_user', JSON.stringify(user));
   } else {
@@ -33,46 +42,70 @@ export function setCurrentUser(user) {
   }
 }
 
-export function logout() {
-  setToken(null);
+export async function logout() {
+  if (isLoggingOut) return;
+  isLoggingOut = true;
+  clearLegacyToken();
   setCurrentUser(null);
+
   if (typeof window !== 'undefined') {
-    window.location.href = '/login';
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        keepalive: true
+      });
+    } catch {}
+    window.location.replace('/login');
   }
 }
 
+export async function ensureCurrentUser() {
+  const cached = getCurrentUser();
+  if (cached) return cached;
+
+  if (!inflightMePromise) {
+    inflightMePromise = fetchApi('/auth/me')
+      .then((res) => {
+        if (res?.success && res.user) {
+          setCurrentUser(res.user);
+          return res.user;
+        }
+        return null;
+      })
+      .catch(() => null)
+      .finally(() => {
+        inflightMePromise = null;
+      });
+  }
+
+  return inflightMePromise;
+}
+
 export async function fetchApi(endpoint, options = {}) {
-  const token = getToken();
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {})
   };
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
   const url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
-  try {
-    const res = await fetch(url, {
-      ...options,
-      headers
-    });
+  const res = await fetch(url, {
+    ...options,
+    credentials: options.credentials || 'same-origin',
+    headers
+  });
 
-    const data = await res.json().catch(() => ({}));
+  const data = await res.json().catch(() => ({}));
 
-    if (res.status === 401) {
-      logout();
-      throw new Error(data.message || 'Sesi telah berakhir. Silakan login kembali.');
-    }
-
-    if (!res.ok) {
-      throw new Error(data.message || `Request failed with status ${res.status}`);
-    }
-
-    return data;
-  } catch (err) {
-    throw err;
+  if (res.status === 401 && !endpoint.includes('/auth/login')) {
+    await logout();
+    throw new Error(data.message || 'Sesi telah berakhir. Silakan login kembali.');
   }
+
+  if (!res.ok) {
+    throw new Error(data.message || `Request failed with status ${res.status}`);
+  }
+
+  return data;
 }

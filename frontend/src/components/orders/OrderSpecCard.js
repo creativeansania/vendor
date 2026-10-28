@@ -21,12 +21,6 @@ export default function OrderSpecCard({
           <span className="badge badge-gold mono-num" style={{ fontSize: '0.74rem' }}>
             SPK #{order.id}
           </span>
-          <span className="badge badge-indigo" style={{ fontSize: '0.74rem', fontWeight: 700 }}>
-            ✨ Finishing: {order.finishing || '-'}
-          </span>
-          <span className="badge badge-cyan" style={{ fontSize: '0.74rem', fontWeight: 700 }}>
-            📦 Packing: {order.packing || '-'}
-          </span>
         </div>
         <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.35, margin: 0 }}>
           {cleanProductName}

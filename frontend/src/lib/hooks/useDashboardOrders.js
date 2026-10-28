@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchApi, getCurrentUser } from '@/lib/api';
+import { fetchApi, ensureCurrentUser, logout } from '@/lib/api';
 
 export function useDashboardOrders() {
   const router = useRouter();
@@ -44,12 +44,18 @@ export function useDashboardOrders() {
 
   // Auth verification
   useEffect(() => {
-    const u = getCurrentUser();
-    if (!u) {
-      router.push('/login');
-    } else {
-      setUser(u);
-    }
+    let active = true;
+    ensureCurrentUser().then((u) => {
+      if (!active) return;
+      if (!u) {
+        logout();
+      } else {
+        setUser(u);
+      }
+    });
+    return () => {
+      active = false;
+    };
   }, [router]);
 
   // Load vendors list for internal staff / admin
@@ -103,7 +109,10 @@ export function useDashboardOrders() {
   }, [user, page, debouncedSearch, status, selectedVendor, sort, period, backorderFilter]);
 
   useEffect(() => {
-    loadOrders();
+    const timer = setTimeout(() => {
+      loadOrders();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [loadOrders]);
 
   const handleSearchSubmit = (e) => {

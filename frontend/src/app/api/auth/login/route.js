@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { supabaseServer } from '@/lib/supabaseServer';
-import { signToken } from '@/lib/auth';
+import { signToken, AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE } from '@/lib/auth';
 
 export async function POST(req) {
   try {
@@ -41,9 +41,8 @@ export async function POST(req) {
     const token = signToken(user);
     const vendorName = user.vendors ? user.vendors.name : null;
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
-      token,
       user: {
         id: user.id,
         name: user.name,
@@ -53,6 +52,16 @@ export async function POST(req) {
         vendor_name: vendorName
       }
     });
+
+    response.cookies.set(AUTH_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: AUTH_COOKIE_MAX_AGE
+    });
+
+    return response;
   } catch (err) {
     console.error('[API /auth/login] error:', err);
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });

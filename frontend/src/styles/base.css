@@ -1,0 +1,138 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: clip;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--bg-canvas);
+  background-image:
+    radial-gradient(at 0% 0%, rgba(245, 158, 11, 0.035) 0px, transparent 40%),
+    radial-gradient(at 100% 100%, rgba(2, 132, 199, 0.025) 0px, transparent 40%);
+  background-attachment: fixed;
+  color: var(--text-primary);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tabular numbers for weights, lots, and metrics */
+.tabular, .mono-num {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.015em;
+}
+
+h1, h2, h3, h4, .font-heading {
+  font-family: 'Outfit', sans-serif;
+  letter-spacing: -0.025em;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* ==========================================================================
+   Responsive App Layout Shell (Fluid on Mobile, Max 1200px on Desktop)
+   ========================================================================== */
+.app-shell {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: clip;
+  box-sizing: border-box;
+}
+
+/* Main Content Container */
+.main-content {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 14px 14px 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+@media (min-width: 640px) {
+  .main-content {
+    padding: 18px 20px 48px;
+    gap: 16px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .main-content {
+    padding: 24px 28px 52px;
+    gap: 20px;
+  }
+}
+
+/* Header & Executive Navigation */
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-card);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border-default);
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+@media (min-width: 640px) {
+  .navbar {
+    padding: 14px 22px;
+    gap: 16px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .navbar {
+    padding: 16px 28px;
+  }
+}
+
+.brand-badge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: 1.1rem;
+  box-shadow: var(--shadow-gold);
+  flex-shrink: 0;
+}
+

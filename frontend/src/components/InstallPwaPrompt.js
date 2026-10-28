@@ -1,61 +1,60 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Smartphone, Download, Share2, PlusSquare, CheckCircle2, X, MoreVertical } from 'lucide-react';
+import { useState, useEffect, useSyncExternalStore } from 'react';
+import { Smartphone, Download, Share2, PlusSquare, X } from 'lucide-react';
+
+const emptySubscribe = () => () => {};
+const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
 export default function InstallPwaPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [isStandalone, setIsStandalone] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
-  const [showBanner, setShowBanner] = useState(false);
+  const [dismissedSession, setDismissedSession] = useState(false);
   const [showGuideModal, setShowGuideModal] = useState(false);
-  const [isIos, setIsIos] = useState(false);
+
+  const isStandalone = useSyncExternalStore(
+    emptySubscribe,
+    () =>
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true,
+    () => true
+  );
+
+  const isIos = useSyncExternalStore(
+    emptySubscribe,
+    () => /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase()),
+    () => false
+  );
+
+  const isDismissedRecently = useSyncExternalStore(
+    emptySubscribe,
+    () => {
+      const dismissedTime = localStorage.getItem('pwa_prompt_dismissed_time');
+      return Boolean(dismissedTime && Date.now() - Number(dismissedTime) < THREE_DAYS_MS);
+    },
+    () => true
+  );
 
   useEffect(() => {
-    // 1. Check if already running as installed PWA (Standalone mode)
-    const checkStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      window.navigator.standalone === true;
+    if (isStandalone) return;
 
-    setIsStandalone(checkStandalone);
-    if (checkStandalone) return;
-
-    // 2. Check if user dismissed banner recently (within 3 days)
-    const dismissedTime = localStorage.getItem('pwa_prompt_dismissed_time');
-    const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
-    const isDismissedRecently = dismissedTime && Date.now() - Number(dismissedTime) < threeDaysMs;
-
-    // 3. Detect iOS
-    const ua = window.navigator.userAgent.toLowerCase();
-    const isIosDevice = /iphone|ipad|ipod/.test(ua);
-    setIsIos(isIosDevice);
-
-    // If on iOS and not dismissed, show banner
-    if (isIosDevice && !isDismissedRecently) {
-      setShowBanner(true);
-    }
-
-    // 4. Capture native beforeinstallprompt (Chrome / Android / Edge)
+    // Capture native beforeinstallprompt (Chrome / Android / Edge)
     const handleBeforeInstall = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      if (!isDismissedRecently) {
-        setShowBanner(true);
-      }
     };
 
     const handleAppInstalled = () => {
       setIsInstalled(true);
-      setShowBanner(false);
       setDeferredPrompt(null);
     };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
-    window.addEventListener('appinstalled', handleAppInstalled);
 
     const handleCustomOpen = () => {
       setShowGuideModal(true);
     };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', handleAppInstalled);
     window.addEventListener('open-pwa-install', handleCustomOpen);
 
     return () => {
@@ -63,7 +62,10 @@ export default function InstallPwaPrompt() {
       window.removeEventListener('appinstalled', handleAppInstalled);
       window.removeEventListener('open-pwa-install', handleCustomOpen);
     };
-  }, []);
+  }, [isStandalone]);
+
+  const showBanner =
+    !dismissedSession && !isDismissedRecently && (isIos || Boolean(deferredPrompt));
 
   const handleInstallClick = async () => {
     if (deferredPrompt) {
@@ -72,10 +74,9 @@ export default function InstallPwaPrompt() {
         const choice = await deferredPrompt.userChoice;
         if (choice.outcome === 'accepted') {
           setIsInstalled(true);
-          setShowBanner(false);
         }
         setDeferredPrompt(null);
-      } catch (err) {
+      } catch {
         setShowGuideModal(true);
       }
     } else {
@@ -85,7 +86,7 @@ export default function InstallPwaPrompt() {
   };
 
   const handleDismiss = () => {
-    setShowBanner(false);
+    setDismissedSession(true);
     localStorage.setItem('pwa_prompt_dismissed_time', String(Date.now()));
   };
 
@@ -233,7 +234,7 @@ export default function InstallPwaPrompt() {
                     2
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
-                    Gulir sedikit ke bawah, lalu pilih menu <strong>"Tambahkan ke Layar Utama" (Add to Home Screen)</strong> (ikon <PlusSquare size={13} style={{ display: 'inline', verticalAlign: 'middle' }} />).
+                    Gulir sedikit ke bawah, lalu pilih menu <strong>&quot;Tambahkan ke Layar Utama&quot; (Add to Home Screen)</strong> (ikon <PlusSquare size={13} style={{ display: 'inline', verticalAlign: 'middle' }} />).
                   </div>
                 </div>
 
@@ -263,7 +264,7 @@ export default function InstallPwaPrompt() {
                     2
                   </div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
-                    Pilih menu <strong>"Pasang Aplikasi"</strong> atau <strong>"Tambahkan ke Layar Utama"</strong>.
+                    Pilih menu <strong>&quot;Pasang Aplikasi&quot;</strong> atau <strong>&quot;Tambahkan ke Layar Utama&quot;</strong>.
                   </div>
                 </div>
 

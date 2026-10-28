@@ -180,7 +180,7 @@ export default function DashboardFilters({
               <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Filter aktif:</span>
               {search.trim() && (
                 <span style={{ background: 'var(--bg-card-subtle)', border: '1px solid var(--border-default)', color: 'var(--text-primary)', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
-                  Cari: "{search}"
+                  Cari: &quot;{search}&quot;
                 </span>
               )}
               {status !== 'all' && (

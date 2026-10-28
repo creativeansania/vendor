@@ -1,6 +1,9 @@
 import jwt from 'jsonwebtoken';
 import { supabaseServer } from './supabaseServer.js';
 
+export const AUTH_COOKIE_NAME = 'pwa_token';
+export const AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days in seconds
+
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
@@ -20,13 +23,46 @@ export function signToken(user) {
   return jwt.sign(payload, getJwtSecret(), { expiresIn: '7d' });
 }
 
-export async function authenticateRequest(req) {
-  const authHeader = req.headers.get('authorization');
-  let token = null;
-
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    token = authHeader.substring(7);
+export function verifyJwtToken(token) {
+  if (!token) return null;
+  try {
+    return jwt.verify(token, getJwtSecret());
+  } catch {
+    return null;
   }
+}
+
+function extractTokenFromRequest(req) {
+  // 1. Prefer HttpOnly session cookie
+  const cookieToken = req.cookies?.get?.(AUTH_COOKIE_NAME)?.value;
+  if (cookieToken) {
+    return cookieToken;
+  }
+
+  // Fallback raw Cookie header parser (for plain Request objects without NextRequest.cookies)
+  const rawCookie = req.headers?.get?.('cookie');
+  if (rawCookie) {
+    const match = rawCookie
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${AUTH_COOKIE_NAME}=`));
+    if (match) {
+      const val = decodeURIComponent(match.substring(AUTH_COOKIE_NAME.length + 1));
+      if (val) return val;
+    }
+  }
+
+  // 2. Fallback Authorization: Bearer header (API / integration compatibility)
+  const authHeader = req.headers?.get?.('authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7).trim();
+  }
+
+  return null;
+}
+
+export async function authenticateRequest(req) {
+  const token = extractTokenFromRequest(req);
 
   if (!token) {
     return { error: 'Token otentikasi tidak ditemukan. Silakan login kembali.', status: 401 };
@@ -34,7 +70,7 @@ export async function authenticateRequest(req) {
 
   try {
     const decoded = jwt.verify(token, getJwtSecret());
-    
+
     // Check if user is still active in Supabase
     const { data: user, error } = await supabaseServer
       .from('users')

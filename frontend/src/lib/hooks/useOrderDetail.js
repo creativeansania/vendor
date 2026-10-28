@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchApi, getCurrentUser } from '@/lib/api';
+import { fetchApi, ensureCurrentUser, logout } from '@/lib/api';
 import { useCuttingState } from './order-detail/useCuttingState';
 import { useProductionState } from './order-detail/useProductionState';
 import { useTransferState } from './order-detail/useTransferState';
@@ -37,12 +37,18 @@ export function useOrderDetail(orderId) {
 
   // Auth check
   useEffect(() => {
-    const u = getCurrentUser();
-    if (!u) {
-      router.push('/login');
-    } else {
-      setUser(u);
-    }
+    let active = true;
+    ensureCurrentUser().then((u) => {
+      if (!active) return;
+      if (!u) {
+        logout();
+      } else {
+        setUser(u);
+      }
+    });
+    return () => {
+      active = false;
+    };
   }, [router]);
 
   // 1. Domain sub-hooks
@@ -77,6 +83,19 @@ export function useOrderDetail(orderId) {
     setFeedback
   });
 
+  const { setActualCutting, setRollWeights, setPenerimaanQtys } = cuttingState;
+  const {
+    setGradeA,
+    setGradeB,
+    setSisaPanjang,
+    setSisaSedang,
+    setSisaPendek,
+    setNoSuratJalanGradeA,
+    setNoSuratJalanGradeB,
+    setNoSuratJalanBskl
+  } = productionState;
+  const { setTransfers } = transferState;
+
   // Load Order Data
   const loadData = useCallback(async () => {
     if (!orderId) return;
@@ -89,10 +108,10 @@ export function useOrderDetail(orderId) {
         const fetchedRolls = res.rollLines || res.order?.roll_lines || [];
         setRollLines(fetchedRolls);
         setRawMoves(res.rawMoves || res.order?.raw_moves || []);
-        transferState.setTransfers(res.transfers || res.order?.transfers || []);
+        setTransfers(res.transfers || res.order?.transfers || []);
 
         // Prepopulate cutting actual
-        cuttingState.setActualCutting(
+        setActualCutting(
           res.order.actual_cutting !== null && res.order.actual_cutting !== undefined
             ? res.order.actual_cutting
             : ''
@@ -111,49 +130,58 @@ export function useOrderDetail(orderId) {
             pQtys[r.id] = r.qty; // Default from Surat Jalan
           }
         });
-        cuttingState.setRollWeights(weights);
-        cuttingState.setPenerimaanQtys(pQtys);
+        setRollWeights(weights);
+        setPenerimaanQtys(pQtys);
 
         // Prepopulate production results
-        productionState.setGradeA(res.order.qty_grade_a !== null && res.order.qty_grade_a !== undefined ? String(res.order.qty_grade_a) : '');
-        productionState.setGradeB(res.order.qty_grade_b !== null && res.order.qty_grade_b !== undefined ? String(res.order.qty_grade_b) : '');
+        setGradeA(res.order.qty_grade_a !== null && res.order.qty_grade_a !== undefined ? String(res.order.qty_grade_a) : '');
+        setGradeB(res.order.qty_grade_b !== null && res.order.qty_grade_b !== undefined ? String(res.order.qty_grade_b) : '');
         
         const spPanjang = res.order.sisa_potong_panjang !== null && res.order.sisa_potong_panjang !== undefined ? String(res.order.sisa_potong_panjang) : '';
         const spSedang = res.order.sisa_potong_sedang !== null && res.order.sisa_potong_sedang !== undefined ? String(res.order.sisa_potong_sedang) : '';
         const spPendek = res.order.sisa_potong_pendek !== null && res.order.sisa_potong_pendek !== undefined ? String(res.order.sisa_potong_pendek) : '';
         
-        productionState.setSisaPanjang(spPanjang);
-        productionState.setSisaSedang(spSedang);
-        productionState.setSisaPendek(spPendek);
+        setSisaPanjang(spPanjang);
+        setSisaSedang(spSedang);
+        setSisaPendek(spPendek);
         
         // Fallback for legacy single sisa_makloon_kg if categories are not yet set
         if (!spPanjang && !spSedang && !spPendek && res.order.sisa_makloon_kg) {
-          productionState.setSisaPanjang(String(res.order.sisa_makloon_kg));
+          setSisaPanjang(String(res.order.sisa_makloon_kg));
         }
         
-        productionState.setNoSuratJalanGradeA(res.order.no_surat_jalan_sfp || res.order.no_surat_jalan || '');
-        productionState.setNoSuratJalanGradeB(res.order.no_surat_jalan_grade_b || '');
-        productionState.setNoSuratJalanBskl(res.order.no_surat_jalan_bskl || '');
+        setNoSuratJalanGradeA(res.order.no_surat_jalan_sfp || res.order.no_surat_jalan || '');
+        setNoSuratJalanGradeB(res.order.no_surat_jalan_grade_b || '');
+        setNoSuratJalanBskl(res.order.no_surat_jalan_bskl || '');
       }
     } catch (err) {
       setFeedback({ text: 'Gagal memuat SPK: ' + err.message, type: 'error' });
     } finally {
       setLoading(false);
     }
-  }, [orderId]);
+  }, [
+    orderId,
+    setTransfers,
+    setActualCutting,
+    setRollWeights,
+    setPenerimaanQtys,
+    setGradeA,
+    setGradeB,
+    setSisaPanjang,
+    setSisaSedang,
+    setSisaPendek,
+    setNoSuratJalanGradeA,
+    setNoSuratJalanGradeB,
+    setNoSuratJalanBskl
+  ]);
 
   useEffect(() => {
-    if (user && orderId) {
+    if (!user || !orderId) return;
+    const timer = setTimeout(() => {
       loadData();
-    }
+    }, 0);
+    return () => clearTimeout(timer);
   }, [user, orderId, loadData]);
-
-  // Auto-switch to tab 'jahit' if active tab is hidden on backorders
-  useEffect(() => {
-    if (order?.is_backorder && ['kain', 'timbang', 'aksesoris', 'bskl'].includes(activeTab)) {
-      setActiveTab('jahit');
-    }
-  }, [order?.is_backorder, activeTab, setActiveTab]);
 
   // Share SPK context to WhatsApp Group / Chat
   const handleShareToWa = (customIssue = '') => {
@@ -192,14 +220,15 @@ export function useOrderDetail(orderId) {
   };
 
   // Product name & SKU parsing
+  const productName = order?.product_name || '';
   const { skuCode, cleanProductName } = useMemo(() => {
-    if (!order?.product_name) return { skuCode: null, cleanProductName: 'Item Produksi' };
-    const match = order.product_name.match(/^\[(.*?)\]\s*(.*)$/);
+    if (!productName) return { skuCode: null, cleanProductName: 'Item Produksi' };
+    const match = productName.match(/^\[(.*?)\]\s*(.*)$/);
     if (match) {
       return { skuCode: match[1], cleanProductName: match[2] };
     }
-    return { skuCode: null, cleanProductName: order.product_name };
-  }, [order?.product_name]);
+    return { skuCode: null, cleanProductName: productName };
+  }, [productName]);
 
   // Permissions & lock states
   const isBackorder = Boolean(
@@ -211,12 +240,16 @@ export function useOrderDetail(orderId) {
   const isAdmin = ['master_admin', 'admin'].includes(user?.role);
   const isUnlockedByAdmin = Boolean(order?.is_unlocked_by_admin);
 
-  // Auto-switch away from tab 'qc' if user is not admin
-  useEffect(() => {
+  // Derived safe active tab (avoids cascading setState in useEffect when backorder/role resolves)
+  const resolvedActiveTab = useMemo(() => {
     if (user && !isAdmin && activeTab === 'qc') {
-      setActiveTab(isBackorder ? 'jahit' : 'kain');
+      return isBackorder ? 'jahit' : 'kain';
     }
-  }, [user, isAdmin, activeTab, isBackorder, setActiveTab]);
+    if (isBackorder && ['kain', 'timbang', 'aksesoris', 'bskl'].includes(activeTab)) {
+      return 'jahit';
+    }
+    return activeTab;
+  }, [user, isAdmin, isBackorder, activeTab]);
 
   const [savingQc, setSavingQc] = useState(false);
 
@@ -269,7 +302,7 @@ export function useOrderDetail(orderId) {
     handleSaveQc,
     syncingOdoo: transferState.syncingOdoo,
     feedback,
-    activeTab,
+    activeTab: resolvedActiveTab,
     setActiveTab,
     copiedTransferId: transferState.copiedTransferId,
     transferFilter: transferState.transferFilter,
