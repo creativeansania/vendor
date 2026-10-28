@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import { after } from 'next/server';
 import { wipService } from '@/lib/services/wipService';
+import { verifyOdooWebhook } from '@/lib/webhookAuth';
 
 export const maxDuration = 60;
 
 export async function POST(req) {
   try {
+    const webhookAuth = await verifyOdooWebhook(req);
+    if (!webhookAuth.authorized) return webhookAuth.response;
+
     let payload = {};
     try {
       payload = await req.json();

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { after } from 'next/server';
 import { landedCostService } from '@/lib/services/landedCostService';
+import { verifyOdooWebhook } from '@/lib/webhookAuth';
 
 export const maxDuration = 60;
 
@@ -21,6 +22,9 @@ export async function GET() {
 
 export async function POST(req) {
   try {
+    const webhookAuth = await verifyOdooWebhook(req);
+    if (!webhookAuth.authorized) return webhookAuth.response;
+
     let payload = {};
     try {
       const contentType = req.headers.get('content-type') || '';

@@ -9,8 +9,8 @@ export const config = {
   odoo: {
     url: process.env.ODOO_URL || 'https://kanti-sehati-sukses.odoo.com',
     db: process.env.ODOO_DB || 'kanti-sehati-sukses',
-    username: process.env.ODOO_USERNAME || 'ansania@kantiss.com',
-    password: process.env.ODOO_PASSWORD || 'Onlineakbari',
+    username: process.env.ODOO_USERNAME || '',
+    password: process.env.ODOO_PASSWORD || '',
     companyName: process.env.ODOO_COMPANY_NAME || 'Ansania',
     jenisSO: process.env.ODOO_JENIS_SO || 'Penjualan Konsinyasi',
     warehouseName: process.env.ODOO_WAREHOUSE_NAME || 'Gudang Online',

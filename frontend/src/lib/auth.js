@@ -1,7 +1,13 @@
 import jwt from 'jsonwebtoken';
 import { supabaseServer } from './supabaseServer.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'kantiss_pwa_vendor_secret_key_2026_super_secure';
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable belum dikonfigurasi.');
+  }
+  return secret;
+}
 
 export function signToken(user) {
   const payload = {
@@ -11,7 +17,7 @@ export function signToken(user) {
     vendor_id: user.vendor_id,
     token_version: user.token_version || 0
   };
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: '7d' });
 }
 
 export async function authenticateRequest(req) {
@@ -27,7 +33,7 @@ export async function authenticateRequest(req) {
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, getJwtSecret());
     
     // Check if user is still active in Supabase
     const { data: user, error } = await supabaseServer

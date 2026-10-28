@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.kantiss.com/api';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 export function getToken() {
   if (typeof window === 'undefined') return null;

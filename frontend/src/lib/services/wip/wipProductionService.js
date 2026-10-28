@@ -17,7 +17,7 @@ export async function submitProductionResult({
   sisaMakloonKg,
   noSuratJalan
 }) {
-  const { order } = await getOrderDetails({ user, orderId, includeRawMoves: false });
+  const { order } = await getOrderDetails({ user, orderId, includeRawMoves: false, includeTransfers: true });
 
   const aGrade = Math.max(0, Number(qtyGradeA || 0));
   const bGrade = Math.max(0, Number(qtyGradeB || 0));
@@ -30,10 +30,35 @@ export async function submitProductionResult({
   const totalSisaKg = hasCategories ? calculatedTotal : Math.max(0, Number(sisaMakloonKg || 0));
   const suratJalan = (noSuratJalan || '').trim();
 
+  // Enforce stage locks consistent with individual tabs
+  const isChangingGradeA = aGrade !== Number(order.qty_grade_a || 0);
+  if (isChangingGradeA && !order.can_edit_grade_a) {
+    throw new Error('Input Grade A terkunci karena produksi telah selesai dan MO Odoo berstatus Done.');
+  }
+
+  const isChangingGradeB = bGrade !== Number(order.qty_grade_b || 0);
+  if (isChangingGradeB && !order.can_edit_grade_b) {
+    throw new Error('Jatah submit Grade B telah habis (Maksimal 2x submit). Hubungi Master Admin untuk membuka kunci.');
+  }
+
+  const isChangingBskl =
+    totalSisaKg !== Number(order.sisa_makloon_kg || 0) ||
+    panjangKg !== Number(order.sisa_potong_panjang || 0) ||
+    sedangKg !== Number(order.sisa_potong_sedang || 0) ||
+    pendekKg !== Number(order.sisa_potong_pendek || 0);
+  if (isChangingBskl && !order.can_edit_bskl) {
+    throw new Error('Input Sisa Potong (BSKL) terkunci karena dokumen transfer telah divalidasi oleh Gudang Ansania.');
+  }
+
+  const nextGradeBCount = isChangingGradeB
+    ? Number(order.grade_b_submit_count || 0) + 1
+    : Number(order.grade_b_submit_count || 0);
+
   // 1. Update in Supabase (with graceful column fallback)
   const updatePayload = {
     qty_grade_a: aGrade,
     qty_grade_b: bGrade,
+    grade_b_submit_count: nextGradeBCount,
     sisa_makloon_kg: totalSisaKg,
     sisa_potong_panjang: panjangKg,
     sisa_potong_sedang: sedangKg,
@@ -47,11 +72,12 @@ export async function submitProductionResult({
   }
 
   const { error: updateErr } = await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
-  if (updateErr && (updateErr.message?.includes('sisa_potong') || updateErr.details?.includes('sisa_potong'))) {
-    console.warn('[WipProductionService] Fallback update without sisa_potong columns:', updateErr.message);
+  if (updateErr && (updateErr.message?.includes('sisa_potong') || updateErr.details?.includes('sisa_potong') || updateErr.message?.includes('grade_b_submit_count'))) {
+    console.warn('[WipProductionService] Fallback update without optional columns:', updateErr.message);
     delete updatePayload.sisa_potong_panjang;
     delete updatePayload.sisa_potong_sedang;
     delete updatePayload.sisa_potong_pendek;
+    delete updatePayload.grade_b_submit_count;
     await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
   }
 
@@ -79,23 +105,30 @@ export async function submitProductionResult({
     }
   });
 
-  // 3. Enqueue to sync_outbox
-  await supabaseServer.from('sync_outbox').insert({
-    wip_order_id: orderId,
-    action: 'production_result',
-    payload: {
-      qtyGradeA: aGrade,
-      qtyGradeB: bGrade,
-      sisaPotongPanjang: panjangKg,
-      sisaPotongSedang: sedangKg,
-      sisaPotongPendek: pendekKg,
-      sisaMakloonKg: totalSisaKg,
-      noSuratJalan: suratJalan
-    },
-    created_by: user.id
-  });
+  // 3. Enqueue to sync_outbox & track synchronous push status
+  const { data: outboxRow } = await supabaseServer
+    .from('sync_outbox')
+    .insert({
+      wip_order_id: orderId,
+      action: 'production_result',
+      status: 'processing',
+      attempts: 1,
+      payload: {
+        qtyGradeA: aGrade,
+        qtyGradeB: bGrade,
+        sisaPotongPanjang: panjangKg,
+        sisaPotongSedang: sedangKg,
+        sisaPotongPendek: pendekKg,
+        sisaMakloonKg: totalSisaKg,
+        noSuratJalan: suratJalan
+      },
+      created_by: user.id
+    })
+    .select('id')
+    .maybeSingle();
 
   // 4. Push to Odoo
+  let odooSyncWarning = null;
   try {
     await syncProductionToOdoo(order, aGrade, bGrade, totalSisaKg, {
       sisaPanjang: panjangKg,
@@ -105,13 +138,30 @@ export async function submitProductionResult({
     if (order.odoo_mo_id) {
       rawMovesCache.delete(order.odoo_mo_id);
     }
+    if (outboxRow?.id) {
+      await supabaseServer
+        .from('sync_outbox')
+        .update({ status: 'synced', synced_at: new Date().toISOString(), last_error: null })
+        .eq('id', outboxRow.id);
+    }
   } catch (err) {
+    odooSyncWarning = err.message;
     console.warn(`[WipProductionService] Odoo async production push warning: ${err.message}`);
+    if (outboxRow?.id) {
+      await supabaseServer
+        .from('sync_outbox')
+        .update({ status: 'failed', last_error: String(err.message).slice(0, 500) })
+        .eq('id', outboxRow.id);
+    }
   }
 
   return {
     success: true,
-    message: 'Hasil jahit dan rincian sisa potong berhasil dilaporkan dan disinkronkan ke Odoo.',
+    odooSynced: !odooSyncWarning,
+    odooSyncWarning,
+    message: odooSyncWarning
+      ? `Hasil produksi tersimpan di aplikasi, namun sinkronisasi ke Odoo tertunda: ${odooSyncWarning}`
+      : 'Hasil jahit dan rincian sisa potong berhasil dilaporkan dan disinkronkan ke Odoo.',
     qtyGradeA: aGrade,
     qtyGradeB: bGrade,
     sisaPotongPanjang: panjangKg,
@@ -726,7 +776,7 @@ export async function submitGradeB({ user, orderId, qtyGradeB, noSuratJalanGrade
  * Submit BSKL only (locks when internal transfer is validated in Odoo)
  */
 export async function submitBskl({ user, orderId, sisaPotongPanjang, sisaPotongSedang, sisaPotongPendek, sisaMakloonKg, noSuratJalanBskl }) {
-  const { order } = await getOrderDetails({ user, orderId, includeRawMoves: false });
+  const { order } = await getOrderDetails({ user, orderId, includeRawMoves: false, includeTransfers: true });
 
   if (order.is_bskl_locked && user.role !== 'master_admin' && !order.is_unlocked_by_admin) {
     throw new Error('Input Sisa Potong (BSKL) terkunci karena dokumen transfer telah divalidasi oleh Gudang Ansania.');
@@ -847,10 +897,32 @@ export async function adminRelockOrder({ user, orderId }) {
     throw new Error('Hanya Master Admin yang berhak mengunci kembali (relock).');
   }
 
+  const { data: currentOrder } = await supabaseServer
+    .from('wip_orders')
+    .select('id, actual_cutting, qty_grade_a, status_produksi, cutting_locked_at, result_locked_at')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  const nowIso = new Date().toISOString();
   const updatePayload = {
     is_unlocked_by_admin: false,
-    updated_at: new Date().toISOString()
+    updated_at: nowIso
   };
+
+  // Restore stage lock timestamps cleared by adminUnlockOrder if stage already has data
+  if (currentOrder) {
+    if (Number(currentOrder.actual_cutting || 0) > 0 && !currentOrder.cutting_locked_at) {
+      updatePayload.cutting_locked_at = nowIso;
+      updatePayload.cutting_locked_by = user.id;
+    }
+    const isFinished =
+      Number(currentOrder.qty_grade_a || 0) > 0 ||
+      String(currentOrder.status_produksi || '').trim().toLowerCase() === 'selesai';
+    if (isFinished && !currentOrder.result_locked_at) {
+      updatePayload.result_locked_at = nowIso;
+      updatePayload.result_locked_by = user.id;
+    }
+  }
 
   const { error: updErr } = await supabaseServer.from('wip_orders').update(updatePayload).eq('id', orderId);
   if (updErr && updErr.message?.includes('is_unlocked_by_admin')) {

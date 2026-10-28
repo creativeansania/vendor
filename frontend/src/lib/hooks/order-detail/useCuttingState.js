@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { fetchApi } from '@/lib/api';
+import { isFabricLine } from '@/lib/utils/materialClassifier';
 
 export function useCuttingState({
   orderId,
@@ -26,43 +27,7 @@ export function useCuttingState({
 
   // Material lines segmentation: Kain (Fabric) vs Aksesoris/Pelengkap
   const fabricLines = useMemo(() => {
-    return rollLines.filter((l) => {
-      const name = (l.nama_item || '').toLowerCase();
-      const uom = (l.uom || '').toLowerCase();
-
-      // Explicit accessories & packaging items
-      const isAcc =
-        l.line_type === 'aksesoris' ||
-        name.includes('acc') ||
-        name.includes('acces') ||
-        name.includes('aksesoris') ||
-        name.includes('hangtag') ||
-        name.includes('hang tag') ||
-        name.includes('pouch') ||
-        name.includes('barcode') ||
-        name.includes('kertas') ||
-        name.includes('kancing') ||
-        name.includes('benang') ||
-        name.includes('zipper') ||
-        name.includes('resleting') ||
-        name.includes('sleting') ||
-        name.includes('label') ||
-        name.includes('plastik') ||
-        name.includes('polybag') ||
-        name.includes('opp') ||
-        name.includes('pita') ||
-        name.includes('renda') ||
-        name.includes('kardus') ||
-        name.includes('box') ||
-        name.includes('tag pin') ||
-        name.includes('tali') ||
-        name.includes('stiker') ||
-        name.includes('sticker') ||
-        (!name.includes('kain') && ['pcs', 'lembar', 'buah', 'biji', 'pack', 'roll'].includes(uom));
-
-      if (isAcc) return false;
-      return l.line_type === 'kain' || name.includes('kain');
-    });
+    return rollLines.filter((l) => isFabricLine(l));
   }, [rollLines]);
 
   const accessoryLines = useMemo(() => {
@@ -196,7 +161,10 @@ export function useCuttingState({
       });
 
       if (res.success) {
-        setFeedback({ text: 'Hasil potong berhasil disimpan dan disinkronkan ke Odoo!', type: 'success' });
+        setFeedback({
+          text: res.message || 'Hasil potong berhasil disimpan dan disinkronkan ke Odoo!',
+          type: res.odooSyncWarning ? 'warning' : 'success'
+        });
         loadData();
       } else {
         setFeedback({ text: res.message || 'Gagal menyimpan hasil potong.', type: 'error' });
@@ -208,7 +176,8 @@ export function useCuttingState({
     }
   };
 
-  const handleRequestSubmitCutting = () => {
+  const handleRequestSubmitCutting = (source = 'fabric') => {
+    const isAccessoryOnly = source === 'accessory';
     const inputActual = actualCutting !== '' ? parseFloat(actualCutting) : null;
     const allRollLineIds = new Set([
       ...Object.keys(rollWeights),
@@ -224,6 +193,9 @@ export function useCuttingState({
           ? match.qty_penerimaan
           : match.qty
         : 0;
+      const defaultW = match && match.qty_berat_kg !== undefined && match.qty_berat_kg !== null
+        ? match.qty_berat_kg
+        : 0;
       return {
         id: lineId,
         lineId,
@@ -231,7 +203,7 @@ export function useCuttingState({
         qty_berat_kg:
           rollWeights[lineId] !== undefined && rollWeights[lineId] !== ''
             ? parseFloat(rollWeights[lineId])
-            : 0,
+            : defaultW,
         qty_penerimaan:
           penerimaanQtys[lineId] !== undefined && penerimaanQtys[lineId] !== ''
             ? parseFloat(penerimaanQtys[lineId])
@@ -241,6 +213,31 @@ export function useCuttingState({
 
     if (inputActual === null && rolls.length === 0) {
       setFeedback({ text: 'Harap isi hasil potong atau rincian bahan kain terlebih dahulu.', type: 'error' });
+      return;
+    }
+
+    if (isAccessoryOnly) {
+      const totalAccUsed = accessoryLines.reduce((sum, l) => {
+        const val = rollWeights[l.id] !== undefined ? rollWeights[l.id] : (l.qty_berat_kg || 0);
+        return sum + (parseFloat(val) || 0);
+      }, 0);
+      const preservedActual = totalPhysicalFabric > 0
+        ? totalPhysicalFabric
+        : (inputActual !== null ? inputActual : null);
+
+      setSafetyModal({
+        open: true,
+        stage: 'cutting',
+        isExtreme: false,
+        deviationPct: 0,
+        title: 'Konfirmasi Simpan Data Aksesoris',
+        targetLabel: 'Item Aksesoris',
+        targetVal: `${accessoryLines.length.toLocaleString('id-ID')} baris`,
+        actualVal: `${totalAccUsed.toLocaleString('id-ID')} terpakai`,
+        diffVal: '-',
+        warningMessage: 'Data penerimaan dan pemakaian aksesoris akan disimpan dan disinkronkan ke Odoo.',
+        onConfirm: () => executeSubmitCutting(preservedActual, rolls)
+      });
       return;
     }
 

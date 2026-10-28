@@ -127,8 +127,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE INDEX IF NOT EXISTS idx_audit_wip ON audit_logs(wip_order_id);
 CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(user_id);
 
--- 7. SEED DATA DEFAULT: MASTER ADMIN AKBARI
--- Password: @Bagusbemo1998 (Bcrypt hash)
+-- 7. SEED DATA DEFAULT: MASTER ADMIN
+-- Ganti password segera setelah login pertama melalui halaman /admin/users
 INSERT INTO users (name, email, password_hash, role)
 VALUES (
   'Master Admin Ansania',
@@ -167,3 +167,16 @@ ALTER TABLE wip_orders ADD COLUMN IF NOT EXISTS qc_checked_by INT NULL;
 ALTER TABLE wip_orders DROP COLUMN IF EXISTS gambar_qc;
 
 
+-- 11. SECURITY HARDENING: ENABLE ROW LEVEL SECURITY (RLS)
+-- Mengunci akses langsung melalui NEXT_PUBLIC_SUPABASE_ANON_KEY (PostgREST).
+-- Backend Next.js menggunakan SUPABASE_SERVICE_ROLE_KEY yang otomatis mem-bypass RLS.
+ALTER TABLE vendors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wip_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wip_roll_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sync_outbox ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+
+-- Indeks tambahan untuk mempercepat query dashboard & filter deadline
+CREATE INDEX IF NOT EXISTS idx_wip_active_locks ON wip_orders(is_active, cutting_locked_at, result_locked_at, parent_wip_order_id);
+CREATE INDEX IF NOT EXISTS idx_wip_deadline ON wip_orders(deadline_spk) WHERE is_active = TRUE;

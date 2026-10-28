@@ -42,8 +42,8 @@ export function useAdminUsers() {
         fetchApi('/admin/users'),
         fetchApi('/pwa/vendors')
       ]);
-      setUsers(usersRes.data || []);
-      setVendors(vendorsRes.data || []);
+      setUsers(usersRes.users || usersRes.data || []);
+      setVendors(vendorsRes.vendors || vendorsRes.data || []);
     } catch (err) {
       setFeedback({ text: 'Gagal memuat data: ' + err.message, type: 'error' });
     } finally {

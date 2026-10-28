@@ -56,7 +56,7 @@ export default function AccessoryTab({
           totalPhysicalFabric={totalPhysicalFabric}
           rollWeights={rollWeights}
           label="Simpan Data Aksesoris"
-          onSubmit={handleRequestSubmitCutting}
+          onSubmit={() => handleRequestSubmitCutting('accessory')}
         />
       )}
     </div>

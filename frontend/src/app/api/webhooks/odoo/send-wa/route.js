@@ -3,6 +3,7 @@ import { after } from 'next/server';
 import { adminOdooClient } from '@/lib/odoo/odooClient';
 import { wablasService } from '@/lib/services/wablasService';
 import { config } from '@/lib/config';
+import { verifyOdooWebhook, signReportToken } from '@/lib/webhookAuth';
 
 export const maxDuration = 60;
 
@@ -13,6 +14,9 @@ function formatRupiah(amount) {
 
 export async function POST(req) {
   try {
+    const webhookAuth = await verifyOdooWebhook(req);
+    if (!webhookAuth.authorized) return webhookAuth.response;
+
     let payload = {};
     try {
       payload = await req.json();
@@ -105,7 +109,10 @@ export async function POST(req) {
           }
         }
 
-        const directPdfUrl = serverBaseUrl ? `${serverBaseUrl}/api/reports/invoice/${recordId}.pdf` : null;
+        const reportSig = signReportToken(recordId);
+        const directPdfUrl = serverBaseUrl
+          ? `${serverBaseUrl}/api/reports/invoice/${recordId}.pdf${reportSig ? `?sig=${reportSig}` : ''}`
+          : null;
         const portalPdfUrl = docInfo.accessUrl && docInfo.accessToken
           ? `${config.odoo.url.replace(/\/+$/, '')}${docInfo.accessUrl}?report_type=pdf&download=true&access_token=${docInfo.accessToken}`
           : null;

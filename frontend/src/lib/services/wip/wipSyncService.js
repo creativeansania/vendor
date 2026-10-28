@@ -1,10 +1,11 @@
 import { supabaseServer } from '../../supabaseServer.js';
 import { adminOdooClient } from '../../odoo/odooClient.js';
 import { wipRepo } from '../wipRepository.js';
-import { rawMovesCache, transfersCache } from './wipCache.js';
+import { rawMovesCache, transfersCache, invalidateOrderCache } from './wipCache.js';
 import { withWipLock } from './wipLock.js';
 import { getOrderDetails } from './wipQueryService.js';
 import { transferService } from '../transferService.js';
+import { classifyMaterialLine } from '../../utils/materialClassifier.js';
 
 /**
  * Helper: Fetch current pricing from x_vendor_production in Odoo
@@ -66,6 +67,93 @@ export function resolveFinishing(val) {
   return FINISHING_LABELS[val] || val;
 }
 
+const WIP_ODOO_SYNC_FIELDS = [
+  'id', 'x_name', 'x_studio_manufacturing_order', 'x_studio_warehouse',
+  'x_studio_product', 'x_studio_consumption_per_pcs_1', 'x_studio_unit_consumption_per_pcs',
+  'x_studio_qty_kebutuhan_kain', 'x_studio_kain_dari_gudang_qty', 'x_studio_unit_kain_dari_gudang',
+  'x_studio_accessories_dari_gudang', 'x_studio_estimasi_dari_spb', 'x_studio_status_kebutuhan_kain',
+  'x_studio_actual_cutting', 'x_studio_selisih_hasil_cutting',
+  'x_studio_qty_kirim_a_grade', 'x_studio_qty_kirim_b_grade', 'x_studio_sisa_makloon_kg',
+  'x_studio_sisa_potong_panjang', 'x_studio_sisa_potong_sedang', 'x_studio_sisa_potong_pendek',
+  'x_studio_no_surat_jalan_sfp', 'x_studio_tanggal_sfp', 'x_studio_qty_masuk_sfp',
+  'x_studio_qty_spk', 'x_studio_start_spk', 'x_studio_deadline_spk', 'x_studio_sales_order',
+  'x_studio_harga', 'x_studio_total_harga', 'x_studio_status_produksi', 'x_studio_detail_roll_kain',
+  'x_studio_related_field_77l_1k5rj70p4', 'x_studio_related_field_52c_1k5rj7ik0',
+  'x_studio_qc_pass_1', 'x_studio_qty_qc_pass_1', 'x_studio_qc_status',
+  'x_studio_keterangan_qms', 'x_studio_gambar_qc',
+  'write_date'
+];
+
+function mapOdooWipToDbPayload(w, overrides = {}) {
+  const cVal = w.x_studio_consumption_per_pcs_1 !== undefined && w.x_studio_consumption_per_pcs_1 !== false
+    ? Number(w.x_studio_consumption_per_pcs_1)
+    : null;
+  const cUom = w.x_studio_unit_consumption_per_pcs
+    ? (Array.isArray(w.x_studio_unit_consumption_per_pcs) ? w.x_studio_unit_consumption_per_pcs[1] : String(w.x_studio_unit_consumption_per_pcs))
+    : null;
+
+  const moId = overrides.odoo_mo_id !== undefined
+    ? overrides.odoo_mo_id
+    : (w.x_studio_manufacturing_order ? w.x_studio_manufacturing_order[0] : 0);
+  const whId = overrides.odoo_warehouse_id !== undefined
+    ? overrides.odoo_warehouse_id
+    : (w.x_studio_warehouse ? w.x_studio_warehouse[0] : 0);
+  const whName = overrides.vendor_name !== undefined
+    ? overrides.vendor_name
+    : (w.x_studio_warehouse ? w.x_studio_warehouse[1] : 'Unknown');
+
+  const defaultSalesOrder = w.x_studio_sales_order
+    ? (Array.isArray(w.x_studio_sales_order) ? w.x_studio_sales_order[1] : String(w.x_studio_sales_order))
+    : null;
+
+  return {
+    odoo_wip_id: w.id,
+    odoo_mo_id: moId,
+    odoo_warehouse_id: whId,
+    vendor_name: whName,
+    mo_name: overrides.mo_name || w.x_name || `WIP#${w.id}`,
+    mo_state: overrides.mo_state || 'confirmed',
+    sales_order: overrides.sales_order !== undefined ? overrides.sales_order : defaultSalesOrder,
+    product_name: w.x_studio_product ? w.x_studio_product[1] : (overrides.product_name || '-'),
+    qty_spk: overrides.qty_spk !== undefined ? overrides.qty_spk : Number(w.x_studio_qty_spk || 0),
+    start_spk: overrides.start_spk !== undefined ? overrides.start_spk : (w.x_studio_start_spk || null),
+    deadline_spk: overrides.deadline_spk !== undefined ? overrides.deadline_spk : (w.x_studio_deadline_spk || null),
+    qty_kebutuhan_kain: Number(w.x_studio_qty_kebutuhan_kain || 0),
+    kain_dari_gudang: Number(w.x_studio_kain_dari_gudang_qty || 0),
+    unit_kain: w.x_studio_unit_kain_dari_gudang
+      ? (Array.isArray(w.x_studio_unit_kain_dari_gudang) ? w.x_studio_unit_kain_dari_gudang[1] : w.x_studio_unit_kain_dari_gudang)
+      : 'yard',
+    consumption_per_pcs: cVal,
+    consumption_uom: cUom,
+    accessories_dari_gudang: Number(w.x_studio_accessories_dari_gudang || 0),
+    estimasi_dari_spb: Number(w.x_studio_estimasi_dari_spb || 0),
+    status_kebutuhan_kain: w.x_studio_status_kebutuhan_kain || 'Belum Terpenuhi',
+    actual_cutting: overrides.actual_cutting !== undefined ? overrides.actual_cutting : Number(w.x_studio_actual_cutting || 0),
+    selisih_hasil_cutting: overrides.selisih_hasil_cutting !== undefined ? overrides.selisih_hasil_cutting : Number(w.x_studio_selisih_hasil_cutting || 0),
+    qty_grade_a: Number(w.x_studio_qty_kirim_a_grade || 0),
+    qty_grade_b: Number(w.x_studio_qty_kirim_b_grade || 0),
+    sisa_makloon_kg: Number(w.x_studio_sisa_makloon_kg || 0),
+    sisa_potong_panjang: Number(w.x_studio_sisa_potong_panjang || 0),
+    sisa_potong_sedang: Number(w.x_studio_sisa_potong_sedang || 0),
+    sisa_potong_pendek: Number(w.x_studio_sisa_potong_pendek || 0),
+    finishing: resolveFinishing(w.x_studio_related_field_77l_1k5rj70p4),
+    packing: w.x_studio_related_field_52c_1k5rj7ik0 || null,
+    qc_pass_id: w.x_studio_qc_pass_1 ? (Array.isArray(w.x_studio_qc_pass_1) ? w.x_studio_qc_pass_1[0] : w.x_studio_qc_pass_1) : null,
+    qc_pass_name: w.x_studio_qc_pass_1 && Array.isArray(w.x_studio_qc_pass_1) ? w.x_studio_qc_pass_1[1] : null,
+    qty_qc_pass: Number(w.x_studio_qty_qc_pass_1 || 0),
+    qc_status: w.x_studio_qc_status || null,
+    keterangan_qms: w.x_studio_keterangan_qms || null,
+    has_gambar_qc: Boolean(w.x_studio_gambar_qc),
+    no_surat_jalan_sfp: w.x_studio_no_surat_jalan_sfp || null,
+    tanggal_sfp: w.x_studio_tanggal_sfp || null,
+    qty_masuk_sfp: overrides.qty_masuk_sfp !== undefined ? overrides.qty_masuk_sfp : Number(w.x_studio_qty_masuk_sfp || 0),
+    harga_vendor: overrides.harga_vendor !== undefined ? overrides.harga_vendor : Number(w.x_studio_harga || 0),
+    total_harga: overrides.total_harga !== undefined ? overrides.total_harga : Number(w.x_studio_total_harga || 0),
+    status_produksi: w.x_studio_status_produksi || 'Proses',
+    odoo_write_date: w.write_date
+  };
+}
+
 /**
  * Pull single order live from Odoo into Supabase
  */
@@ -77,21 +165,8 @@ export async function syncOrderFromOdoo({ user, orderId }) {
 
   await adminOdooClient.authenticate();
   const wips = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'read', [[order.odoo_wip_id]], {
-    fields: [
-      'id', 'x_name', 'x_studio_manufacturing_order', 'x_studio_warehouse',
-      'x_studio_product', 'x_studio_consumption_per_pcs_1', 'x_studio_unit_consumption_per_pcs',
-      'x_studio_qty_kebutuhan_kain', 'x_studio_kain_dari_gudang_qty', 'x_studio_unit_kain_dari_gudang',
-      'x_studio_accessories_dari_gudang', 'x_studio_estimasi_dari_spb', 'x_studio_status_kebutuhan_kain',
-      'x_studio_qty_kirim_a_grade', 'x_studio_qty_kirim_b_grade', 'x_studio_sisa_makloon_kg',
-      'x_studio_sisa_potong_panjang', 'x_studio_sisa_potong_sedang', 'x_studio_sisa_potong_pendek',
-      'x_studio_no_surat_jalan_sfp', 'x_studio_tanggal_sfp', 'x_studio_qty_masuk_sfp',
-      'x_studio_qty_spk', 'x_studio_start_spk', 'x_studio_deadline_spk', 'x_studio_sales_order',
-      'x_studio_harga', 'x_studio_total_harga', 'x_studio_status_produksi', 'x_studio_detail_roll_kain',
-      'x_studio_related_field_77l_1k5rj70p4', 'x_studio_related_field_52c_1k5rj7ik0',
-      'x_studio_qc_pass_1', 'x_studio_qty_qc_pass_1', 'x_studio_qc_status',
-      'x_studio_keterangan_qms', 'x_studio_gambar_qc',
-      'write_date'
-    ]
+    fields: WIP_ODOO_SYNC_FIELDS,
+    context: { bin_size: true }
   });
 
   if (!wips || wips.length === 0) {
@@ -144,13 +219,6 @@ export async function syncOrderFromOdoo({ user, orderId }) {
     } catch (e) {}
   }
 
-  const cVal = w.x_studio_consumption_per_pcs_1 !== undefined && w.x_studio_consumption_per_pcs_1 !== false
-    ? Number(w.x_studio_consumption_per_pcs_1)
-    : null;
-  const cUom = w.x_studio_unit_consumption_per_pcs
-    ? (Array.isArray(w.x_studio_unit_consumption_per_pcs) ? w.x_studio_unit_consumption_per_pcs[1] : String(w.x_studio_unit_consumption_per_pcs))
-    : null;
-
   const whId = w.x_studio_warehouse ? w.x_studio_warehouse[0] : null;
   const whName = w.x_studio_warehouse ? w.x_studio_warehouse[1] : 'Unknown';
   const prodId = w.x_studio_product ? w.x_studio_product[0] : null;
@@ -181,51 +249,33 @@ export async function syncOrderFromOdoo({ user, orderId }) {
     }
   }
 
-  await wipRepo.upsertWipOrder({
-    odoo_wip_id: w.id,
+  // Preserve local actual_cutting if Odoo returned 0 while local SPK already recorded cutting
+  const odooActualCutting = Number(w.x_studio_actual_cutting || 0);
+  const preservedActualCutting = odooActualCutting > 0
+    ? odooActualCutting
+    : Number(order.actual_cutting || 0);
+  const estimasiSpbVal = Number(w.x_studio_estimasi_dari_spb || 0);
+  const preservedSelisihCutting = odooActualCutting > 0
+    ? Number(w.x_studio_selisih_hasil_cutting || (odooActualCutting - estimasiSpbVal))
+    : (preservedActualCutting > 0 ? preservedActualCutting - estimasiSpbVal : 0);
+
+  await wipRepo.upsertWipOrder(mapOdooWipToDbPayload(w, {
     odoo_mo_id: moId,
     odoo_warehouse_id: whId,
     vendor_name: whName,
     mo_name: moName || w.x_name,
     mo_state: moState,
-
     sales_order: salesOrder,
-    product_name: w.x_studio_product ? w.x_studio_product[1] : order.product_name,
+    product_name: order.product_name,
     qty_spk: qtySpk,
     start_spk: startSpk,
     deadline_spk: deadlineSpk,
-    qty_kebutuhan_kain: Number(w.x_studio_qty_kebutuhan_kain || 0),
-    kain_dari_gudang: Number(w.x_studio_kain_dari_gudang_qty || 0),
-    unit_kain: w.x_studio_unit_kain_dari_gudang ? (Array.isArray(w.x_studio_unit_kain_dari_gudang) ? w.x_studio_unit_kain_dari_gudang[1] : w.x_studio_unit_kain_dari_gudang) : 'yard',
-    consumption_per_pcs: cVal,
-    consumption_uom: cUom,
-    accessories_dari_gudang: Number(w.x_studio_accessories_dari_gudang || 0),
-    estimasi_dari_spb: Number(w.x_studio_estimasi_dari_spb || 0),
-    status_kebutuhan_kain: w.x_studio_status_kebutuhan_kain || 'Belum Terpenuhi',
-    actual_cutting: Number(w.x_studio_actual_cutting || 0),
-    selisih_hasil_cutting: Number(w.x_studio_selisih_hasil_cutting || 0),
-    qty_grade_a: Number(w.x_studio_qty_kirim_a_grade || 0),
-    qty_grade_b: Number(w.x_studio_qty_kirim_b_grade || 0),
-    sisa_makloon_kg: Number(w.x_studio_sisa_makloon_kg || 0),
-    sisa_potong_panjang: Number(w.x_studio_sisa_potong_panjang || 0),
-    sisa_potong_sedang: Number(w.x_studio_sisa_potong_sedang || 0),
-    sisa_potong_pendek: Number(w.x_studio_sisa_potong_pendek || 0),
-    finishing: resolveFinishing(w.x_studio_related_field_77l_1k5rj70p4),
-    packing: w.x_studio_related_field_52c_1k5rj7ik0 || null,
-    qc_pass_id: w.x_studio_qc_pass_1 ? (Array.isArray(w.x_studio_qc_pass_1) ? w.x_studio_qc_pass_1[0] : w.x_studio_qc_pass_1) : null,
-    qc_pass_name: w.x_studio_qc_pass_1 && Array.isArray(w.x_studio_qc_pass_1) ? w.x_studio_qc_pass_1[1] : null,
-    qty_qc_pass: Number(w.x_studio_qty_qc_pass_1 || 0),
-    qc_status: w.x_studio_qc_status || null,
-    keterangan_qms: w.x_studio_keterangan_qms || null,
-    has_gambar_qc: Boolean(w.x_studio_gambar_qc),
-    no_surat_jalan_sfp: w.x_studio_no_surat_jalan_sfp || null,
-    tanggal_sfp: w.x_studio_tanggal_sfp || null,
+    actual_cutting: preservedActualCutting,
+    selisih_hasil_cutting: preservedSelisihCutting,
     qty_masuk_sfp: qtyMasukSfp,
     harga_vendor: hargaVendor,
-    total_harga: totalHarga,
-    status_produksi: w.x_studio_status_produksi || 'Proses',
-    odoo_write_date: w.write_date
-  });
+    total_harga: totalHarga
+  }));
 
   // Sync roll lines if any
   if (w.x_studio_detail_roll_kain && w.x_studio_detail_roll_kain.length > 0) {
@@ -237,8 +287,7 @@ export async function syncOrderFromOdoo({ user, orderId }) {
   }
 
   // Invalidate caches
-  rawMovesCache.delete(order.odoo_mo_id);
-  transfersCache.delete(order.odoo_mo_id);
+  invalidateOrderCache(order.odoo_mo_id, order.id);
 
   return getOrderDetails({ user, orderId, includeRawMoves: true });
 }
@@ -263,89 +312,39 @@ export async function syncAllFromOdoo() {
     const chunk = wipIds.slice(i, i + chunkSize);
     const wips = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'read', [
       chunk,
-      [
-        'id', 'x_name', 'x_studio_manufacturing_order', 'x_studio_warehouse',
-        'x_studio_product', 'x_studio_consumption_per_pcs_1', 'x_studio_unit_consumption_per_pcs',
-        'x_studio_qty_kebutuhan_kain', 'x_studio_kain_dari_gudang_qty', 'x_studio_unit_kain_dari_gudang',
-        'x_studio_accessories_dari_gudang', 'x_studio_estimasi_dari_spb', 'x_studio_status_kebutuhan_kain',
-        'x_studio_actual_cutting', 'x_studio_selisih_hasil_cutting',
-        'x_studio_qty_kirim_a_grade', 'x_studio_qty_kirim_b_grade', 'x_studio_sisa_makloon_kg',
-        'x_studio_sisa_potong_panjang', 'x_studio_sisa_potong_sedang', 'x_studio_sisa_potong_pendek',
-        'x_studio_no_surat_jalan_sfp', 'x_studio_tanggal_sfp', 'x_studio_qty_masuk_sfp',
-        'x_studio_qty_spk', 'x_studio_start_spk', 'x_studio_deadline_spk', 'x_studio_sales_order',
-        'x_studio_harga', 'x_studio_total_harga', 'x_studio_status_produksi', 'x_studio_detail_roll_kain',
-        'x_studio_related_field_77l_1k5rj70p4', 'x_studio_related_field_52c_1k5rj7ik0',
-        'x_studio_qc_pass_1', 'x_studio_qty_qc_pass_1', 'x_studio_qc_status',
-        'x_studio_keterangan_qms', 'x_studio_gambar_qc',
-        'write_date'
-      ]
-    ]);
+      WIP_ODOO_SYNC_FIELDS
+    ], { context: { bin_size: true } });
+
+    // Batch-read all roll line IDs across this chunk in 1 XML-RPC call instead of 20 sequential calls
+    const allRollIdsInChunk = Array.from(
+      new Set(wips.flatMap((w) => w.x_studio_detail_roll_kain || []))
+    );
+    const rollsById = new Map();
+    if (allRollIdsInChunk.length > 0) {
+      try {
+        const chunkRolls = await adminOdooClient._callObject('x_monitoring_wip_vendo_line_4c93a', 'read', [
+          allRollIdsInChunk,
+          ['id', 'x_name', 'x_studio_kode_warna_roll', 'x_studio_yards', 'x_studio_uom', 'x_studio_qty_penerimaan', 'x_studio_qty_berat_kg']
+        ]);
+        for (const r of chunkRolls || []) {
+          rollsById.set(r.id, r);
+        }
+      } catch (rollErr) {
+        console.warn(`[WipSyncService] Batch roll read warning: ${rollErr.message}`);
+      }
+    }
 
     for (const w of wips) {
       try {
-        const moId = w.x_studio_manufacturing_order ? w.x_studio_manufacturing_order[0] : 0;
-        const whId = w.x_studio_warehouse ? w.x_studio_warehouse[0] : 0;
-        const whName = w.x_studio_warehouse ? w.x_studio_warehouse[1] : 'Unknown';
+        const savedId = await wipRepo.upsertWipOrder(mapOdooWipToDbPayload(w));
 
-        const cVal = w.x_studio_consumption_per_pcs_1 !== undefined && w.x_studio_consumption_per_pcs_1 !== false
-          ? Number(w.x_studio_consumption_per_pcs_1)
-          : null;
-        const cUom = w.x_studio_unit_consumption_per_pcs
-          ? (Array.isArray(w.x_studio_unit_consumption_per_pcs) ? w.x_studio_unit_consumption_per_pcs[1] : String(w.x_studio_unit_consumption_per_pcs))
-          : null;
-
-        const savedId = await wipRepo.upsertWipOrder({
-          odoo_wip_id: w.id,
-          odoo_mo_id: moId,
-          odoo_warehouse_id: whId,
-          vendor_name: whName,
-          mo_name: w.x_name || `WIP#${w.id}`,
-          mo_state: 'confirmed',
-          sales_order: w.x_studio_sales_order ? (Array.isArray(w.x_studio_sales_order) ? w.x_studio_sales_order[1] : String(w.x_studio_sales_order)) : null,
-          product_name: w.x_studio_product ? w.x_studio_product[1] : '-',
-          qty_spk: Number(w.x_studio_qty_spk || 0),
-          start_spk: w.x_studio_start_spk || null,
-          deadline_spk: w.x_studio_deadline_spk || null,
-          qty_kebutuhan_kain: Number(w.x_studio_qty_kebutuhan_kain || 0),
-          kain_dari_gudang: Number(w.x_studio_kain_dari_gudang_qty || 0),
-          unit_kain: w.x_studio_unit_kain_dari_gudang ? (Array.isArray(w.x_studio_unit_kain_dari_gudang) ? w.x_studio_unit_kain_dari_gudang[1] : w.x_studio_unit_kain_dari_gudang) : 'yard',
-          consumption_per_pcs: cVal,
-          consumption_uom: cUom,
-          accessories_dari_gudang: Number(w.x_studio_accessories_dari_gudang || 0),
-          estimasi_dari_spb: Number(w.x_studio_estimasi_dari_spb || 0),
-          status_kebutuhan_kain: w.x_studio_status_kebutuhan_kain || 'Belum Terpenuhi',
-          actual_cutting: Number(w.x_studio_actual_cutting || 0),
-          selisih_hasil_cutting: Number(w.x_studio_selisih_hasil_cutting || 0),
-          qty_grade_a: Number(w.x_studio_qty_kirim_a_grade || 0),
-          qty_grade_b: Number(w.x_studio_qty_kirim_b_grade || 0),
-          sisa_makloon_kg: Number(w.x_studio_sisa_makloon_kg || 0),
-          sisa_potong_panjang: Number(w.x_studio_sisa_potong_panjang || 0),
-          sisa_potong_sedang: Number(w.x_studio_sisa_potong_sedang || 0),
-          sisa_potong_pendek: Number(w.x_studio_sisa_potong_pendek || 0),
-          finishing: resolveFinishing(w.x_studio_related_field_77l_1k5rj70p4),
-          packing: w.x_studio_related_field_52c_1k5rj7ik0 || null,
-          qc_pass_id: w.x_studio_qc_pass_1 ? (Array.isArray(w.x_studio_qc_pass_1) ? w.x_studio_qc_pass_1[0] : w.x_studio_qc_pass_1) : null,
-          qc_pass_name: w.x_studio_qc_pass_1 && Array.isArray(w.x_studio_qc_pass_1) ? w.x_studio_qc_pass_1[1] : null,
-          qty_qc_pass: Number(w.x_studio_qty_qc_pass_1 || 0),
-          qc_status: w.x_studio_qc_status || null,
-          keterangan_qms: w.x_studio_keterangan_qms || null,
-          has_gambar_qc: Boolean(w.x_studio_gambar_qc),
-          no_surat_jalan_sfp: w.x_studio_no_surat_jalan_sfp || null,
-          tanggal_sfp: w.x_studio_tanggal_sfp || null,
-          qty_masuk_sfp: Number(w.x_studio_qty_masuk_sfp || 0),
-          harga_vendor: Number(w.x_studio_harga || 0),
-          total_harga: Number(w.x_studio_total_harga || 0),
-          status_produksi: w.x_studio_status_produksi || 'Proses',
-          odoo_write_date: w.write_date
-        });
-
-        // Roll lines
         if (w.x_studio_detail_roll_kain && w.x_studio_detail_roll_kain.length > 0) {
-          const rolls = await adminOdooClient._callObject('x_monitoring_wip_vendo_line_4c93a', 'read', [
-            w.x_studio_detail_roll_kain,
-            ['id', 'x_name', 'x_studio_kode_warna_roll', 'x_studio_yards', 'x_studio_uom', 'x_studio_qty_penerimaan', 'x_studio_qty_berat_kg']
-          ]);
-          await wipRepo.upsertRollLines(savedId, rolls);
+          const rolls = w.x_studio_detail_roll_kain
+            .map((rid) => rollsById.get(rid))
+            .filter(Boolean);
+          if (rolls.length > 0) {
+            await wipRepo.upsertRollLines(savedId, rolls);
+          }
         }
 
         syncedCount++;
@@ -1039,7 +1038,8 @@ export async function syncWipFromPickings(wipId, moId) {
         'x_studio_qc_pass_1', 'x_studio_qty_qc_pass_1', 'x_studio_qc_status',
         'x_studio_keterangan_qms', 'x_studio_gambar_qc',
         'x_studio_status_produksi', 'x_studio_qty_spk', 'x_studio_start_spk', 'x_studio_deadline_spk'
-      ]
+      ],
+      context: { bin_size: true }
     });
 
     if (!wips || wips.length === 0) {
@@ -1106,8 +1106,9 @@ export async function syncWipFromPickings(wipId, moId) {
       for (const l of activeMoveLines) {
         const q = parseFloat(l.quantity) || 0.0;
         totalMaterialQty += q;
-        const prodName = (l.product_id && l.product_id[1] ? l.product_id[1] : '').toUpperCase();
-        if (prodName.includes('KAIN')) {
+        const prodName = l.product_id && l.product_id[1] ? l.product_id[1] : '';
+        const uomName = Array.isArray(l.product_uom_id) ? l.product_uom_id[1] : '';
+        if (classifyMaterialLine(prodName, uomName) === 'kain') {
           kainQty += q;
         }
       }

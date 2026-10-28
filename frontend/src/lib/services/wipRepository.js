@@ -1,4 +1,5 @@
 import { supabaseServer } from '../supabaseServer.js';
+import { classifyMaterialLine } from '../utils/materialClassifier.js';
 
 class WipRepository {
   constructor() {
@@ -213,44 +214,19 @@ class WipRepository {
   async upsertRollLines(wipOrderId, lines) {
     if (!wipOrderId || !Array.isArray(lines) || lines.length === 0) return;
 
+    const nowIso = new Date().toISOString();
+    const dedupedByKey = new Map();
+
     for (const line of lines) {
       const namaItem = line.nama_item || line.x_name || line.product_name;
       if (!namaItem) continue;
 
       const kodeLot = line.kode_lot || line.x_studio_kode_warna_roll || 'Tanpa Lot';
-      const lowerName = (namaItem || '').toLowerCase();
-      const uomVal = (line.uom || line.x_studio_uom || 'yard').toLowerCase();
-      const isAcc =
-        lowerName.includes('hangtag') ||
-        lowerName.includes('hang tag') ||
-        lowerName.includes('pouch') ||
-        lowerName.includes('barcode') ||
-        lowerName.includes('kertas') ||
-        lowerName.includes('label') ||
-        lowerName.includes('plastik') ||
-        lowerName.includes('polybag') ||
-        lowerName.includes('opp') ||
-        lowerName.includes('kancing') ||
-        lowerName.includes('benang') ||
-        lowerName.includes('zipper') ||
-        lowerName.includes('resleting') ||
-        lowerName.includes('sleting') ||
-        lowerName.includes('acc') ||
-        lowerName.includes('acces') ||
-        lowerName.includes('aksesoris') ||
-        lowerName.includes('pita') ||
-        lowerName.includes('renda') ||
-        lowerName.includes('kardus') ||
-        lowerName.includes('box') ||
-        lowerName.includes('tag pin') ||
-        lowerName.includes('tali') ||
-        lowerName.includes('stiker') ||
-        lowerName.includes('sticker') ||
-        (!lowerName.includes('kain') && ['pcs', 'lembar', 'buah', 'biji', 'pack', 'roll'].includes(uomVal));
-
-      const lineType = line.line_type || (isAcc ? 'aksesoris' : (lowerName.includes('kain') ? 'kain' : 'aksesoris'));
+      const rawUom = line.uom || line.x_studio_uom || '';
+      const lineType = classifyMaterialLine(namaItem, rawUom || 'yard', line.line_type);
+      const isAcc = lineType === 'aksesoris';
       const qty = Number(line.qty || line.x_studio_yards || 0);
-      const uom = line.uom || line.x_studio_uom || (isAcc ? 'pcs' : 'yard');
+      const uom = rawUom || (isAcc ? 'pcs' : 'yard');
       const rawBerat = line.qty_berat_kg !== undefined ? line.qty_berat_kg : line.x_studio_qty_berat_kg;
       const qtyBeratKg = rawBerat !== null && rawBerat !== undefined && rawBerat !== '' ? Number(rawBerat) : null;
       const rawPenerimaan = line.qty_penerimaan !== undefined ? line.qty_penerimaan : line.x_studio_qty_penerimaan;
@@ -264,27 +240,32 @@ class WipRepository {
         kode_lot: kodeLot,
         qty,
         uom,
-        updated_at: new Date().toISOString()
+        updated_at: nowIso
       };
 
       if (odooLineId) row.odoo_line_id = Number(odooLineId);
       if (qtyBeratKg !== null) row.qty_berat_kg = qtyBeratKg;
       if (qtyPenerimaan !== null) row.qty_penerimaan = qtyPenerimaan;
 
-      const { error: upsertErr } = await supabaseServer
-        .from('wip_roll_lines')
-        .upsert(row, { onConflict: 'wip_order_id,nama_item,kode_lot' });
+      dedupedByKey.set(`${namaItem}:::${kodeLot}`, row);
+    }
 
-      if (upsertErr) {
-        // Graceful fallback if qty_penerimaan column not yet migrated in Supabase
-        if (upsertErr.message && upsertErr.message.includes('qty_penerimaan')) {
-          delete row.qty_penerimaan;
-          await supabaseServer
-            .from('wip_roll_lines')
-            .upsert(row, { onConflict: 'wip_order_id,nama_item,kode_lot' });
-        } else {
-          console.warn('[WipRepo] upsertRollLines error:', upsertErr.message);
-        }
+    const rowsToUpsert = Array.from(dedupedByKey.values());
+    if (rowsToUpsert.length === 0) return;
+
+    const { error: upsertErr } = await supabaseServer
+      .from('wip_roll_lines')
+      .upsert(rowsToUpsert, { onConflict: 'wip_order_id,nama_item,kode_lot' });
+
+    if (upsertErr) {
+      // Graceful fallback if qty_penerimaan column not yet migrated in Supabase
+      if (upsertErr.message && upsertErr.message.includes('qty_penerimaan')) {
+        const strippedRows = rowsToUpsert.map(({ qty_penerimaan, ...rest }) => rest);
+        await supabaseServer
+          .from('wip_roll_lines')
+          .upsert(strippedRows, { onConflict: 'wip_order_id,nama_item,kode_lot' });
+      } else {
+        console.warn('[WipRepo] upsertRollLines error:', upsertErr.message);
       }
     }
   }
@@ -306,6 +287,9 @@ class WipRepository {
 
     if (!parentRolls || parentRolls.length === 0) return;
 
+    const nowIso = new Date().toISOString();
+    const childRows = [];
+
     for (const child of children) {
       for (const pr of parentRolls) {
         const childRow = {
@@ -316,23 +300,26 @@ class WipRepository {
           qty: pr.qty,
           uom: pr.uom,
           qty_berat_kg: pr.qty_berat_kg,
-          updated_at: new Date().toISOString()
+          updated_at: nowIso
         };
         if (pr.qty_penerimaan !== undefined) {
           childRow.qty_penerimaan = pr.qty_penerimaan;
         }
-
-        const { error: childErr } = await supabaseServer
-          .from('wip_roll_lines')
-          .upsert(childRow, { onConflict: 'wip_order_id,nama_item,kode_lot' });
-
-        if (childErr && childErr.message && childErr.message.includes('qty_penerimaan')) {
-          delete childRow.qty_penerimaan;
-          await supabaseServer
-            .from('wip_roll_lines')
-            .upsert(childRow, { onConflict: 'wip_order_id,nama_item,kode_lot' });
-        }
+        childRows.push(childRow);
       }
+    }
+
+    if (childRows.length === 0) return;
+
+    const { error: childErr } = await supabaseServer
+      .from('wip_roll_lines')
+      .upsert(childRows, { onConflict: 'wip_order_id,nama_item,kode_lot' });
+
+    if (childErr && childErr.message && childErr.message.includes('qty_penerimaan')) {
+      const strippedChildRows = childRows.map(({ qty_penerimaan, ...rest }) => rest);
+      await supabaseServer
+        .from('wip_roll_lines')
+        .upsert(strippedChildRows, { onConflict: 'wip_order_id,nama_item,kode_lot' });
     }
   }
 

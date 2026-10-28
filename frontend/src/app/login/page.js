@@ -39,11 +39,6 @@ export default function LoginPage() {
     }
   };
 
-  const setQuickAccount = (quickEmail, quickPass) => {
-    setEmail(quickEmail);
-    setPassword(quickPass);
-  };
-
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px', position: 'relative' }}>
       <div style={{ position: 'absolute', top: '18px', right: '18px' }}>
@@ -155,49 +150,11 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-
-          {/* Quick Demo Login Fillers */}
-          <div style={{ marginTop: '24px', paddingTop: '18px', borderTop: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.04em' }}>
-              Akses Cepat Pengujian:
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <button
-                type="button"
-                onClick={() => setQuickAccount('admin@kantiss.com', '@Bagusbemo1998')}
-                className="btn btn-secondary"
-                style={{ fontSize: '0.75rem', padding: '6px 10px', justifyContent: 'flex-start' }}
-              >
-                <span className="badge badge-purple" style={{ fontSize: '0.65rem' }}>Master Admin</span>
-                <span style={{ color: 'var(--text-secondary)' }}>admin@kantiss.com</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setQuickAccount('kws.owner@vendor.com', 'vendor123')}
-                className="btn btn-secondary"
-                style={{ fontSize: '0.75rem', padding: '6px 10px', justifyContent: 'flex-start' }}
-              >
-                <span className="badge badge-emerald" style={{ fontSize: '0.65rem' }}>Master Vendor</span>
-                <span style={{ color: 'var(--text-secondary)' }}>kws.owner@vendor.com</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setQuickAccount('kws.staff@vendor.com', 'vendor123')}
-                className="btn btn-secondary"
-                style={{ fontSize: '0.75rem', padding: '6px 10px', justifyContent: 'flex-start' }}
-              >
-                <span className="badge badge-amber" style={{ fontSize: '0.65rem' }}>Admin Vendor</span>
-                <span style={{ color: 'var(--text-secondary)' }}>kws.staff@vendor.com</span>
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* Security Footer */}
         <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-          Terhubung aman ke Odoo ERP & MariaDB cPanel Server
+          Terhubung aman ke Odoo ERP & Cloud Server
         </div>
       </div>
     </div>

@@ -2,9 +2,22 @@ import { NextResponse } from 'next/server';
 import { defaultOdooClient } from '@/lib/odoo/odooClient';
 import { config } from '@/lib/config';
 
+let cachedHealth = null;
+let cachedAt = 0;
+const HEALTH_TTL_MS = 30 * 1000; // 30 seconds
+
 export async function GET() {
+  const now = Date.now();
+  if (cachedHealth && now - cachedAt < HEALTH_TTL_MS) {
+    return NextResponse.json({
+      ...cachedHealth,
+      timestamp: new Date().toISOString(),
+      cached: true
+    });
+  }
+
   let odooStatus = 'unknown';
-  let companyName = config.odoo.companyName;
+  const companyName = config.odoo.companyName;
   let companyId = null;
 
   try {
@@ -15,7 +28,7 @@ export async function GET() {
     odooStatus = `error: ${err.message}`;
   }
 
-  return NextResponse.json({
+  cachedHealth = {
     status: 'online',
     service: 'Webhook Jubelio -> Odoo (Ansania) Fullstack Next.js',
     timestamp: new Date().toISOString(),
@@ -25,7 +38,10 @@ export async function GET() {
       db: config.odoo.db,
       status: odooStatus,
       targetCompany: companyName,
-      companyId: companyId
+      companyId
     }
-  });
+  };
+  cachedAt = now;
+
+  return NextResponse.json(cachedHealth);
 }

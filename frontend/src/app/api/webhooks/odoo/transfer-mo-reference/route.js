@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { after } from 'next/server';
 import { transferService } from '@/lib/services/transferService';
+import { verifyOdooWebhook } from '@/lib/webhookAuth';
 
 export const maxDuration = 60;
 
@@ -10,6 +11,9 @@ const LOCK_TTL_MS = 25000; // 25 seconds
 
 export async function POST(req) {
   try {
+    const webhookAuth = await verifyOdooWebhook(req);
+    if (!webhookAuth.authorized) return webhookAuth.response;
+
     let payload = {};
     try {
       payload = await req.json();

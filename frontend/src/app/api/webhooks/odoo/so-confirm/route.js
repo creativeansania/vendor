@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import { after } from 'next/server';
 import { soBypassService } from '@/lib/services/soBypassService';
+import { verifyOdooWebhook } from '@/lib/webhookAuth';
 
 export const maxDuration = 60;
 
 export async function POST(req) {
   try {
+    const webhookAuth = await verifyOdooWebhook(req);
+    if (!webhookAuth.authorized) return webhookAuth.response;
+
     let body = {};
     try {
       body = await req.json();

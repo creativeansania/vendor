@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchApi, getCurrentUser } from '@/lib/api';
 
 export function useDashboardOrders() {
   const router = useRouter();
+  const requestSeqRef = useRef(0);
   const [user, setUser] = useState(null);
   const [orders, setOrders] = useState([]);
   const [vendors, setVendors] = useState([]);
@@ -62,9 +63,10 @@ export function useDashboardOrders() {
     }
   }, [user]);
 
-  // Fetch orders from API
+  // Fetch orders from API (race-condition guarded via requestSeqRef)
   const loadOrders = useCallback(async () => {
     if (!user) return;
+    const reqId = ++requestSeqRef.current;
     setLoading(true);
     try {
       const queryParams = new URLSearchParams({
@@ -79,6 +81,7 @@ export function useDashboardOrders() {
       if (backorderFilter) queryParams.set('backorder', backorderFilter);
 
       const res = await fetchApi(`/pwa/orders?${queryParams.toString()}`);
+      if (reqId !== requestSeqRef.current) return;
       if (res.success) {
         setOrders(res.orders || []);
         setTotalPages(res.pagination?.totalPages || 1);
@@ -89,9 +92,13 @@ export function useDashboardOrders() {
         }
       }
     } catch (err) {
-      console.error('Failed to load orders:', err);
+      if (reqId === requestSeqRef.current) {
+        console.error('Failed to load orders:', err);
+      }
     } finally {
-      setLoading(false);
+      if (reqId === requestSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [user, page, debouncedSearch, status, selectedVendor, sort, period, backorderFilter]);
 
@@ -102,7 +109,11 @@ export function useDashboardOrders() {
   const handleSearchSubmit = (e) => {
     if (e && e.preventDefault) e.preventDefault();
     setPage(1);
-    loadOrders();
+    if (debouncedSearch === search) {
+      loadOrders();
+    } else {
+      setDebouncedSearch(search);
+    }
   };
 
   const handleClearSearch = () => {

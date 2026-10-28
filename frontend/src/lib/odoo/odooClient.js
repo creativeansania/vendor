@@ -1,6 +1,11 @@
+import http from 'http';
+import https from 'https';
 import xmlrpc from 'xmlrpc';
 import axios from 'axios';
 import crypto from 'crypto';
+
+const sharedHttpAgent = new http.Agent({ keepAlive: true, maxSockets: 25 });
+const sharedHttpsAgent = new https.Agent({ keepAlive: true, maxSockets: 25 });
 
 export class OdooClient {
   constructor(options = {}) {
@@ -15,9 +20,10 @@ export class OdooClient {
 
     this.url = url;
     this.db = db;
-    this.username = options.username || process.env.ODOO_USERNAME || 'ansania@kantiss.com';
-    this.password = options.password || process.env.ODOO_PASSWORD || 'Onlineakbari';
+    this.username = options.username || process.env.ODOO_USERNAME || '';
+    this.password = options.password || process.env.ODOO_PASSWORD || '';
     this.uid = null;
+    this._authPromise = null;
     this.companyId = null;
     this.allowedCompanyIds = [];
     this.sessionCookie = null;
@@ -26,13 +32,15 @@ export class OdooClient {
 
   async _callCommon(method, params) {
     const urlParts = new URL(this.url);
+    const isSecure = urlParts.protocol === 'https:';
     const clientOptions = {
       host: urlParts.hostname,
-      port: urlParts.port || (urlParts.protocol === 'https:' ? 443 : 80),
-      path: '/xmlrpc/2/common'
+      port: urlParts.port || (isSecure ? 443 : 80),
+      path: '/xmlrpc/2/common',
+      agent: isSecure ? sharedHttpsAgent : sharedHttpAgent
     };
 
-    const client = urlParts.protocol === 'https:' 
+    const client = isSecure
       ? xmlrpc.createSecureClient(clientOptions)
       : xmlrpc.createClient(clientOptions);
 
@@ -66,19 +74,21 @@ export class OdooClient {
     });
   }
 
-  async _callObject(model, method, args, kwargs = {}) {
+  async _callObject(model, method, args, kwargs = {}, _retriedAuth = false) {
     if (!this.uid) {
       await this.authenticate();
     }
 
     const urlParts = new URL(this.url);
+    const isSecure = urlParts.protocol === 'https:';
     const clientOptions = {
       host: urlParts.hostname,
-      port: urlParts.port || (urlParts.protocol === 'https:' ? 443 : 80),
-      path: '/xmlrpc/2/object'
+      port: urlParts.port || (isSecure ? 443 : 80),
+      path: '/xmlrpc/2/object',
+      agent: isSecure ? sharedHttpsAgent : sharedHttpAgent
     };
 
-    const client = urlParts.protocol === 'https:' 
+    const client = isSecure
       ? xmlrpc.createSecureClient(clientOptions)
       : xmlrpc.createClient(clientOptions);
 
@@ -102,74 +112,101 @@ export class OdooClient {
       finalKwargs
     ];
 
-    return new Promise((resolve, reject) => {
-      let isSettled = false;
-      const timer = setTimeout(() => {
-        if (!isSettled) {
-          isSettled = true;
-          reject(new Error(`Odoo XML-RPC timeout (${model}.${method}) after 20s`));
-        }
-      }, 20000);
-      if (timer && timer.unref) timer.unref();
-
-      client.methodCall('execute_kw', params, (error, value) => {
-        if (isSettled) return;
-        isSettled = true;
-        clearTimeout(timer);
-
-        if (error) {
-          if (error.message && (error.message.includes("tag 'TITLE'") || error.message.includes("tag 'title'"))) {
-            const rateErr = new Error("Odoo XML-RPC Rate Limit Exceeded (HTTP 429). Server Odoo membatasi kuota sementara.");
-            rateErr.isRateLimit = true;
-            rateErr.code = 429;
-            return reject(rateErr);
+    try {
+      return await new Promise((resolve, reject) => {
+        let isSettled = false;
+        const timer = setTimeout(() => {
+          if (!isSettled) {
+            isSettled = true;
+            reject(new Error(`Odoo XML-RPC timeout (${model}.${method}) after 20s`));
           }
-          reject(error);
-        } else {
-          resolve(value);
-        }
+        }, 20000);
+        if (timer && timer.unref) timer.unref();
+
+        client.methodCall('execute_kw', params, (error, value) => {
+          if (isSettled) return;
+          isSettled = true;
+          clearTimeout(timer);
+
+          if (error) {
+            if (error.message && (error.message.includes("tag 'TITLE'") || error.message.includes("tag 'title'"))) {
+              const rateErr = new Error("Odoo XML-RPC Rate Limit Exceeded (HTTP 429). Server Odoo membatasi kuota sementara.");
+              rateErr.isRateLimit = true;
+              rateErr.code = 429;
+              return reject(rateErr);
+            }
+            reject(error);
+          } else {
+            resolve(value);
+          }
+        });
       });
-    });
+    } catch (err) {
+      if (!_retriedAuth && err.message && /AccessDenied|SessionExpired/i.test(err.message)) {
+        this.uid = null;
+        await this.authenticate(true);
+        return this._callObject(model, method, args, kwargs, true);
+      }
+      throw err;
+    }
   }
 
   async executeKw(model, method, args, kwargs = {}) {
     return this._callObject(model, method, args, kwargs);
   }
 
-  async authenticate() {
-    try {
-      const uid = await this._callCommon('authenticate', [
-        this.db,
-        this.username,
-        this.password,
-        {}
-      ]);
-
-      if (!uid) {
-        throw new Error(`Odoo authentication failed for "${this.username}".`);
-      }
-
-      this.uid = uid;
-
-      try {
-        const userRecs = await this._callObject('res.users', 'read', [[this.uid]], {
-          fields: ['company_ids', 'company_id']
-        });
-        if (userRecs && userRecs.length > 0) {
-          this.allowedCompanyIds = userRecs[0].company_ids || [];
-          if (!this.companyId && userRecs[0].company_id) {
-            this.companyId = userRecs[0].company_id[0];
-          }
-        }
-      } catch (e) {
-        // Multi-company fetch non-fatal
-      }
-
+  async authenticate(force = false) {
+    if (!force && this.uid) {
       return this.uid;
-    } catch (error) {
-      console.error(`[Odoo] Auth failed for ${this.username}:`, error.message);
-      throw error;
     }
+    if (!force && this._authPromise) {
+      return this._authPromise;
+    }
+
+    this._authPromise = (async () => {
+      try {
+        if (!this.username || !this.password) {
+          throw new Error('Kredensial Odoo (username/password) belum dikonfigurasi di environment.');
+        }
+
+        const uid = await this._callCommon('authenticate', [
+          this.db,
+          this.username,
+          this.password,
+          {}
+        ]);
+
+        if (!uid) {
+          throw new Error(`Odoo authentication failed for "${this.username}".`);
+        }
+
+        this.uid = uid;
+
+        try {
+          const userRecs = await this._callObject('res.users', 'read', [[this.uid]], {
+            fields: ['company_ids', 'company_id']
+          });
+          if (userRecs && userRecs.length > 0) {
+            this.allowedCompanyIds = userRecs[0].company_ids || [];
+            if (!this.companyId && userRecs[0].company_id) {
+              this.companyId = userRecs[0].company_id[0];
+            }
+          }
+        } catch (e) {
+          // Multi-company fetch non-fatal
+        }
+
+        return this.uid;
+      } catch (error) {
+        this.uid = null;
+        console.error(`[Odoo] Auth failed for ${this.username}:`, error.message);
+        throw error;
+      } finally {
+        this._authPromise = null;
+      }
+    })();
+
+    return this._authPromise;
   }
 
   async getCompanyId(companyName = process.env.ODOO_COMPANY_NAME || 'Ansania') {
@@ -388,7 +425,7 @@ export class OdooClient {
         datas: buffer.toString('base64'),
         mimetype: 'application/pdf',
         access_token: accessToken,
-        public: true
+        public: false
       }]);
     } else {
       accessToken = crypto.randomUUID();
@@ -400,7 +437,7 @@ export class OdooClient {
         res_id: Number(recordId),
         mimetype: 'application/pdf',
         access_token: accessToken,
-        public: true
+        public: false
       }]);
     }
 
@@ -416,10 +453,10 @@ export class OdooClient {
 // Default instance (Ansania)
 export const defaultOdooClient = new OdooClient();
 
-// Dedicated Admin instance (it@kantiss.com)
+// Dedicated Admin instance
 export const adminOdooClient = new OdooClient({
-  url: 'https://kanti-sehati-sukses.odoo.com',
-  db: 'kanti-sehati-sukses',
-  username: process.env.ODOO_ADMIN_USERNAME || 'it@kantiss.com',
-  password: process.env.ODOO_ADMIN_PASSWORD || 'jadiapaya'
+  url: process.env.ODOO_URL || 'https://kanti-sehati-sukses.odoo.com',
+  db: process.env.ODOO_DB || 'kanti-sehati-sukses',
+  username: process.env.ODOO_ADMIN_USERNAME || '',
+  password: process.env.ODOO_ADMIN_PASSWORD || ''
 });

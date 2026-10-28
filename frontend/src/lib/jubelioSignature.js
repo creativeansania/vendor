@@ -1,6 +1,14 @@
 import crypto from 'crypto';
 import { config } from './config.js';
 
+function safeEqualHex(a, b) {
+  if (!a || !b) return false;
+  const bufA = Buffer.from(String(a), 'utf8');
+  const bufB = Buffer.from(String(b), 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 /**
  * Verify Jubelio Webhook Signature
  * Headers: sign, x-jubelio-signature, webhook-signature, x-signature
@@ -11,11 +19,14 @@ import { config } from './config.js';
 export function verifyJubelioSignature(req, rawBody) {
   const secret = config.jubelio.webhookSecret;
   if (!secret) {
-    // If secret is not configured, pass through
+    if (process.env.NODE_ENV === 'production' && process.env.JUBELIO_ALLOW_UNSIGNED !== 'true') {
+      console.error('[Jubelio Signature] JUBELIO_WEBHOOK_SECRET belum dikonfigurasi di production.');
+      return false;
+    }
     return true;
   }
 
-  const signHeader = 
+  const signHeader =
     req.headers.get('sign') ||
     req.headers.get('Sign') ||
     req.headers.get('x-jubelio-signature') ||
@@ -36,9 +47,14 @@ export function verifyJubelioSignature(req, rawBody) {
     const hmac1 = crypto.createHmac('sha256', secret).update(rawBody).digest('hex').toLowerCase();
     const hmac2 = crypto.createHmac('sha256', secret).update(rawBody + secret).digest('hex').toLowerCase();
 
-    const isValid = targetSig === hash1 || targetSig === hash2 || targetSig === hmac1 || targetSig === hmac2;
+    const isValid =
+      safeEqualHex(targetSig, hash1) ||
+      safeEqualHex(targetSig, hash2) ||
+      safeEqualHex(targetSig, hmac1) ||
+      safeEqualHex(targetSig, hmac2);
+
     if (!isValid) {
-      console.warn('[Jubelio Signature] Invalid signature received:', signHeader);
+      console.warn('[Jubelio Signature] Invalid signature received');
     }
     return isValid;
   } catch (err) {

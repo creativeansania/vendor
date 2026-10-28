@@ -26,12 +26,23 @@ export async function POST(req) {
       return NextResponse.json({ success: false, message: 'WIP ID is required' }, { status: 400 });
     }
 
-    // Check if auth token exists
+    // Enforce authentication & role permissions
     const auth = await authenticateRequest(req);
-    let user = auth.user;
-    if (!user) {
-      user = { id: '00000000-0000-0000-0000-000000000000', role: 'master_admin', email: 'system@kantiss.com' };
+    if (auth.error || !auth.user) {
+      return NextResponse.json(
+        { success: false, message: auth.error || 'Autentikasi diperlukan.' },
+        { status: auth.status || 401 }
+      );
     }
+
+    if (!['master_admin', 'master_vendor', 'admin_vendor'].includes(auth.user.role)) {
+      return NextResponse.json(
+        { success: false, message: 'Anda tidak memiliki izin untuk menginput hasil produksi.' },
+        { status: 403 }
+      );
+    }
+
+    const user = auth.user;
 
     // Resolve orderId in Supabase
     let orderId = Number(rawWipId);

@@ -25,10 +25,21 @@ export async function POST(req) {
     }
 
     const auth = await authenticateRequest(req);
-    let user = auth.user;
-    if (!user) {
-      user = { id: '00000000-0000-0000-0000-000000000000', role: 'master_admin', email: 'system@kantiss.com' };
+    if (auth.error || !auth.user) {
+      return NextResponse.json(
+        { success: false, message: auth.error || 'Autentikasi diperlukan.' },
+        { status: auth.status || 401 }
+      );
     }
+
+    if (!['master_admin', 'master_vendor', 'admin_vendor'].includes(auth.user.role)) {
+      return NextResponse.json(
+        { success: false, message: 'Anda tidak memiliki izin untuk menginput hasil potong.' },
+        { status: 403 }
+      );
+    }
+
+    const user = auth.user;
 
     let orderId = Number(rawWipId);
     const { data: byOdooWip } = await supabaseServer
