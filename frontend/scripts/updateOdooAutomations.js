@@ -72,8 +72,8 @@ async function updateAutomations() {
   console.log('Automation #1 filter_domain updated successfully!');
 
   console.log('3. Updating Automation #32 ([Custom] MO Reference in Transfer)...');
-  // Trigger whenever manufacturing order or sales order is empty
-  const auto32Domain = '["|", ("x_studio_manufacturing_order", "=", False), ("x_studio_sales_order", "=", False)]';
+  // Trigger only on non-cancelled transfers that have moves and are missing MO or SO reference
+  const auto32Domain = '["&", ("state", "!=", "cancel"), "&", ("move_ids", "!=", False), "|", ("x_studio_manufacturing_order", "=", False), ("x_studio_sales_order", "=", False)]';
   await adminOdooClient._callObject('base.automation', 'write', [
     [32],
     {
@@ -81,6 +81,15 @@ async function updateAutomations() {
     }
   ]);
   console.log('Automation #32 filter_domain updated successfully!');
+
+  console.log('4. Disabling obsolete Automation #61 (WIP production-result 404 webhook)...');
+  await adminOdooClient._callObject('base.automation', 'write', [
+    [61],
+    {
+      active: false
+    }
+  ]);
+  console.log('Automation #61 disabled successfully!');
 }
 
 updateAutomations().catch(console.error);

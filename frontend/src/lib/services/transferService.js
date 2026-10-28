@@ -36,7 +36,8 @@ export class TransferService {
         'id', 'name', 'origin', 'picking_type_id', 'sale_id',
         'x_studio_manufacturing_order', 'x_studio_sales_order', 'move_ids',
         'company_id', 'state', 'location_id', 'location_dest_id', 'partner_id',
-        'scheduled_date', 'date_deadline', 'move_type', 'create_uid'
+        'scheduled_date', 'date_deadline', 'move_type', 'create_uid', 'note',
+        'x_studio_source_warehouse', 'x_studio_destination_warehouse'
       ]
     ]);
 

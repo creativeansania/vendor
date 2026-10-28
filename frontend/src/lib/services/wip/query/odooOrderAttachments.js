@@ -245,7 +245,7 @@ export async function fetchOrderTransfers(order) {
     }
 
     const pickings = await adminOdooClient._callObject('stock.picking', 'read', [pickingIds], {
-      fields: ['id', 'name', 'origin', 'picking_type_id', 'state', 'date_done', 'scheduled_date']
+      fields: ['id', 'name', 'origin', 'picking_type_id', 'state', 'date_done', 'scheduled_date', 'move_ids']
     });
 
     const stateMap = {
@@ -257,7 +257,11 @@ export async function fetchOrderTransfers(order) {
       cancel: 'Dibatalkan'
     };
 
-    const mapped = (pickings || []).map((p) => {
+    const validPickings = (pickings || []).filter(
+      (p) => !(p.state === 'draft' && (!p.move_ids || p.move_ids.length === 0))
+    );
+
+    const mapped = validPickings.map((p) => {
       const typeName = Array.isArray(p.picking_type_id) ? p.picking_type_id[1] : (p.picking_type_id || '');
       const pName = p.name || '';
       let category = 'lainnya';
