@@ -1,8 +1,44 @@
 'use client';
 
-import { AlertTriangle, Flame, Clock } from 'lucide-react';
+import { AlertTriangle, Flame, Clock, CheckCircle2 } from 'lucide-react';
 
 export default function DashboardContextBanners({ status, totalCount, onClearStatus }) {
+  if (status === 'result_locked') {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '10px 16px',
+          marginBottom: '16px',
+          background: 'rgba(16, 185, 129, 0.08)',
+          border: '1.5px solid rgba(16, 185, 129, 0.3)',
+          borderRadius: '12px',
+          color: '#059669',
+          fontSize: '0.86rem',
+          flexWrap: 'wrap',
+          gap: '8px'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <CheckCircle2 size={18} color="#059669" />
+          <span>
+            Menampilkan <strong>{totalCount} SPK</strong> yang <strong>Sudah Selesai</strong> (Surat Jalan SFP Terbit / MO Selesai di Odoo).
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onClearStatus}
+          className="quick-action-pill"
+          style={{ fontSize: '0.74rem', background: 'var(--bg-card)', borderColor: 'rgba(16, 185, 129, 0.3)', color: '#059669', height: '28px' }}
+        >
+          Lihat Semua SPK
+        </button>
+      </div>
+    );
+  }
+
   if (status === 'kain_kurang') {
     return (
       <div

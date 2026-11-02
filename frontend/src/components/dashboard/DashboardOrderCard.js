@@ -20,7 +20,11 @@ export default function DashboardOrderCard({ order, onClick, onAskWa }) {
     (order.parent_wip_order_id && !/-0*1$/.test((order.mo_name || '').trim()))
   );
   const isCuttingLocked = Boolean(order.cutting_locked_at) || isBackorder;
-  const isResultLocked = Boolean(order.result_locked_at);
+  const isResultLocked = Boolean(
+    order.result_locked_at ||
+    order.mo_state === 'done' ||
+    order.no_surat_jalan_sfp
+  );
   const price = formatRupiahPrice(order.harga_vendor);
 
   // Parse SKU prefix

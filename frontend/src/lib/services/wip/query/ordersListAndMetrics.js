@@ -36,6 +36,15 @@ async function computeMetricsUncached(vendorId) {
   const todayStr = new Date().toISOString().split('T')[0];
   const sevenDaysLater = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
+  // Helper base query untuk SPK aktif yang BELUM selesai
+  // (belum submit PWA, MO belum done di Odoo, dan Surat Jalan SFP belum terbit)
+  const buildActiveUnfinishedBase = () => {
+    return buildCountBase()
+      .is('result_locked_at', null)
+      .neq('mo_state', 'done')
+      .is('no_surat_jalan_sfp', null);
+  };
+
   const [
     totalRes,
     resultLockedRes,
@@ -47,13 +56,17 @@ async function computeMetricsUncached(vendorId) {
     deadlineWeekRes
   ] = await Promise.all([
     buildCountBase(),
-    buildCountBase().not('result_locked_at', 'is', null),
-    buildCountBase().is('result_locked_at', null).is('cutting_locked_at', null).is('parent_wip_order_id', null),
-    buildCountBase().not('cutting_locked_at', 'is', null),
+    // Selesai: sudah submit PWA ATAU MO done di Odoo ATAU Surat Jalan SFP sudah terbit
+    buildCountBase().or('result_locked_at.not.is.null,mo_state.eq.done,no_surat_jalan_sfp.not.is.null'),
+    // Perlu Potong: SPK aktif belum selesai, belum dikunci potong, dan bukan anak backorder
+    buildActiveUnfinishedBase().is('cutting_locked_at', null).is('parent_wip_order_id', null),
+    buildActiveUnfinishedBase().not('cutting_locked_at', 'is', null),
     buildCountBase().not('parent_wip_order_id', 'is', null),
     buildCountBase().ilike('status_kebutuhan_kain', '%kurang%'),
-    buildCountBase().is('result_locked_at', null).lt('deadline_spk', todayStr),
-    buildCountBase().is('result_locked_at', null).gte('deadline_spk', todayStr).lte('deadline_spk', sevenDaysLater)
+    // Overdue: hanya SPK aktif yang belum selesai dan melewati deadline
+    buildActiveUnfinishedBase().lt('deadline_spk', todayStr),
+    // Deadline 7 Hari: hanya SPK aktif yang belum selesai
+    buildActiveUnfinishedBase().gte('deadline_spk', todayStr).lte('deadline_spk', sevenDaysLater)
   ]);
 
   const total = totalRes.count || 0;
@@ -200,19 +213,40 @@ export async function getOrders({
   const sevenDaysLater = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   if (status === 'cutting_pending') {
-    query = query.is('cutting_locked_at', null).is('result_locked_at', null).is('parent_wip_order_id', null);
+    query = query
+      .is('cutting_locked_at', null)
+      .is('result_locked_at', null)
+      .neq('mo_state', 'done')
+      .is('no_surat_jalan_sfp', null)
+      .is('parent_wip_order_id', null);
   } else if (status === 'cutting_locked') {
-    query = query.not('cutting_locked_at', 'is', null).is('result_locked_at', null);
+    query = query
+      .is('result_locked_at', null)
+      .neq('mo_state', 'done')
+      .is('no_surat_jalan_sfp', null)
+      .or('cutting_locked_at.not.is.null,parent_wip_order_id.not.is.null');
   } else if (status === 'result_pending') {
-    query = query.is('result_locked_at', null);
+    query = query
+      .is('result_locked_at', null)
+      .neq('mo_state', 'done')
+      .is('no_surat_jalan_sfp', null);
   } else if (status === 'result_locked') {
-    query = query.not('result_locked_at', 'is', null);
+    query = query.or('result_locked_at.not.is.null,mo_state.eq.done,no_surat_jalan_sfp.not.is.null');
   } else if (status === 'kain_kurang') {
     query = query.ilike('status_kebutuhan_kain', '%Kurang%');
   } else if (status === 'overdue') {
-    query = query.is('result_locked_at', null).lt('deadline_spk', todayStr);
+    query = query
+      .is('result_locked_at', null)
+      .neq('mo_state', 'done')
+      .is('no_surat_jalan_sfp', null)
+      .lt('deadline_spk', todayStr);
   } else if (status === 'deadline_week') {
-    query = query.is('result_locked_at', null).gte('deadline_spk', todayStr).lte('deadline_spk', sevenDaysLater);
+    query = query
+      .is('result_locked_at', null)
+      .neq('mo_state', 'done')
+      .is('no_surat_jalan_sfp', null)
+      .gte('deadline_spk', todayStr)
+      .lte('deadline_spk', sevenDaysLater);
   } else if (status === 'backorder') {
     query = query.not('parent_wip_order_id', 'is', null);
   }
