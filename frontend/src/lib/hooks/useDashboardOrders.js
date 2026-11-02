@@ -12,8 +12,10 @@ export function useDashboardOrders() {
   const [orders, setOrders] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [searchMo, setSearchMo] = useState('');
+  const [debouncedSearchMo, setDebouncedSearchMo] = useState('');
+  const [searchProduct, setSearchProduct] = useState('');
+  const [debouncedSearchProduct, setDebouncedSearchProduct] = useState('');
   const [status, setStatus] = useState('all');
   const [selectedVendor, setSelectedVendor] = useState('');
   const [page, setPage] = useState(1);
@@ -35,13 +37,14 @@ export function useDashboardOrders() {
     backorder_count: 0
   });
 
-  // 350ms debounce for search input to prevent rapid API requests
+  // 350ms debounce for search inputs to prevent rapid API requests
   useEffect(() => {
     const handler = setTimeout(() => {
-      setDebouncedSearch(search);
+      setDebouncedSearchMo(searchMo);
+      setDebouncedSearchProduct(searchProduct);
     }, 350);
     return () => clearTimeout(handler);
-  }, [search]);
+  }, [searchMo, searchProduct]);
 
   // Auth verification
   useEffect(() => {
@@ -88,7 +91,8 @@ export function useDashboardOrders() {
         limit: '24'
       });
       if (!shouldFetchMetrics) queryParams.set('includeMetrics', '0');
-      if (debouncedSearch.trim()) queryParams.set('search', debouncedSearch.trim());
+      if (debouncedSearchMo.trim()) queryParams.set('searchMo', debouncedSearchMo.trim());
+      if (debouncedSearchProduct.trim()) queryParams.set('searchProduct', debouncedSearchProduct.trim());
       if (status !== 'all') queryParams.set('status', status);
       if (selectedVendor) queryParams.set('vendorId', selectedVendor);
       if (sort !== 'latest') queryParams.set('sort', sort);
@@ -118,7 +122,7 @@ export function useDashboardOrders() {
         setLoading(false);
       }
     }
-  }, [user, page, debouncedSearch, status, selectedVendor, sort, period, backorderFilter]);
+  }, [user, page, debouncedSearchMo, debouncedSearchProduct, status, selectedVendor, sort, period, backorderFilter]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -130,17 +134,32 @@ export function useDashboardOrders() {
   const handleSearchSubmit = (e) => {
     if (e && e.preventDefault) e.preventDefault();
     setPage(1);
-    if (debouncedSearch === search) {
-      loadOrders();
-    } else {
-      setDebouncedSearch(search);
-    }
+    setDebouncedSearchMo(searchMo);
+    setDebouncedSearchProduct(searchProduct);
+    loadOrders();
   };
 
-  const handleClearSearch = () => {
-    setSearch('');
+  const handleClearMoSearch = () => {
+    setSearchMo('');
+    setDebouncedSearchMo('');
     setPage(1);
   };
+
+  const handleClearProductSearch = () => {
+    setSearchProduct('');
+    setDebouncedSearchProduct('');
+    setPage(1);
+  };
+
+  const handleClearAllSearch = () => {
+    setSearchMo('');
+    setDebouncedSearchMo('');
+    setSearchProduct('');
+    setDebouncedSearchProduct('');
+    setPage(1);
+  };
+
+  const handleClearSearch = handleClearAllSearch;
 
   const handleToggleStatus = (targetStatus) => {
     setStatus((prev) => (prev === targetStatus ? 'all' : targetStatus));
@@ -149,7 +168,10 @@ export function useDashboardOrders() {
 
   const handleResetFilters = () => {
     setStatus('all');
-    setSearch('');
+    setSearchMo('');
+    setDebouncedSearchMo('');
+    setSearchProduct('');
+    setDebouncedSearchProduct('');
     setSelectedVendor('');
     setSort('latest');
     setPeriod('');
@@ -159,7 +181,8 @@ export function useDashboardOrders() {
 
   const hasActiveFilters = Boolean(
     status !== 'all' ||
-    search.trim() ||
+    searchMo.trim() ||
+    searchProduct.trim() ||
     selectedVendor ||
     sort !== 'latest' ||
     period ||
@@ -265,8 +288,13 @@ export function useDashboardOrders() {
     orders,
     vendors,
     loading,
-    search,
-    setSearch,
+    searchMo,
+    setSearchMo,
+    searchProduct,
+    setSearchProduct,
+    // Legacy compatibility for any components expecting 'search'
+    search: (searchMo || searchProduct).trim(),
+    setSearch: setSearchMo,
     status,
     setStatus,
     selectedVendor,
@@ -289,6 +317,9 @@ export function useDashboardOrders() {
     loadOrders,
     handleSearchSubmit,
     handleClearSearch,
+    handleClearMoSearch,
+    handleClearProductSearch,
+    handleClearAllSearch,
     handleToggleStatus,
     handleResetFilters,
     handlePageChange,

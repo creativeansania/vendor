@@ -133,7 +133,7 @@ INSERT INTO users (name, email, password_hash, role)
 VALUES (
   'Master Admin Ansania',
   'admin@kantiss.com',
-  '$2b$10$CFwmF4NsLB/2dNuIs2XFkO57miI6M8GM9HTYkOmQM.IA5hTNYdHt6',
+  '$2b$10$1jV3nGqGwZiRnbCDc9p3Y.Jv.e3zBLqj8QuepWw0plarmlxTDXHIG',
   'master_admin'
 )
 ON CONFLICT (email) DO UPDATE 

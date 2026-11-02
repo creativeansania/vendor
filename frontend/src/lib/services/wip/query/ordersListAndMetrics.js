@@ -119,6 +119,8 @@ export async function getMetrics(user, vendorId) {
 export async function getOrders({
   user,
   search,
+  searchMo,
+  searchProduct,
   status,
   vendorId,
   page = 1,
@@ -157,8 +159,31 @@ export async function getOrders({
     query = query.eq('vendor_id', scopedVendorId);
   }
 
+  const cleanSearchMo = sanitizePostgrestSearchTerm(searchMo);
+  const cleanSearchProduct = sanitizePostgrestSearchTerm(searchProduct);
   const cleanSearch = sanitizePostgrestSearchTerm(search);
-  if (cleanSearch) {
+
+  // 1. Pencarian khusus Nomor MO / SPK
+  if (cleanSearchMo) {
+    const numOnly = cleanSearchMo.replace(/[^0-9]/g, '');
+    if (numOnly) {
+      query = query.or(
+        `mo_name.ilike.%${cleanSearchMo}%,sales_order.ilike.%${cleanSearchMo}%,mo_name.ilike.%${numOnly}%,id.eq.${numOnly}`
+      );
+    } else {
+      query = query.or(
+        `mo_name.ilike.%${cleanSearchMo}%,sales_order.ilike.%${cleanSearchMo}%`
+      );
+    }
+  }
+
+  // 2. Pencarian khusus Produk & Varian Warna
+  if (cleanSearchProduct) {
+    query = query.ilike('product_name', `%${cleanSearchProduct}%`);
+  }
+
+  // 3. Fallback jika parameter search gabungan lawas dikirimkan
+  if (!cleanSearchMo && !cleanSearchProduct && cleanSearch) {
     const numOnly = cleanSearch.replace(/[^0-9]/g, '');
     if (numOnly) {
       query = query.or(

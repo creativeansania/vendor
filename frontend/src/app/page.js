@@ -18,6 +18,10 @@ export default function DashboardPage() {
     loading,
     search,
     setSearch,
+    searchMo,
+    setSearchMo,
+    searchProduct,
+    setSearchProduct,
     status,
     setStatus,
     selectedVendor,
@@ -40,6 +44,9 @@ export default function DashboardPage() {
     loadOrders,
     handleSearchSubmit,
     handleClearSearch,
+    handleClearMoSearch,
+    handleClearProductSearch,
+    handleClearAllSearch,
     handleToggleStatus,
     handleResetFilters,
     handlePageChange,
@@ -73,8 +80,15 @@ export default function DashboardPage() {
         <DashboardFilters
           search={search}
           onSearchChange={setSearch}
+          searchMo={searchMo}
+          onSearchMoChange={setSearchMo}
+          onClearSearchMo={handleClearMoSearch}
+          searchProduct={searchProduct}
+          onSearchProductChange={setSearchProduct}
+          onClearSearchProduct={handleClearProductSearch}
           onSearchSubmit={handleSearchSubmit}
           onClearSearch={handleClearSearch}
+          onClearAllSearch={handleClearAllSearch}
           vendors={vendors}
           selectedVendor={selectedVendor}
           onSelectVendor={(v) => {
@@ -121,7 +135,11 @@ export default function DashboardPage() {
           orders={displayedOrders}
           status={status}
           search={search}
+          searchMo={searchMo}
+          searchProduct={searchProduct}
           onClearSearch={handleClearSearch}
+          onClearMoSearch={handleClearMoSearch}
+          onClearProductSearch={handleClearProductSearch}
           onClearStatus={() => {
             setStatus('all');
             setPage(1);

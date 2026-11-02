@@ -11,6 +11,8 @@ export async function GET(req) {
 
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search');
+    const searchMo = searchParams.get('searchMo') || searchParams.get('search_mo');
+    const searchProduct = searchParams.get('searchProduct') || searchParams.get('search_product');
     const status = searchParams.get('status');
     const vendorId = searchParams.get('vendorId');
     const page = searchParams.get('page') || '1';
@@ -23,6 +25,8 @@ export async function GET(req) {
     const result = await wipService.getOrders({
       user: auth.user,
       search,
+      searchMo,
+      searchProduct,
       status,
       vendorId,
       page,

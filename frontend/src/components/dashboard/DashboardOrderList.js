@@ -12,7 +12,11 @@ export default function DashboardOrderList({
   orders = [],
   status,
   search,
+  searchMo,
+  searchProduct,
   onClearSearch,
+  onClearMoSearch,
+  onClearProductSearch,
   onClearStatus,
   onSelectOrder,
   onAskWa,
@@ -106,7 +110,11 @@ export default function DashboardOrderList({
       <DashboardEmptyState
         status={status}
         search={search}
+        searchMo={searchMo}
+        searchProduct={searchProduct}
         onClearSearch={onClearSearch}
+        onClearMoSearch={onClearMoSearch}
+        onClearProductSearch={onClearProductSearch}
         onClearStatus={onClearStatus}
       />
     );

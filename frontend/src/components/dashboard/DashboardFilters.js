@@ -1,12 +1,19 @@
 'use client';
 
-import { Search, X, Building2, ArrowUpDown, Calendar, Filter } from 'lucide-react';
+import { Search, X, Building2, ArrowUpDown, Calendar, Filter, Hash, Palette } from 'lucide-react';
 
 export default function DashboardFilters({
   search,
   onSearchChange,
+  searchMo,
+  onSearchMoChange,
+  onClearSearchMo,
+  searchProduct,
+  onSearchProductChange,
+  onClearSearchProduct,
   onSearchSubmit,
   onClearSearch,
+  onClearAllSearch,
   vendors = [],
   selectedVendor,
   onSelectVendor,
@@ -24,59 +31,125 @@ export default function DashboardFilters({
   activeKainKurangBadge,
   onToggleStatus
 }) {
+  const moVal = searchMo !== undefined ? searchMo : (search || '');
+  const productVal = searchProduct !== undefined ? searchProduct : '';
+  const clearMo = onClearSearchMo || onClearSearch;
+  const clearProduct = onClearSearchProduct || onClearSearch;
+
   return (
     <div className="card" style={{ padding: '16px', borderRadius: '16px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {/* Search Bar */}
-        <form onSubmit={onSearchSubmit} style={{ display: 'flex', gap: '8px', width: '100%' }}>
-          <div style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex', alignItems: 'center' }}>
-            <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '14px', pointerEvents: 'none' }} />
-            <input
-              type="text"
-              placeholder="Ketik 4 angka nomor SPK (misal: 1495) atau nama produk..."
-              className="input-field"
-              style={{
-                paddingLeft: '40px',
-                paddingRight: search ? '40px' : '14px',
-                height: '44px',
-                fontSize: '0.92rem',
-                borderRadius: '12px',
-                fontWeight: 500
-              }}
-              value={search}
-              onChange={(e) => onSearchChange(e.target.value)}
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={onClearSearch}
+        {/* Search Bar - Terpisah antara No. MO dan Produk / Varian Warna */}
+        <form onSubmit={onSearchSubmit} style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', width: '100%' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '8px', flex: 1, minWidth: '260px' }}>
+            {/* Input 1: Cari Nomor MO / SPK */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Hash size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '14px', pointerEvents: 'none' }} />
+              <input
+                type="text"
+                placeholder="No. MO / SPK (misal: 1495, 00411)..."
+                className="input-field"
                 style={{
-                  position: 'absolute',
-                  right: '10px',
-                  width: '28px',
-                  height: '28px',
-                  borderRadius: '50%',
-                  background: 'var(--bg-card-hover)',
-                  border: '1px solid var(--border-default)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  color: 'var(--text-muted)',
-                  transition: 'all 0.15s ease'
+                  paddingLeft: '40px',
+                  paddingRight: moVal ? '40px' : '14px',
+                  height: '44px',
+                  fontSize: '0.9rem',
+                  borderRadius: '12px',
+                  fontWeight: 500,
+                  width: '100%'
                 }}
-                title="Hapus ketikan pencarian"
-              >
-                <X size={15} />
-              </button>
-            )}
+                value={moVal}
+                onChange={(e) => (onSearchMoChange ? onSearchMoChange(e.target.value) : onSearchChange(e.target.value))}
+              />
+              {moVal && (
+                <button
+                  type="button"
+                  onClick={clearMo}
+                  style={{
+                    position: 'absolute',
+                    right: '10px',
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    background: 'var(--bg-card-hover)',
+                    border: '1px solid var(--border-default)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: 'var(--text-muted)',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Hapus filter nomor MO"
+                >
+                  <X size={15} />
+                </button>
+              )}
+            </div>
+
+            {/* Input 2: Cari Produk / Varian Warna */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Palette size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '14px', pointerEvents: 'none' }} />
+              <input
+                type="text"
+                placeholder="Produk / Varian Warna (misal: Rose Gold, Rayon)..."
+                className="input-field"
+                style={{
+                  paddingLeft: '40px',
+                  paddingRight: productVal ? '40px' : '14px',
+                  height: '44px',
+                  fontSize: '0.9rem',
+                  borderRadius: '12px',
+                  fontWeight: 500,
+                  width: '100%'
+                }}
+                value={productVal}
+                onChange={(e) => onSearchProductChange && onSearchProductChange(e.target.value)}
+              />
+              {productVal && (
+                <button
+                  type="button"
+                  onClick={clearProduct}
+                  style={{
+                    position: 'absolute',
+                    right: '10px',
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    background: 'var(--bg-card-hover)',
+                    border: '1px solid var(--border-default)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: 'var(--text-muted)',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Hapus filter produk / warna"
+                >
+                  <X size={15} />
+                </button>
+              )}
+            </div>
           </div>
+
           <button
             type="submit"
             className="btn btn-primary"
-            style={{ height: '44px', padding: '0 20px', fontSize: '0.9rem', flexShrink: 0, borderRadius: '12px', fontWeight: 700 }}
+            style={{
+              height: '44px',
+              padding: '0 20px',
+              fontSize: '0.9rem',
+              flexShrink: 0,
+              borderRadius: '12px',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
           >
-            Cari
+            <Search size={16} />
+            <span>Cari</span>
           </button>
         </form>
 
