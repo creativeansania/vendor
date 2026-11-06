@@ -78,6 +78,14 @@ export async function executeAutoSplitPicking(odoo, plan, resolvedSo, moMap) {
 
   console.log(`[Transfer Auto-Split] Splitting ${pickingName} (#${picking.id}) across ${moGroups.length} distinct MOs...`);
 
+  const affectedSoIds = new Set();
+  if (picking.x_studio_sales_order && picking.x_studio_sales_order[0]) {
+    affectedSoIds.add(picking.x_studio_sales_order[0]);
+  }
+  if (resolvedSo && resolvedSo.id) {
+    affectedSoIds.add(resolvedSo.id);
+  }
+
   const firstMoGroup = moGroups[0];
   const splitTargetGroups = moGroups.slice(1);
   const splitTargetMoIds = splitTargetGroups.map((g) => Number(g.moId)).filter(Boolean);
@@ -141,6 +149,10 @@ export async function executeAutoSplitPicking(odoo, plan, resolvedSo, moMap) {
     const moSo = (moInfo.x_studio_sales_order && moInfo.x_studio_sales_order[0])
       ? { id: moInfo.x_studio_sales_order[0], name: moInfo.x_studio_sales_order[1] }
       : resolvedSo;
+
+    if (moSo && moSo.id) {
+      affectedSoIds.add(moSo.id);
+    }
 
     let targetPickingId = openPickingByMoId.get(Number(moGroup.moId)) || null;
     let wasCreatedFresh = false;
@@ -228,6 +240,7 @@ export async function executeAutoSplitPicking(odoo, plan, resolvedSo, moMap) {
   };
   if (firstMoSo) {
     origVals.x_studio_sales_order = firstMoSo.id;
+    if (firstMoSo.id) affectedSoIds.add(firstMoSo.id);
   }
   if (isFactoryInternal && picking.sale_id) {
     origVals.sale_id = false;
@@ -259,6 +272,7 @@ export async function executeAutoSplitPicking(odoo, plan, resolvedSo, moMap) {
     originalPickingMo: firstMoGroup.moName,
     createdPickingsCount: newCreatedPickings.length,
     createdPickingIds: newCreatedPickings,
+    affectedSoIds: Array.from(affectedSoIds),
     updated: true
   };
 }
@@ -284,6 +298,8 @@ export async function executeSinglePickingLink(odoo, plan, resolvedMo, resolvedS
   const currentStudioSoId = picking.x_studio_sales_order ? picking.x_studio_sales_order[0] : null;
 
   const vals = {};
+  const affectedSoIds = new Set();
+  if (currentStudioSoId) affectedSoIds.add(currentStudioSoId);
 
   if (resolvedMo && resolvedMo.id !== currentMoId) {
     vals.x_studio_manufacturing_order = resolvedMo.id;
@@ -291,6 +307,7 @@ export async function executeSinglePickingLink(odoo, plan, resolvedMo, resolvedS
 
   if (resolvedSo && resolvedSo.id !== currentStudioSoId) {
     vals.x_studio_sales_order = resolvedSo.id;
+    affectedSoIds.add(resolvedSo.id);
   }
 
   if (isFactoryInternal) {
@@ -301,6 +318,7 @@ export async function executeSinglePickingLink(odoo, plan, resolvedMo, resolvedS
   } else if (isDeliveryType) {
     if (resolvedSo && (!picking.sale_id || picking.sale_id[0] !== resolvedSo.id)) {
       vals.sale_id = resolvedSo.id;
+      affectedSoIds.add(resolvedSo.id);
     }
   }
 
@@ -321,6 +339,7 @@ export async function executeSinglePickingLink(odoo, plan, resolvedMo, resolvedS
     isDeliveryType,
     resolvedMo: resolvedMo ? { id: resolvedMo.id, name: resolvedMo.name } : null,
     resolvedSo: resolvedSo ? { id: resolvedSo.id, name: resolvedSo.name } : null,
+    affectedSoIds: Array.from(affectedSoIds),
     updatedFields: Object.keys(vals),
     updated
   };

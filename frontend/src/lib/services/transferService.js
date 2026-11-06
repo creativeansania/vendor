@@ -6,6 +6,7 @@ import {
 } from './transfer/transferPrefetcher.js';
 import { buildPickingPlan, resolvePlanMoAndSo } from './transfer/transferMoSoResolver.js';
 import { executeAutoSplitPicking, executeSinglePickingLink } from './transfer/transferAutoSplitter.js';
+import { updateSaleOrderCounts } from './soCountService.js';
 
 export class TransferService {
   constructor(odooClient = adminOdooClient) {
@@ -86,6 +87,23 @@ export class TransferService {
           pickingId: plan.picking.id,
           error: pickErr.message
         });
+      }
+    }
+
+    // Refresh count on all affected Sales Orders (0 LoC in Odoo)
+    const affectedSoIds = new Set();
+    for (const res of results) {
+      if (Array.isArray(res.affectedSoIds)) {
+        for (const sid of res.affectedSoIds) {
+          if (sid) affectedSoIds.add(sid);
+        }
+      }
+    }
+    if (affectedSoIds.size > 0) {
+      try {
+        await updateSaleOrderCounts(this.odoo, Array.from(affectedSoIds));
+      } catch (errCount) {
+        console.warn(`[Transfer MO/SO] Warning updating SO counts: ${errCount.message}`);
       }
     }
 

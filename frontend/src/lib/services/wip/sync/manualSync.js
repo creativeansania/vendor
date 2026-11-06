@@ -177,21 +177,26 @@ export async function syncOrderFromOdoo({ user, orderId }) {
 /**
  * Pull all active WIPs from Odoo (Initial / Bulk Sync with vendor preload & parallel DB chunks)
  */
-export async function syncAllFromOdoo() {
+export async function syncAllFromOdoo({ limit = null, chunkSize = 25 } = {}) {
   await Promise.all([
     adminOdooClient.authenticate(),
     wipRepo.preloadVendors()
   ]);
   console.log('[WipSyncService] Pulling active WIP records from Odoo...');
 
+  const searchOpts = { order: 'id desc' };
+  if (limit && Number(limit) > 0) {
+    searchOpts.limit = Number(limit);
+  }
+
   const wipIds = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'search', [
     [['x_name', '!=', false]]
-  ], { limit: 100, order: 'id desc' });
+  ], searchOpts);
 
   let syncedCount = 0;
-  const chunkSize = 25;
-  for (let i = 0; i < wipIds.length; i += chunkSize) {
-    const chunk = wipIds.slice(i, i + chunkSize);
+  const batchSize = chunkSize || 25;
+  for (let i = 0; i < wipIds.length; i += batchSize) {
+    const chunk = wipIds.slice(i, i + batchSize);
     const wips = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'read', [
       chunk,
       WIP_ODOO_SYNC_FIELDS

@@ -1,5 +1,6 @@
 import { supabaseServer } from '../../../supabaseServer.js';
 import { adminOdooClient } from '../../../odoo/odooClient.js';
+import { updateSaleOrderCounts } from '../../soCountService.js';
 import { findMatchingGradeBVariant } from './gradeBVariantResolver.js';
 
 export const SHARED_PRODUCTION_MO_FIELDS = [
@@ -166,6 +167,12 @@ export async function syncGradeBToOdoo(orderOrWipId, bGrade, { preloadedMo = nul
         });
         const readMoB = await adminOdooClient._callObject('mrp.production', 'read', [[newMoBId]], { fields: ['name'] });
         wipUpdateVals.x_studio_nama_mo_grade_b = readMoB && readMoB[0] ? readMoB[0].name : `MO#${newMoBId}`;
+
+        if (parentMo.x_studio_sales_order && parentMo.x_studio_sales_order[0]) {
+          updateSaleOrderCounts(adminOdooClient, [parentMo.x_studio_sales_order[0]]).catch((err) => {
+            console.warn(`[syncGradeBToOdoo] Warning updating SO counts: ${err.message}`);
+          });
+        }
       }
     } catch (e) {
       console.warn('[syncGradeBToOdoo] MO Grade B creation error:', e.message);

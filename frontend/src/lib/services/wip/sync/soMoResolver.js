@@ -1,4 +1,5 @@
 import { adminOdooClient } from '../../../odoo/odooClient.js';
+import { updateSaleOrderCounts } from '../../soCountService.js';
 
 /**
  * Resolves and saves the Sales Order (x_studio_sales_order) for an MO.
@@ -134,6 +135,11 @@ export async function resolveSalesOrderForMo(moId, { preloadedMo = null } = {}) 
       });
       if (preloadedMo) {
         preloadedMo.x_studio_sales_order = [resolvedSo.id, resolvedSo.name];
+      }
+      try {
+        await updateSaleOrderCounts(adminOdooClient, [resolvedSo.id]);
+      } catch (errCount) {
+        console.warn(`[soMoResolver] Warning updating SO counts: ${errCount.message}`);
       }
       return resolvedSo;
     }

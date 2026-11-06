@@ -1,4 +1,4 @@
-import { after } from 'next/server';
+import { after } from 'next/server.js';
 import { supabaseServer } from '../../supabaseServer.js';
 import { invalidateOrderCache } from './wipCache.js';
 
