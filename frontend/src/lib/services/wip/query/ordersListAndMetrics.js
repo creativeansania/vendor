@@ -212,7 +212,14 @@ export async function getOrders({
   const todayStr = new Date().toISOString().split('T')[0];
   const sevenDaysLater = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-  if (status === 'cutting_pending') {
+  if (status === 'proses' || status === 'active') {
+    query = query
+      .neq('status_produksi', 'Selesai')
+      .neq('mo_state', 'done')
+      .is('result_locked_at', null);
+  } else if (status === 'selesai' || status === 'completed') {
+    query = query.or('status_produksi.eq.Selesai,mo_state.eq.done,result_locked_at.not.is.null');
+  } else if (status === 'cutting_pending') {
     query = query
       .is('cutting_locked_at', null)
       .is('result_locked_at', null)

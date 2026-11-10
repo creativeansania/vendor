@@ -50,6 +50,8 @@ function parseProductName(rawName) {
 export default function BatchSpreadsheetPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
+  const [vendors, setVendors] = useState([]);
+  const [selectedVendor, setSelectedVendor] = useState('');
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -58,9 +60,9 @@ export default function BatchSpreadsheetPage() {
   // Spreadsheet view mode
   const [activeSheet, setActiveSheet] = useState('kiriman'); // 'kiriman' | 'cutting'
 
-  // Filters
+  // Filters (Default to 'proses' so completed orders are filtered out automatically)
   const [filterSo, setFilterSo] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('proses');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Global batch helpers
@@ -72,35 +74,56 @@ export default function BatchSpreadsheetPage() {
   // Input refs for Excel-like keyboard navigation: gridRefs.current[`${rowIndex}_${colKey}`]
   const inputRefs = useRef({});
 
-  // Load orders helper for manual refresh
-  const loadOrders = useCallback(async () => {
+  // Load orders helper for manual refresh / server search
+  const loadOrders = useCallback(async (customSearch, customStatus, customVendor) => {
     setLoading(true);
     setFeedback({ text: '', type: '' });
     try {
-      const res = await fetchApi('/orders?limit=150&sort=latest');
+      const st = customStatus !== undefined ? customStatus : filterStatus;
+      const srch = customSearch !== undefined ? customSearch : searchQuery;
+      const vnd = customVendor !== undefined ? customVendor : selectedVendor;
+
+      const params = new URLSearchParams();
+      params.set('limit', '300');
+      params.set('sort', 'latest');
+      if (st && st !== 'all') {
+        params.set('status', st);
+      }
+      if (srch && srch.trim()) {
+        params.set('search', srch.trim());
+      }
+      if (vnd) {
+        params.set('vendorId', vnd);
+      }
+
+      const res = await fetchApi(`/orders?${params.toString()}`);
       const loadedOrders = res.orders || [];
       setOrders(loadedOrders);
 
-      // Initialize row inputs
-      const initialMap = {};
-      for (const o of loadedOrders) {
-        initialMap[o.id] = {
-          qtyGradeA: Number(o.qty_grade_a || 0) > 0 ? o.qty_grade_a : o.qty_spk || 0,
-          qtyGradeB: o.qty_grade_b || 0,
-          noSuratJalan: o.no_surat_jalan_sfp || '',
-          actualCutting: Number(o.actual_cutting || 0) > 0 ? o.actual_cutting : Math.round(Number(o.estimasi_dari_spb || o.qty_spk || 0)),
-          isDirty: false
-        };
-      }
-      setRowInputs(initialMap);
+      // Initialize row inputs, preserving any unsaved edits if matching id exists
+      setRowInputs((prev) => {
+        const nextMap = { ...prev };
+        for (const o of loadedOrders) {
+          if (!nextMap[o.id]) {
+            nextMap[o.id] = {
+              qtyGradeA: Number(o.qty_grade_a || 0) > 0 ? o.qty_grade_a : o.qty_spk || 0,
+              qtyGradeB: o.qty_grade_b || 0,
+              noSuratJalan: o.no_surat_jalan_sfp || '',
+              actualCutting: Number(o.actual_cutting || 0) > 0 ? o.actual_cutting : Math.round(Number(o.estimasi_dari_spb || o.qty_spk || 0)),
+              isDirty: false
+            };
+          }
+        }
+        return nextMap;
+      });
     } catch (err) {
       setFeedback({ text: 'Gagal memuat daftar order: ' + err.message, type: 'error' });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filterStatus, searchQuery, selectedVendor]);
 
-  // Initial load: user & orders in one async flow
+  // Initial load: user, vendors, & active orders in one async flow
   useEffect(() => {
     let isMounted = true;
     async function initData() {
@@ -109,7 +132,20 @@ export default function BatchSpreadsheetPage() {
         if (!isMounted) return;
         setUser(u);
 
-        const res = await fetchApi('/orders?limit=150&sort=latest');
+        // If admin, load vendor list for quick filter
+        if (['master_admin', 'admin'].includes(u?.role)) {
+          try {
+            const vRes = await fetchApi('/vendors');
+            if (isMounted && vRes?.vendors) {
+              setVendors(vRes.vendors);
+            }
+          } catch (e) {
+            console.warn('Gagal memuat daftar vendor:', e);
+          }
+        }
+
+        // Load active (status=proses) orders by default
+        const res = await fetchApi('/orders?limit=300&sort=latest&status=proses');
         if (!isMounted) return;
         const loadedOrders = res.orders || [];
         setOrders(loadedOrders);
@@ -160,10 +196,15 @@ export default function BatchSpreadsheetPage() {
       if (filterSo !== 'all' && o.sales_order !== filterSo) {
         return false;
       }
-      if (filterStatus === 'proses' && o.status_produksi?.toLowerCase() === 'selesai') {
+      const isCompleted =
+        o.status_produksi?.toLowerCase() === 'selesai' ||
+        o.mo_state === 'done' ||
+        Boolean(o.result_locked_at);
+
+      if (filterStatus === 'proses' && isCompleted) {
         return false;
       }
-      if (filterStatus === 'selesai' && o.status_produksi?.toLowerCase() !== 'selesai') {
+      if (filterStatus === 'selesai' && !isCompleted) {
         return false;
       }
       if (searchQuery.trim()) {
@@ -565,6 +606,42 @@ export default function BatchSpreadsheetPage() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Filter Vendor (Khusus Admin / Internal) */}
+          {vendors.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Vendor:</span>
+              <select
+                value={selectedVendor}
+                onChange={(e) => {
+                  const nextV = e.target.value;
+                  setSelectedVendor(nextV);
+                  loadOrders(searchQuery, filterStatus, nextV);
+                }}
+                style={{
+                  fontSize: '0.82rem',
+                  padding: '5px 10px',
+                  height: '34px',
+                  minWidth: '150px',
+                  background: 'var(--bg-input)',
+                  color: 'var(--text-primary)',
+                  border: '1.5px solid var(--border-default)',
+                  borderRadius: '8px',
+                  outline: 'none',
+                  fontWeight: 600
+                }}
+              >
+                <option value="" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+                  Semua Vendor ({vendors.length})
+                </option>
+                {vendors.map((v) => (
+                  <option key={v.id} value={v.id} style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+                    {v.code ? `[${v.code}] ` : ''}{v.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Filter Sales Order */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Sales Order:</span>
@@ -600,7 +677,11 @@ export default function BatchSpreadsheetPage() {
             <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Status:</span>
             <select
               value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
+              onChange={(e) => {
+                const nextSt = e.target.value;
+                setFilterStatus(nextSt);
+                loadOrders(searchQuery, nextSt, selectedVendor);
+              }}
               style={{
                 fontSize: '0.82rem',
                 padding: '5px 10px',
@@ -613,9 +694,15 @@ export default function BatchSpreadsheetPage() {
                 fontWeight: 600
               }}
             >
-              <option value="all" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Semua Status</option>
-              <option value="proses" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Sedang Proses</option>
-              <option value="selesai" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Selesai</option>
+              <option value="proses" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+                Sedang Proses (Selesai Disembunyikan)
+              </option>
+              <option value="all" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+                Semua Status (Termasuk Selesai)
+              </option>
+              <option value="selesai" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+                Hanya yang Sudah Selesai
+              </option>
             </select>
           </div>
 
@@ -624,9 +711,14 @@ export default function BatchSpreadsheetPage() {
             <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-muted)' }} />
             <input
               type="text"
-              placeholder="Cari No. SPK / Produk..."
+              placeholder="Cari No. SPK / Produk (Tekan Enter)..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  loadOrders(e.target.value, filterStatus, selectedVendor);
+                }
+              }}
               style={{
                 paddingLeft: '32px',
                 paddingRight: '10px',
@@ -645,7 +737,18 @@ export default function BatchSpreadsheetPage() {
 
           <button
             type="button"
-            onClick={loadOrders}
+            onClick={() => loadOrders(searchQuery, filterStatus, selectedVendor)}
+            className="btn btn-secondary"
+            style={{ fontSize: '0.78rem', height: '34px', padding: '0 10px', gap: '4px' }}
+            title="Cari ke Database"
+          >
+            <Search size={14} />
+            <span>Cari</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => loadOrders(searchQuery, filterStatus, selectedVendor)}
             className="btn btn-secondary"
             style={{ fontSize: '0.78rem', height: '34px', padding: '0 10px', gap: '4px' }}
             title="Refresh Data"
