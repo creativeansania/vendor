@@ -368,7 +368,16 @@ export default function BatchSpreadsheetPage() {
   if (!user) return null;
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-canvas)', display: 'flex', flexDirection: 'column' }}>
+    <div
+      className="batch-page-container"
+      style={{
+        minHeight: '100vh',
+        background: 'var(--bg-canvas)',
+        color: 'var(--text-primary)',
+        display: 'flex',
+        flexDirection: 'column'
+      }}
+    >
       {/* 1. Header Navbar */}
       <header
         style={{
@@ -412,7 +421,7 @@ export default function BatchSpreadsheetPage() {
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h1 style={{ fontSize: '1rem', margin: 0, fontWeight: 800 }}>
+                <h1 style={{ fontSize: '1rem', margin: 0, fontWeight: 800, color: 'var(--text-primary)' }}>
                   Mode Rekap Spreadsheet
                 </h1>
                 <StatusBadge type="role" value={user.role} />
@@ -450,7 +459,7 @@ export default function BatchSpreadsheetPage() {
         }}
       >
         {/* Sheet Tabs (Kiriman vs Cutting) */}
-        <div style={{ display: 'flex', gap: '6px', background: 'var(--bg-canvas)', padding: '4px', borderRadius: '10px' }}>
+        <div style={{ display: 'flex', gap: '6px', background: 'var(--bg-card-subtle)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border-default)' }}>
           <button
             type="button"
             onClick={() => setActiveSheet('kiriman')}
@@ -459,14 +468,15 @@ export default function BatchSpreadsheetPage() {
               fontSize: '0.82rem',
               fontWeight: 700,
               borderRadius: '8px',
-              border: 'none',
+              border: activeSheet === 'kiriman' ? '1px solid var(--status-emerald-border)' : '1px solid transparent',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
               background: activeSheet === 'kiriman' ? 'var(--bg-card)' : 'transparent',
               color: activeSheet === 'kiriman' ? 'var(--status-emerald)' : 'var(--text-muted)',
-              boxShadow: activeSheet === 'kiriman' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none'
+              boxShadow: activeSheet === 'kiriman' ? 'var(--shadow-subtle)' : 'none',
+              transition: 'all 0.15s ease'
             }}
           >
             <Package size={15} />
@@ -481,14 +491,15 @@ export default function BatchSpreadsheetPage() {
               fontSize: '0.82rem',
               fontWeight: 700,
               borderRadius: '8px',
-              border: 'none',
+              border: activeSheet === 'cutting' ? '1px solid var(--brand-gold-border)' : '1px solid transparent',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
               background: activeSheet === 'cutting' ? 'var(--bg-card)' : 'transparent',
               color: activeSheet === 'cutting' ? 'var(--brand-gold)' : 'var(--text-muted)',
-              boxShadow: activeSheet === 'cutting' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none'
+              boxShadow: activeSheet === 'cutting' ? 'var(--shadow-subtle)' : 'none',
+              transition: 'all 0.15s ease'
             }}
           >
             <Scissors size={15} />
@@ -535,12 +546,24 @@ export default function BatchSpreadsheetPage() {
             <select
               value={filterSo}
               onChange={(e) => setFilterSo(e.target.value)}
-              className="input-select"
-              style={{ fontSize: '0.82rem', padding: '5px 10px', height: '34px', minWidth: '180px' }}
+              style={{
+                fontSize: '0.82rem',
+                padding: '5px 10px',
+                height: '34px',
+                minWidth: '180px',
+                background: 'var(--bg-input)',
+                color: 'var(--text-primary)',
+                border: '1.5px solid var(--border-default)',
+                borderRadius: '8px',
+                outline: 'none',
+                fontWeight: 600
+              }}
             >
-              <option value="all">Semua Sales Order ({uniqueSos.length})</option>
+              <option value="all" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+                Semua Sales Order ({uniqueSos.length})
+              </option>
               {uniqueSos.map((so) => (
-                <option key={so} value={so}>
+                <option key={so} value={so} style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
                   {so}
                 </option>
               ))}
@@ -553,12 +576,21 @@ export default function BatchSpreadsheetPage() {
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="input-select"
-              style={{ fontSize: '0.82rem', padding: '5px 10px', height: '34px' }}
+              style={{
+                fontSize: '0.82rem',
+                padding: '5px 10px',
+                height: '34px',
+                background: 'var(--bg-input)',
+                color: 'var(--text-primary)',
+                border: '1.5px solid var(--border-default)',
+                borderRadius: '8px',
+                outline: 'none',
+                fontWeight: 600
+              }}
             >
-              <option value="all">Semua Status</option>
-              <option value="proses">Sedang Proses</option>
-              <option value="selesai">Selesai</option>
+              <option value="all" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Semua Status</option>
+              <option value="proses" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Sedang Proses</option>
+              <option value="selesai" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Selesai</option>
             </select>
           </div>
 
@@ -570,8 +602,19 @@ export default function BatchSpreadsheetPage() {
               placeholder="Cari No. SPK / Produk..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="input-text"
-              style={{ paddingLeft: '32px', height: '34px', fontSize: '0.82rem' }}
+              style={{
+                paddingLeft: '32px',
+                paddingRight: '10px',
+                height: '34px',
+                fontSize: '0.82rem',
+                width: '100%',
+                background: 'var(--bg-input)',
+                color: 'var(--text-primary)',
+                border: '1.5px solid var(--border-default)',
+                borderRadius: '8px',
+                outline: 'none',
+                fontWeight: 600
+              }}
             />
           </div>
 
@@ -612,8 +655,18 @@ export default function BatchSpreadsheetPage() {
                   placeholder="Isi No. Surat Jalan (misal: SFP/00894)..."
                   value={globalSj}
                   onChange={(e) => setGlobalSj(e.target.value)}
-                  className="input-text"
-                  style={{ height: '30px', fontSize: '0.78rem', width: '240px', padding: '4px 8px' }}
+                  style={{
+                    height: '30px',
+                    fontSize: '0.78rem',
+                    width: '240px',
+                    padding: '4px 8px',
+                    background: 'var(--bg-input)',
+                    color: 'var(--text-primary)',
+                    border: '1.5px solid var(--border-default)',
+                    borderRadius: '6px',
+                    outline: 'none',
+                    fontWeight: 600
+                  }}
                 />
                 <button
                   type="button"
@@ -721,13 +774,14 @@ export default function BatchSpreadsheetPage() {
       {/* 4. SPREADSHEET GRID TABLE */}
       <div style={{ flex: 1, padding: '12px 20px', overflow: 'auto' }}>
         <div
+          className="batch-spreadsheet-table-wrapper"
           style={{
             border: '1px solid var(--border-default)',
             borderRadius: '10px',
             background: 'var(--bg-card)',
             overflow: 'auto',
             maxHeight: 'calc(100vh - 280px)',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.03)'
+            boxShadow: 'var(--shadow-card)'
           }}
         >
           <table
@@ -735,23 +789,24 @@ export default function BatchSpreadsheetPage() {
               width: '100%',
               borderCollapse: 'collapse',
               fontSize: '0.82rem',
-              textAlign: 'left'
+              textAlign: 'left',
+              color: 'var(--text-primary)'
             }}
           >
             {/* Table Header with High-Contrast Section Colors */}
             <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
               {/* Category Grouping Header */}
-              <tr style={{ background: '#f1f5f9', borderBottom: '1px solid var(--border-default)' }}>
+              <tr style={{ background: 'var(--bg-card-hover)', borderBottom: '1px solid var(--border-default)' }}>
                 <th
                   colSpan={5}
                   style={{
-                    padding: '6px 12px',
+                    padding: '7px 12px',
                     fontSize: '0.72rem',
                     fontWeight: 800,
                     letterSpacing: '0.05em',
                     textTransform: 'uppercase',
-                    background: '#e2e8f0',
-                    color: '#334155',
+                    background: 'var(--bg-card-subtle)',
+                    color: 'var(--text-secondary)',
                     borderRight: '2px solid var(--border-strong)'
                   }}
                 >
@@ -760,7 +815,7 @@ export default function BatchSpreadsheetPage() {
                 <th
                   colSpan={activeSheet === 'kiriman' ? 4 : 4}
                   style={{
-                    padding: '6px 12px',
+                    padding: '7px 12px',
                     fontSize: '0.72rem',
                     fontWeight: 800,
                     letterSpacing: '0.05em',
@@ -781,7 +836,7 @@ export default function BatchSpreadsheetPage() {
                   color: 'var(--text-secondary)'
                 }}
               >
-                <th style={{ padding: '8px 10px', width: '42px', textAlign: 'center', borderRight: '1px solid var(--border-default)' }}>
+                <th style={{ padding: '8px 10px', width: '42px', textAlign: 'center', borderRight: '1px solid var(--border-default)', background: 'var(--bg-card)' }}>
                   #
                 </th>
                 <th
@@ -792,15 +847,16 @@ export default function BatchSpreadsheetPage() {
                     left: 0,
                     background: 'var(--bg-card)',
                     zIndex: 2,
-                    borderRight: '1px solid var(--border-default)'
+                    borderRight: '1px solid var(--border-default)',
+                    color: 'var(--text-secondary)'
                   }}
                 >
                   NO. SPK / MO
                 </th>
-                <th style={{ padding: '8px 12px', minWidth: '130px', borderRight: '1px solid var(--border-default)' }}>
+                <th style={{ padding: '8px 12px', minWidth: '130px', borderRight: '1px solid var(--border-default)', background: 'var(--bg-card)' }}>
                   SALES ORDER
                 </th>
-                <th style={{ padding: '8px 12px', minWidth: '220px', borderRight: '1px solid var(--border-default)' }}>
+                <th style={{ padding: '8px 12px', minWidth: '220px', borderRight: '1px solid var(--border-default)', background: 'var(--bg-card)' }}>
                   PRODUK & WARNA
                 </th>
                 <th
@@ -809,7 +865,8 @@ export default function BatchSpreadsheetPage() {
                     width: '95px',
                     textAlign: 'right',
                     borderRight: '2px solid var(--border-strong)',
-                    background: '#f8fafc'
+                    background: 'var(--bg-card-subtle)',
+                    color: 'var(--text-secondary)'
                   }}
                 >
                   TARGET
@@ -818,7 +875,7 @@ export default function BatchSpreadsheetPage() {
                 {/* Dynamic Columns based on Active Sheet */}
                 {activeSheet === 'kiriman' ? (
                   <>
-                    <th style={{ padding: '8px 12px', width: '95px', textAlign: 'right', borderRight: '1px solid var(--border-default)', background: '#f8fafc' }}>
+                    <th style={{ padding: '8px 12px', width: '95px', textAlign: 'right', borderRight: '1px solid var(--border-default)', background: 'var(--bg-card-subtle)', color: 'var(--text-secondary)' }}>
                       HASIL POTONG
                     </th>
                     <th
@@ -827,7 +884,8 @@ export default function BatchSpreadsheetPage() {
                         width: '130px',
                         textAlign: 'right',
                         borderRight: '1px solid var(--border-default)',
-                        background: 'var(--status-emerald-bg)'
+                        background: 'var(--status-emerald-bg)',
+                        color: 'var(--status-emerald)'
                       }}
                     >
                       GRADE A (PCS) *
@@ -838,21 +896,22 @@ export default function BatchSpreadsheetPage() {
                         width: '110px',
                         textAlign: 'right',
                         borderRight: '1px solid var(--border-default)',
-                        background: 'var(--status-amber-bg)'
+                        background: 'var(--status-amber-bg)',
+                        color: 'var(--status-amber)'
                       }}
                     >
                       GRADE B (PCS)
                     </th>
-                    <th style={{ padding: '8px 12px', minWidth: '180px' }}>
+                    <th style={{ padding: '8px 12px', minWidth: '180px', background: 'var(--bg-card)' }}>
                       NO. SURAT JALAN (SFP)
                     </th>
                   </>
                 ) : (
                   <>
-                    <th style={{ padding: '8px 12px', width: '100px', textAlign: 'right', borderRight: '1px solid var(--border-default)', background: '#f8fafc' }}>
+                    <th style={{ padding: '8px 12px', width: '100px', textAlign: 'right', borderRight: '1px solid var(--border-default)', background: 'var(--bg-card-subtle)', color: 'var(--text-secondary)' }}>
                       EST. SPB
                     </th>
-                    <th style={{ padding: '8px 12px', width: '100px', textAlign: 'right', borderRight: '1px solid var(--border-default)', background: '#f8fafc' }}>
+                    <th style={{ padding: '8px 12px', width: '100px', textAlign: 'right', borderRight: '1px solid var(--border-default)', background: 'var(--bg-card-subtle)', color: 'var(--text-secondary)' }}>
                       KAIN GUDANG
                     </th>
                     <th
@@ -861,12 +920,13 @@ export default function BatchSpreadsheetPage() {
                         width: '150px',
                         textAlign: 'right',
                         borderRight: '1px solid var(--border-default)',
-                        background: 'var(--status-amber-bg)'
+                        background: 'var(--status-amber-bg)',
+                        color: 'var(--status-amber)'
                       }}
                     >
                       ACTUAL CUTTING (PCS) *
                     </th>
-                    <th style={{ padding: '8px 12px', width: '120px', textAlign: 'right' }}>
+                    <th style={{ padding: '8px 12px', width: '120px', textAlign: 'right', background: 'var(--bg-card)' }}>
                       SELISIH
                     </th>
                   </>
@@ -899,12 +959,18 @@ export default function BatchSpreadsheetPage() {
                   const actCut = Number(inp.actualCutting ?? o.actual_cutting ?? 0);
                   const selisihCut = actCut - estSpb;
 
+                  const rowBg = inp.isDirty
+                    ? 'var(--brand-gold-light)'
+                    : idx % 2 === 0
+                    ? 'var(--bg-card)'
+                    : 'var(--bg-card-subtle)';
+
                   return (
                     <tr
                       key={o.id}
                       style={{
                         borderBottom: '1px solid var(--border-default)',
-                        background: inp.isDirty ? 'rgba(217, 119, 6, 0.04)' : idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-card-subtle)',
+                        background: rowBg,
                         transition: 'background 0.15s ease'
                       }}
                     >
@@ -920,7 +986,8 @@ export default function BatchSpreadsheetPage() {
                           fontWeight: 700,
                           position: 'sticky',
                           left: 0,
-                          background: idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-card-subtle)',
+                          background: rowBg,
+                          color: 'var(--text-primary)',
                           zIndex: 1,
                           borderRight: '1px solid var(--border-default)',
                           whiteSpace: 'nowrap'
@@ -929,7 +996,17 @@ export default function BatchSpreadsheetPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span>{o.mo_name}</span>
                           {isBackorder && (
-                            <span style={{ fontSize: '0.62rem', padding: '1px 5px', borderRadius: '4px', background: '#e0e7ff', color: '#4338ca', fontWeight: 700 }}>
+                            <span
+                              style={{
+                                fontSize: '0.62rem',
+                                padding: '1px 5px',
+                                borderRadius: '4px',
+                                background: 'var(--status-indigo-bg)',
+                                color: 'var(--status-indigo)',
+                                border: '1px solid var(--status-indigo-border)',
+                                fontWeight: 700
+                              }}
+                            >
                               BO
                             </span>
                           )}
@@ -942,12 +1019,32 @@ export default function BatchSpreadsheetPage() {
                       </td>
 
                       {/* PRODUK */}
-                      <td style={{ padding: '7px 12px', borderRight: '1px solid var(--border-default)', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o.product_name}>
+                      <td
+                        style={{
+                          padding: '7px 12px',
+                          borderRight: '1px solid var(--border-default)',
+                          maxWidth: '240px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          color: 'var(--text-primary)'
+                        }}
+                        title={o.product_name}
+                      >
                         {o.product_name || '-'}
                       </td>
 
                       {/* TARGET SPK */}
-                      <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700, borderRight: '2px solid var(--border-strong)', background: '#f8fafc' }}>
+                      <td
+                        style={{
+                          padding: '7px 12px',
+                          textAlign: 'right',
+                          fontWeight: 700,
+                          borderRight: '2px solid var(--border-strong)',
+                          background: inp.isDirty ? 'transparent' : 'var(--bg-card-subtle)',
+                          color: 'var(--text-primary)'
+                        }}
+                      >
                         {Number(o.qty_spk || 0).toLocaleString('id-ID')}
                       </td>
 
@@ -955,7 +1052,15 @@ export default function BatchSpreadsheetPage() {
                       {activeSheet === 'kiriman' ? (
                         <>
                           {/* HASIL POTONG (Read-only reference) */}
-                          <td style={{ padding: '7px 12px', textAlign: 'right', borderRight: '1px solid var(--border-default)', color: 'var(--text-secondary)', background: '#f8fafc' }}>
+                          <td
+                            style={{
+                              padding: '7px 12px',
+                              textAlign: 'right',
+                              borderRight: '1px solid var(--border-default)',
+                              color: 'var(--text-secondary)',
+                              background: inp.isDirty ? 'transparent' : 'var(--bg-card-subtle)'
+                            }}
+                          >
                             {Number(o.actual_cutting || 0).toLocaleString('id-ID')}
                           </td>
 
@@ -975,10 +1080,14 @@ export default function BatchSpreadsheetPage() {
                                 textAlign: 'right',
                                 fontWeight: 700,
                                 padding: '6px 8px',
-                                fontSize: '0.82rem',
+                                fontSize: '0.84rem',
                                 borderRadius: '6px',
-                                border: inp.isDirty ? '1px solid var(--status-emerald)' : '1px solid var(--border-default)',
-                                background: 'var(--bg-input)'
+                                border: inp.isDirty ? '1.5px solid var(--status-emerald)' : '1px solid var(--border-default)',
+                                background: 'var(--bg-input)',
+                                color: 'var(--text-primary)',
+                                outline: 'none',
+                                opacity: (isDone && !user.role?.includes('admin')) ? 0.6 : 1,
+                                cursor: (isDone && !user.role?.includes('admin')) ? 'not-allowed' : 'text'
                               }}
                             />
                           </td>
@@ -998,10 +1107,14 @@ export default function BatchSpreadsheetPage() {
                                 width: '100%',
                                 textAlign: 'right',
                                 padding: '6px 8px',
-                                fontSize: '0.82rem',
+                                fontSize: '0.84rem',
                                 borderRadius: '6px',
-                                border: '1px solid var(--border-default)',
-                                background: 'var(--bg-input)'
+                                border: Number(inp.qtyGradeB || 0) > 0 ? '1.5px solid var(--status-amber)' : '1px solid var(--border-default)',
+                                background: 'var(--bg-input)',
+                                color: 'var(--text-primary)',
+                                outline: 'none',
+                                opacity: (isDone && !user.role?.includes('admin')) ? 0.6 : 1,
+                                cursor: (isDone && !user.role?.includes('admin')) ? 'not-allowed' : 'text'
                               }}
                             />
                           </td>
@@ -1019,10 +1132,12 @@ export default function BatchSpreadsheetPage() {
                               style={{
                                 width: '100%',
                                 padding: '6px 8px',
-                                fontSize: '0.82rem',
+                                fontSize: '0.84rem',
                                 borderRadius: '6px',
-                                border: '1px solid var(--border-default)',
-                                background: 'var(--bg-input)'
+                                border: inp.isDirty ? '1.5px solid var(--border-strong)' : '1px solid var(--border-default)',
+                                background: 'var(--bg-input)',
+                                color: 'var(--text-primary)',
+                                outline: 'none'
                               }}
                             />
                           </td>
@@ -1030,12 +1145,28 @@ export default function BatchSpreadsheetPage() {
                       ) : (
                         <>
                           {/* EST SPB */}
-                          <td style={{ padding: '7px 12px', textAlign: 'right', borderRight: '1px solid var(--border-default)', color: 'var(--text-secondary)', background: '#f8fafc' }}>
+                          <td
+                            style={{
+                              padding: '7px 12px',
+                              textAlign: 'right',
+                              borderRight: '1px solid var(--border-default)',
+                              color: 'var(--text-secondary)',
+                              background: inp.isDirty ? 'transparent' : 'var(--bg-card-subtle)'
+                            }}
+                          >
                             {Math.round(Number(o.estimasi_dari_spb || 0)).toLocaleString('id-ID')}
                           </td>
 
                           {/* KAIN GUDANG */}
-                          <td style={{ padding: '7px 12px', textAlign: 'right', borderRight: '1px solid var(--border-default)', color: 'var(--text-secondary)', background: '#f8fafc' }}>
+                          <td
+                            style={{
+                              padding: '7px 12px',
+                              textAlign: 'right',
+                              borderRight: '1px solid var(--border-default)',
+                              color: 'var(--text-secondary)',
+                              background: inp.isDirty ? 'transparent' : 'var(--bg-card-subtle)'
+                            }}
+                          >
                             {Number(o.kain_dari_gudang || 0).toLocaleString('id-ID')} {o.unit_kain || 'yd'}
                           </td>
 
@@ -1054,10 +1185,12 @@ export default function BatchSpreadsheetPage() {
                                 textAlign: 'right',
                                 fontWeight: 700,
                                 padding: '6px 8px',
-                                fontSize: '0.82rem',
+                                fontSize: '0.84rem',
                                 borderRadius: '6px',
-                                border: inp.isDirty ? '1px solid var(--brand-gold)' : '1px solid var(--border-default)',
-                                background: 'var(--bg-input)'
+                                border: inp.isDirty ? '1.5px solid var(--brand-gold)' : '1px solid var(--border-default)',
+                                background: 'var(--bg-input)',
+                                color: 'var(--text-primary)',
+                                outline: 'none'
                               }}
                             />
                           </td>
@@ -1087,11 +1220,13 @@ export default function BatchSpreadsheetPage() {
                 style={{
                   position: 'sticky',
                   bottom: 0,
-                  background: '#f8fafc',
+                  background: 'var(--bg-card-elevated)',
+                  color: 'var(--text-primary)',
                   borderTop: '2px solid var(--border-strong)',
                   fontWeight: 800,
                   fontSize: '0.84rem',
-                  zIndex: 10
+                  zIndex: 10,
+                  boxShadow: '0 -2px 8px rgba(0,0,0,0.06)'
                 }}
               >
                 <tr>
@@ -1127,10 +1262,10 @@ export default function BatchSpreadsheetPage() {
                     </>
                   ) : (
                     <>
-                      <td style={{ padding: '10px 12px', textAlign: 'right', borderRight: '1px solid var(--border-default)' }}>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', borderRight: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}>
                         {totals.totalEstimasi.toLocaleString('id-ID')}
                       </td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right', borderRight: '1px solid var(--border-default)' }}>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', borderRight: '1px solid var(--border-default)', color: 'var(--text-muted)' }}>
                         -
                       </td>
                       <td style={{ padding: '10px 12px', textAlign: 'right', borderRight: '1px solid var(--border-default)', color: 'var(--brand-gold)' }}>

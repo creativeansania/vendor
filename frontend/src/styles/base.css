@@ -55,6 +55,30 @@ h1, h2, h3, h4, .font-heading {
   box-sizing: border-box;
 }
 
+.app-shell:has(.batch-page-container) {
+  max-width: 100%;
+  overflow-x: visible;
+}
+
+.batch-spreadsheet-table-wrapper {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) var(--bg-card);
+}
+
+.batch-spreadsheet-table-wrapper::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.batch-spreadsheet-table-wrapper::-webkit-scrollbar-track {
+  background: var(--bg-card);
+}
+
+.batch-spreadsheet-table-wrapper::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+
 /* Main Content Container */
 .main-content {
   width: 100%;
