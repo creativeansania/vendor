@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchApi, ensureCurrentUser, logout } from '@/lib/api';
+import { isChildBackorder } from '@/lib/services/wip/query/orderLockCalculator';
 import { useCuttingState } from './order-detail/useCuttingState';
 import { useProductionState } from './order-detail/useProductionState';
 import { useTransferState } from './order-detail/useTransferState';
@@ -233,9 +234,9 @@ export function useOrderDetail(orderId) {
 
   // Permissions & lock states
   const isBackorder = Boolean(
-    order?.is_backorder ||
-    (order?.mo_name && /-0*([2-9]|\d{2,})$/.test(order.mo_name.trim())) ||
-    (order?.parent_wip_order_id && !/-0*1$/.test((order?.mo_name || '').trim()))
+    typeof order?.is_backorder === 'boolean'
+      ? order.is_backorder
+      : isChildBackorder(order)
   );
   const isMasterAdmin = user?.role === 'master_admin';
   const isAdmin = ['master_admin', 'admin'].includes(user?.role);
