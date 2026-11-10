@@ -21,6 +21,32 @@ import {
   CheckCheck
 } from 'lucide-react';
 
+function parseProductName(rawName) {
+  if (!rawName) return { sku: '', name: '-', color: '' };
+  let sku = '';
+  let rest = String(rawName).trim();
+  const skuMatch = rest.match(/^\[(.*?)\]\s*(.*)$/);
+  if (skuMatch) {
+    sku = skuMatch[1];
+    rest = skuMatch[2];
+  }
+  let color = '';
+  const parenMatch = rest.match(/\((.*?)\)$/);
+  if (parenMatch) {
+    const inside = parenMatch[1];
+    const parts = inside.split(',');
+    color = parts[0].trim();
+    rest = rest.replace(/\s*\(.*?\)$/, '').trim();
+  } else {
+    const dashParts = rest.split(' - ');
+    if (dashParts.length >= 2) {
+      color = dashParts[dashParts.length - 1].trim();
+      rest = dashParts.slice(0, -1).join(' - ').trim();
+    }
+  }
+  return { sku, name: rest || rawName, color };
+}
+
 export default function BatchSpreadsheetPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -952,6 +978,7 @@ export default function BatchSpreadsheetPage() {
                   const inp = rowInputs[o.id] || {};
                   const isBackorder = Boolean(o.is_backorder);
                   const isDone = o.status_produksi?.toLowerCase() === 'selesai';
+                  const parsedProduct = parseProductName(o.product_name);
 
                   // Calculate selisih cutting vs estimasi
                   const estSpb = Number(o.estimasi_dari_spb || o.qty_spk || 0);
@@ -1017,20 +1044,65 @@ export default function BatchSpreadsheetPage() {
                         {o.sales_order || '-'}
                       </td>
 
-                      {/* PRODUK */}
+                      {/* PRODUK & WARNA */}
                       <td
                         style={{
-                          padding: '7px 12px',
+                          padding: '6px 12px',
                           borderRight: '1px solid var(--border-default)',
-                          maxWidth: '240px',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
+                          minWidth: '220px',
+                          maxWidth: '280px',
                           color: 'var(--text-primary)'
                         }}
                         title={o.product_name}
                       >
-                        {o.product_name || '-'}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div
+                            style={{
+                              fontSize: '0.81rem',
+                              fontWeight: 700,
+                              color: 'var(--text-primary)',
+                              lineHeight: 1.25,
+                              wordBreak: 'break-word'
+                            }}
+                          >
+                            {parsedProduct.name}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            {parsedProduct.color && (
+                              <span
+                                style={{
+                                  fontSize: '0.67rem',
+                                  fontWeight: 800,
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  background: 'var(--brand-gold-light)',
+                                  color: 'var(--brand-gold)',
+                                  border: '1px solid var(--brand-gold-border)',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.02em',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px'
+                                }}
+                              >
+                                <span>🎨</span>
+                                <span>{parsedProduct.color}</span>
+                              </span>
+                            )}
+                            {parsedProduct.sku && (
+                              <span
+                                className="mono-num"
+                                style={{
+                                  fontSize: '0.65rem',
+                                  color: 'var(--text-muted)',
+                                  fontWeight: 600
+                                }}
+                              >
+                                {parsedProduct.sku}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </td>
 
                       {/* TARGET SPK */}
