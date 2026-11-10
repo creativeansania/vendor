@@ -88,7 +88,14 @@ export async function fetchApi(endpoint, options = {}) {
     ...(options.headers || {})
   };
 
-  const url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  // Strip leading /api if caller passed full path like '/api/orders' to prevent '/api/api/orders'
+  const normalizedEndpoint = endpoint.startsWith('/api/')
+    ? endpoint.slice(4)
+    : endpoint === '/api'
+    ? '/'
+    : endpoint;
+
+  const url = `${API_BASE}${normalizedEndpoint.startsWith('/') ? normalizedEndpoint : `/${normalizedEndpoint}`}`;
 
   const res = await fetch(url, {
     ...options,

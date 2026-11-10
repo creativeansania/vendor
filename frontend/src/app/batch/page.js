@@ -51,7 +51,7 @@ export default function BatchSpreadsheetPage() {
     setLoading(true);
     setFeedback({ text: '', type: '' });
     try {
-      const res = await fetchApi('/api/orders?limit=150&sort=latest');
+      const res = await fetchApi('/orders?limit=150&sort=latest');
       const loadedOrders = res.orders || [];
       setOrders(loadedOrders);
 
@@ -83,7 +83,7 @@ export default function BatchSpreadsheetPage() {
         if (!isMounted) return;
         setUser(u);
 
-        const res = await fetchApi('/api/orders?limit=150&sort=latest');
+        const res = await fetchApi('/orders?limit=150&sort=latest');
         if (!isMounted) return;
         const loadedOrders = res.orders || [];
         setOrders(loadedOrders);
@@ -316,7 +316,7 @@ export default function BatchSpreadsheetPage() {
             noSuratJalan: it.noSuratJalan
           }))
         };
-        const res = await fetchApi('/api/batch/submit-shipments', {
+        const res = await fetchApi('/batch/submit-shipments', {
           method: 'POST',
           body: JSON.stringify(payload)
         });
@@ -340,7 +340,7 @@ export default function BatchSpreadsheetPage() {
             actualCutting: it.actualCutting
           }))
         };
-        const res = await fetchApi('/api/batch/submit-cuttings', {
+        const res = await fetchApi('/batch/submit-cuttings', {
           method: 'POST',
           body: JSON.stringify(payload)
         });
