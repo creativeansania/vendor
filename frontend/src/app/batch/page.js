@@ -369,7 +369,6 @@ export default function BatchSpreadsheetPage() {
 
   return (
     <div
-      className="batch-page-container"
       style={{
         minHeight: '100vh',
         background: 'var(--bg-canvas)',
