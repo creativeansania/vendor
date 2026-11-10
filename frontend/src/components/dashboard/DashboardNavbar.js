@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { logout } from '@/lib/api';
 import ThemeToggle from '@/components/ThemeToggle';
 import StatusBadge from '@/components/common/StatusBadge';
-import { Users, Smartphone, LogOut } from 'lucide-react';
+import { Users, Smartphone, LogOut, Table2 } from 'lucide-react';
 
 export default function DashboardNavbar({ user }) {
   const router = useRouter();
@@ -48,6 +48,17 @@ export default function DashboardNavbar({ user }) {
             <span className="hide-on-mobile">Akun</span>
           </button>
         )}
+
+        <button
+          type="button"
+          onClick={() => router.push('/batch')}
+          className="btn btn-secondary"
+          style={{ fontSize: '0.78rem', padding: '7px 12px', borderRadius: '10px', gap: '6px' }}
+          title="Mode Rekap & Input Massal (Spreadsheet)"
+        >
+          <Table2 size={15} color="var(--brand-gold)" />
+          <span className="hide-on-mobile">Input Massal</span>
+        </button>
 
         <button
           type="button"
