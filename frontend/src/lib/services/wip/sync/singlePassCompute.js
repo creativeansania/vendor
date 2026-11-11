@@ -5,6 +5,11 @@ import { classifyMaterialLine } from '../../../utils/materialClassifier.js';
 import { resolveFinishing } from './syncMapper.js';
 import { fetchVendorPriceFromOdoo } from './vendorPricingSync.js';
 
+function extractBaseLot(lotStr) {
+  if (!lotStr) return 'Tanpa Lot';
+  return String(lotStr).replace(/\s*\(\d+\)$/, '').trim() || 'Tanpa Lot';
+}
+
 async function reconcileAndBuildRollLines(wipId, wip, moName, pcMoveLines) {
   const rawRollLines = wip.x_studio_detail_roll_kain && wip.x_studio_detail_roll_kain.length > 0
     ? await adminOdooClient._callObject('x_monitoring_wip_vendo_line_4c93a', 'read', [
@@ -13,20 +18,25 @@ async function reconcileAndBuildRollLines(wipId, wip, moName, pcMoveLines) {
       ])
     : [];
 
-  const seenRollKeys = new Map();
   const rollWriteCommands = [];
   const existingRollLines = [];
+  const seenRollCounts = new Map();
 
   for (const line of rawRollLines) {
-    const key = `${line.x_name || ''}:::${line.x_studio_kode_warna_roll || 'Tanpa Lot'}`;
-    if (seenRollKeys.has(key)) {
-      if ((parseFloat(line.x_studio_qty_berat_kg) || 0) === 0) {
-        // One2many command [2, id, 0] deletes duplicate roll line inside the single parent write!
-        rollWriteCommands.push([2, line.id, 0]);
-        continue;
-      }
-    } else {
-      seenRollKeys.set(key, line);
+    const prodName = line.x_name || '';
+    const rawLot = (line.x_studio_kode_warna_roll || 'Tanpa Lot').trim() || 'Tanpa Lot';
+    const baseLot = extractBaseLot(rawLot);
+    const baseKey = `${prodName}:::${baseLot}`;
+
+    const occurrence = (seenRollCounts.get(baseKey) || 0) + 1;
+    seenRollCounts.set(baseKey, occurrence);
+
+    // If an existing line in Odoo was duplicated without a suffix (e.g. two lines both named "0008545"),
+    // disambiguate the subsequent line to "0008545 (2)" instead of deleting it!
+    const expectedLotName = occurrence === 1 ? rawLot : (/\s*\(\d+\)$/.test(rawLot) ? rawLot : `${baseLot} (${occurrence})`);
+    if (line.x_studio_kode_warna_roll !== expectedLotName) {
+      line.x_studio_kode_warna_roll = expectedLotName;
+      rollWriteCommands.push([1, line.id, { x_studio_kode_warna_roll: expectedLotName }]);
     }
 
     if ((parseFloat(line.x_studio_qty_penerimaan) || 0) === 0 && (parseFloat(line.x_studio_yards) || 0) > 0) {
@@ -73,20 +83,40 @@ async function reconcileAndBuildRollLines(wipId, wip, moName, pcMoveLines) {
   }
 
   if (newRollLines.length === 0 && pcMoveLines.length > 0) {
-    const existingKeySet = new Set(
-      existingRollLines.map((l) => `${l.x_name || ''}:::${l.x_studio_kode_warna_roll || 'Tanpa Lot'}`)
-    );
+    // Group existing lines by (prodName:::lotName)
+    const existingKeyCounts = new Map();
+    for (const l of existingRollLines) {
+      const prodName = l.x_name || '';
+      const lot = (l.x_studio_kode_warna_roll || 'Tanpa Lot').trim() || 'Tanpa Lot';
+      const key = `${prodName}:::${lot}`;
+      existingKeyCounts.set(key, (existingKeyCounts.get(key) || 0) + 1);
+    }
+
+    const lotOccurrencesInMoves = new Map();
+    const matchedExistingKeys = new Map();
 
     for (const l of pcMoveLines) {
+      if ((parseFloat(l.quantity) || 0) <= 0) continue;
       const prodName = l.product_id ? l.product_id[1] : '';
-      const lotName = l.lot_id ? l.lot_id[1] : 'Tanpa Lot';
-      const key = `${prodName}:::${lotName}`;
+      const rawLot = l.lot_id ? l.lot_id[1] : 'Tanpa Lot';
+      const baseLot = extractBaseLot(rawLot);
+      const baseKey = `${prodName}:::${baseLot}`;
 
-      if (!existingKeySet.has(key)) {
-        existingKeySet.add(key);
+      const occurrence = (lotOccurrencesInMoves.get(baseKey) || 0) + 1;
+      lotOccurrencesInMoves.set(baseKey, occurrence);
+
+      const expectedLotName = occurrence === 1 ? baseLot : `${baseLot} (${occurrence})`;
+      const expectedKey = `${prodName}:::${expectedLotName}`;
+
+      const existingCount = existingKeyCounts.get(expectedKey) || 0;
+      const matchedCount = matchedExistingKeys.get(expectedKey) || 0;
+
+      if (matchedCount < existingCount) {
+        matchedExistingKeys.set(expectedKey, matchedCount + 1);
+      } else {
         newRollLines.push([0, 0, {
           x_name: prodName,
-          x_studio_kode_warna_roll: lotName,
+          x_studio_kode_warna_roll: expectedLotName,
           x_studio_yards: l.quantity,
           x_studio_uom: l.product_uom_id ? l.product_uom_id[1] : '',
           x_studio_qty_penerimaan: l.quantity,
@@ -177,7 +207,9 @@ export async function syncWipFromPickings(wipId, moId, { preloadedMo = null, pre
       .map((p) => p.id);
 
     const donePickings = allPickings.filter((p) => p.state === 'done');
-    const donePcSpb = donePickings.filter((p) => (p.name || '').includes('/PC/') || (p.name || '').includes('/SPB/'));
+    const donePcSpb = donePickings
+      .filter((p) => (p.name || '').includes('/PC/') || (p.name || '').includes('/SPB/'))
+      .sort((a, b) => (new Date(a.date_done || 0) - new Date(b.date_done || 0)) || (a.id - b.id));
     const doneSfp = donePickings.filter((p) => {
       if (!(p.name || '').includes('/SFP/')) return false;
       const origins = (p.origin || '').split(',').map((s) => s.trim());
@@ -370,7 +402,7 @@ export async function syncWipFromPickings(wipId, moId, { preloadedMo = null, pre
 
       if (allLinesToSum.length > 0) {
         let linesToSave = existingRollLines;
-        if (newRollLines.length > 0) {
+        if (newRollLines.length > 0 || rollCommands.length > 0) {
           try {
             const freshWip = await adminOdooClient._callObject('x_monitoring_wip_vendo', 'read', [[wipId]], {
               fields: ['x_studio_detail_roll_kain']

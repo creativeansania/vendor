@@ -229,12 +229,22 @@ class WipRepository {
 
     const nowIso = new Date().toISOString();
     const dedupedByKey = new Map();
+    const lotCounters = new Map();
 
     for (const line of lines) {
       const namaItem = line.nama_item || line.x_name || line.product_name;
       if (!namaItem) continue;
 
-      const kodeLot = line.kode_lot || line.x_studio_kode_warna_roll || 'Tanpa Lot';
+      let kodeLot = (line.kode_lot || line.x_studio_kode_warna_roll || 'Tanpa Lot').trim() || 'Tanpa Lot';
+      const baseLot = kodeLot.replace(/\s*\(\d+\)$/, '').trim() || 'Tanpa Lot';
+      const baseKey = `${namaItem}:::${baseLot}`;
+      const count = (lotCounters.get(baseKey) || 0) + 1;
+      lotCounters.set(baseKey, count);
+
+      if (count > 1 && !/\s*\(\d+\)$/.test(kodeLot)) {
+        kodeLot = `${baseLot} (${count})`;
+      }
+
       const rawUom = line.uom || line.x_studio_uom || '';
       const lineType = classifyMaterialLine(namaItem, rawUom || 'yard', line.line_type);
       const isAcc = lineType === 'aksesoris';

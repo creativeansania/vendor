@@ -5,6 +5,7 @@ import { getOrderDetails } from '../wipQueryService.js';
 import { WIP_ODOO_SYNC_FIELDS, mapOdooWipToDbPayload } from './syncMapper.js';
 import { fetchVendorPriceFromOdoo } from './vendorPricingSync.js';
 import { resolveSalesOrderForMo } from './soMoResolver.js';
+import { syncWipFromPickings } from './singlePassCompute.js';
 
 const MANUAL_SYNC_MO_FIELDS = [
   'id',
@@ -58,6 +59,17 @@ export async function syncOrderFromOdoo({ user, orderId }) {
       });
       moObj = mos && mos[0] ? mos[0] : null;
     } catch {}
+  }
+
+  // Live Single-Pass Compute: reconciles all pickings, duplicate lots, pricing & status
+  if (moId && order.odoo_wip_id) {
+    try {
+      await syncWipFromPickings(order.odoo_wip_id, moId, { preloadedMo: moObj });
+      invalidateOrderCache(order.odoo_mo_id, order.id);
+      return getOrderDetails({ user, orderId, includeRawMoves: true });
+    } catch (errSync) {
+      console.warn(`[WipSyncService] Single-pass compute note during manual sync: ${errSync.message}`);
+    }
   }
 
   let moState = order.mo_state;

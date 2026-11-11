@@ -193,6 +193,12 @@ export default function BatchSpreadsheetPage() {
   // Filtered orders displayed on spreadsheet
   const displayedOrders = useMemo(() => {
     return orders.filter((o) => {
+      // Pada Sheet Cutting: Hanya tampilkan SPK tanpa backorder atau MO Induk (-001).
+      // SPK anak backorder (-002, -003, dst) tidak melalui tahap potong ulang.
+      if (activeSheet === 'cutting' && o.is_backorder) {
+        return false;
+      }
+
       if (filterSo !== 'all' && o.sales_order !== filterSo) {
         return false;
       }
@@ -216,7 +222,7 @@ export default function BatchSpreadsheetPage() {
       }
       return true;
     });
-  }, [orders, filterSo, filterStatus, searchQuery]);
+  }, [orders, activeSheet, filterSo, filterStatus, searchQuery]);
 
   // Handle cell change
   const handleCellChange = (orderId, field, value) => {
