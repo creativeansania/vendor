@@ -102,8 +102,11 @@ export async function onMoConfirmed(moId, { autoSync = true, preloadedMo = null 
     const qtyKebutuhanKain = (parseFloat(mo.product_qty) || 0.0) * consumptionPerPcs;
     const workcenterIds = [...new Set((workorders || []).filter((wo) => wo.workcenter_id).map((wo) => wo.workcenter_id[0]))];
 
+    const spkInduk = moName.replace(/-\d+$/, '').trim() || moName;
     const newWipPayload = {
       x_name: moName,
+      x_studio_spk_induk: spkInduk,
+      x_studio_persentase_susut: 0.0,
       x_studio_manufacturing_order: id,
       x_studio_qty_kebutuhan_kain: qtyKebutuhanKain,
       x_studio_status_produksi: 'Proses'

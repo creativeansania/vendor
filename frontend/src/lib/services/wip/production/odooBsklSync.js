@@ -253,6 +253,15 @@ export async function syncProductionToOdoo(orderOrWipId, aGrade, bGrade, sisaKg,
       ...gradeBVals,
       ...bsklVals
     };
+
+    const targetQty = typeof orderOrWipId === 'object'
+      ? (Number(orderOrWipId.estimasi_dari_spb) > 0 ? Number(orderOrWipId.estimasi_dari_spb) : Number(orderOrWipId.qty_spk || 0))
+      : 0;
+    const outputQty = Number(aGrade || 0) + Number(bGrade || 0);
+    if (targetQty > 0 && outputQty > 0) {
+      combinedWipVals.x_studio_persentase_susut = Math.round(((targetQty - outputQty) / targetQty) * 10000) / 100;
+    }
+
     if (Object.keys(combinedWipVals).length > 0) {
       await adminOdooClient._callObject('x_monitoring_wip_vendo', 'write', [[odooWipId], combinedWipVals], {
         context: { tracking_disable: true, no_automation: true }

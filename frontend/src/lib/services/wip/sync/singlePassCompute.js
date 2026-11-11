@@ -321,7 +321,22 @@ export async function syncWipFromPickings(wipId, moId, { preloadedMo = null, pre
 
     const totalHarga = hargaVendor * sfpQtyMasuk;
 
+    const spkInduk = moName.replace(/-\d+$/, '').trim() || moName;
+    const outputQty = (parseFloat(wip.x_studio_qty_kirim_a_grade || 0) + parseFloat(wip.x_studio_qty_kirim_b_grade || 0)) > 0
+      ? (parseFloat(wip.x_studio_qty_kirim_a_grade || 0) + parseFloat(wip.x_studio_qty_kirim_b_grade || 0))
+      : sfpQtyMasuk;
+    const targetQty = estimasiDariSpb > 0
+      ? estimasiDariSpb
+      : (parseFloat(mo.product_qty || wip.x_studio_qty_spk || 0));
+
+    let persentaseSusut = 0.0;
+    if (outputQty > 0 && targetQty > 0) {
+      persentaseSusut = Math.round(((targetQty - outputQty) / targetQty) * 10000) / 100;
+    }
+
     const vals = {
+      x_studio_spk_induk: spkInduk,
+      x_studio_persentase_susut: persentaseSusut,
       x_studio_kain_dari_gudang_qty: kainQty,
       x_studio_accessories_dari_gudang: accsQty,
       x_studio_estimasi_dari_spb: estimasiDariSpb,
