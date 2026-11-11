@@ -34,6 +34,10 @@ export class WipService {
     return queryService.getOrders(params);
   }
 
+  async getUniqueSalesOrders(params) {
+    return queryService.getUniqueSalesOrders(params);
+  }
+
   async _getMetrics(user, vendorId) {
     return queryService.getMetrics(user, vendorId);
   }

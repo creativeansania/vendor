@@ -136,6 +136,7 @@ export async function getOrders({
   searchProduct,
   status,
   vendorId,
+  salesOrder,
   page = 1,
   limit = 20,
   sort = 'latest',
@@ -143,7 +144,7 @@ export async function getOrders({
   backorder,
   includeMetrics = true
 }) {
-  const numLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+  const numLimit = Math.min(1000, Math.max(1, Number(limit) || 20));
   const numPage = Math.max(1, Number(page) || 1);
   const offset = (numPage - 1) * numLimit;
 
@@ -170,6 +171,10 @@ export async function getOrders({
   const scopedVendorId = isVendorRole ? user.vendor_id : (vendorId ? Number(vendorId) : null);
   if (scopedVendorId) {
     query = query.eq('vendor_id', scopedVendorId);
+  }
+
+  if (salesOrder && salesOrder !== 'all') {
+    query = query.eq('sales_order', salesOrder.trim());
   }
 
   const cleanSearchMo = sanitizePostgrestSearchTerm(searchMo);
@@ -375,4 +380,46 @@ export async function getOrders({
     pagination,
     ...(metrics ? { metrics } : {})
   };
+}
+
+/**
+ * Get distinct Sales Orders list for a vendor, filtered by status
+ */
+export async function getUniqueSalesOrders({ user, vendorId = null, status = null }) {
+  const isVendorRole = ['master_vendor', 'admin_vendor'].includes(user?.role);
+  const scopedVendorId = isVendorRole ? user?.vendor_id : (vendorId ? Number(vendorId) : null);
+
+  let q = supabaseServer
+    .from('wip_orders')
+    .select('sales_order')
+    .eq('is_active', true)
+    .not('sales_order', 'is', null)
+    .neq('sales_order', '-');
+
+  if (scopedVendorId) {
+    q = q.eq('vendor_id', scopedVendorId);
+  }
+
+  if (status === 'proses' || status === 'active') {
+    q = q
+      .neq('status_produksi', 'Selesai')
+      .neq('mo_state', 'done')
+      .is('result_locked_at', null);
+  } else if (status === 'selesai' || status === 'completed') {
+    q = q.or('status_produksi.eq.Selesai,mo_state.eq.done,result_locked_at.not.is.null');
+  }
+
+  const { data, error } = await q;
+  if (error) {
+    console.error('[WipQueryService] getUniqueSalesOrders error:', error.message);
+    return [];
+  }
+
+  const set = new Set();
+  for (const row of data || []) {
+    const s = (row.sales_order || '').trim();
+    if (s && s !== '-') set.add(s);
+  }
+
+  return Array.from(set).sort();
 }

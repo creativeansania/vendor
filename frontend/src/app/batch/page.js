@@ -64,6 +64,8 @@ export default function BatchSpreadsheetPage() {
   const [filterSo, setFilterSo] = useState('all');
   const [filterStatus, setFilterStatus] = useState('proses');
   const [searchQuery, setSearchQuery] = useState('');
+  const [salesOrders, setSalesOrders] = useState([]);
+  const [loadingSos, setLoadingSos] = useState(false);
 
   // Global batch helpers
   const [globalSj, setGlobalSj] = useState('');
@@ -74,17 +76,41 @@ export default function BatchSpreadsheetPage() {
   // Input refs for Excel-like keyboard navigation: gridRefs.current[`${rowIndex}_${colKey}`]
   const inputRefs = useRef({});
 
+  // Helper to load distinct Sales Orders for the selected vendor & status
+  const loadSalesOrders = useCallback(async (customVendor, customStatus) => {
+    setLoadingSos(true);
+    try {
+      const vnd = customVendor !== undefined ? customVendor : selectedVendor;
+      const st = customStatus !== undefined ? customStatus : filterStatus;
+
+      const params = new URLSearchParams();
+      params.set('soList', '1');
+      if (vnd) params.set('vendorId', vnd);
+      if (st && st !== 'all') params.set('status', st);
+
+      const res = await fetchApi(`/orders?${params.toString()}`);
+      if (res?.salesOrders) {
+        setSalesOrders(res.salesOrders);
+      }
+    } catch (err) {
+      console.warn('Gagal memuat daftar sales order:', err);
+    } finally {
+      setLoadingSos(false);
+    }
+  }, [selectedVendor, filterStatus]);
+
   // Load orders helper for manual refresh / server search
-  const loadOrders = useCallback(async (customSearch, customStatus, customVendor) => {
+  const loadOrders = useCallback(async (customSearch, customStatus, customVendor, customSo) => {
     setLoading(true);
     setFeedback({ text: '', type: '' });
     try {
       const st = customStatus !== undefined ? customStatus : filterStatus;
       const srch = customSearch !== undefined ? customSearch : searchQuery;
       const vnd = customVendor !== undefined ? customVendor : selectedVendor;
+      const so = customSo !== undefined ? customSo : filterSo;
 
       const params = new URLSearchParams();
-      params.set('limit', '300');
+      params.set('limit', '500');
       params.set('sort', 'latest');
       if (st && st !== 'all') {
         params.set('status', st);
@@ -94,6 +120,9 @@ export default function BatchSpreadsheetPage() {
       }
       if (vnd) {
         params.set('vendorId', vnd);
+      }
+      if (so && so !== 'all') {
+        params.set('salesOrder', so);
       }
 
       const res = await fetchApi(`/orders?${params.toString()}`);
@@ -121,7 +150,7 @@ export default function BatchSpreadsheetPage() {
     } finally {
       setLoading(false);
     }
-  }, [filterStatus, searchQuery, selectedVendor]);
+  }, [filterStatus, searchQuery, selectedVendor, filterSo]);
 
   // Initial load: user, vendors, & active orders in one async flow
   useEffect(() => {
@@ -144,8 +173,32 @@ export default function BatchSpreadsheetPage() {
           }
         }
 
+        // Determine initial vendor id if vendor user
+        const isVendor = ['master_vendor', 'admin_vendor'].includes(u?.role);
+        const initialVendorId = isVendor ? u?.vendor_id : '';
+
+        // Load distinct Sales Orders for status 'proses'
+        try {
+          const soParams = new URLSearchParams();
+          soParams.set('soList', '1');
+          soParams.set('status', 'proses');
+          if (initialVendorId) soParams.set('vendorId', initialVendorId);
+          const soRes = await fetchApi(`/orders?${soParams.toString()}`);
+          if (isMounted && soRes?.salesOrders) {
+            setSalesOrders(soRes.salesOrders);
+          }
+        } catch (e) {
+          console.warn('Gagal memuat daftar sales order:', e);
+        }
+
         // Load active (status=proses) orders by default
-        const res = await fetchApi('/orders?limit=300&sort=latest&status=proses');
+        const orderParams = new URLSearchParams();
+        orderParams.set('limit', '500');
+        orderParams.set('sort', 'latest');
+        orderParams.set('status', 'proses');
+        if (initialVendorId) orderParams.set('vendorId', initialVendorId);
+
+        const res = await fetchApi(`/orders?${orderParams.toString()}`);
         if (!isMounted) return;
         const loadedOrders = res.orders || [];
         setOrders(loadedOrders);
@@ -179,16 +232,16 @@ export default function BatchSpreadsheetPage() {
     };
   }, [router]);
 
-  // Unique list of Sales Orders for filter dropdown
-  const uniqueSos = useMemo(() => {
-    const set = new Set();
+  // Combined list of Sales Orders for filter dropdown (from distinct query + current orders)
+  const combinedSos = useMemo(() => {
+    const set = new Set(salesOrders || []);
     for (const o of orders) {
       if (o.sales_order && o.sales_order !== '-') {
         set.add(o.sales_order);
       }
     }
     return Array.from(set).sort();
-  }, [orders]);
+  }, [salesOrders, orders]);
 
   // Filtered orders displayed on spreadsheet
   const displayedOrders = useMemo(() => {
@@ -440,6 +493,8 @@ export default function BatchSpreadsheetPage() {
 
   if (!user) return null;
 
+  const isVendorRole = ['master_vendor', 'admin_vendor'].includes(user?.role);
+
   return (
     <div
       style={{
@@ -612,16 +667,41 @@ export default function BatchSpreadsheetPage() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          {/* Filter Vendor (Khusus Admin / Internal) */}
-          {vendors.length > 0 && (
+          {/* 1. Filter Warehouse (Jika vendor tampilkan warehouse sendiri; jika admin tampilkan pilihan warehouse) */}
+          {isVendorRole ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Vendor:</span>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>🏢 Warehouse:</span>
+              <div
+                style={{
+                  fontSize: '0.82rem',
+                  padding: '4px 10px',
+                  height: '34px',
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-primary)',
+                  border: '1.5px solid var(--border-default)',
+                  borderRadius: '8px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+                title="Warehouse Akun Anda"
+              >
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--status-emerald)' }}></span>
+                {user?.vendor_name || 'Vendor Saya'}
+              </div>
+            </div>
+          ) : vendors.length > 0 ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>🏢 Warehouse:</span>
               <select
                 value={selectedVendor}
                 onChange={(e) => {
                   const nextV = e.target.value;
                   setSelectedVendor(nextV);
-                  loadOrders(searchQuery, filterStatus, nextV);
+                  setFilterSo('all');
+                  loadSalesOrders(nextV, filterStatus);
+                  loadOrders(searchQuery, filterStatus, nextV, 'all');
                 }}
                 style={{
                   fontSize: '0.82rem',
@@ -637,7 +717,7 @@ export default function BatchSpreadsheetPage() {
                 }}
               >
                 <option value="" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
-                  Semua Vendor ({vendors.length})
+                  Semua Warehouse ({vendors.length})
                 </option>
                 {vendors.map((v) => (
                   <option key={v.id} value={v.id} style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
@@ -646,47 +726,19 @@ export default function BatchSpreadsheetPage() {
                 ))}
               </select>
             </div>
-          )}
+          ) : null}
 
-          {/* Filter Sales Order */}
+          {/* 2. Filter Status (Sedang Proses / Sudah Selesai / Semua Status) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Sales Order:</span>
-            <select
-              value={filterSo}
-              onChange={(e) => setFilterSo(e.target.value)}
-              style={{
-                fontSize: '0.82rem',
-                padding: '5px 10px',
-                height: '34px',
-                minWidth: '180px',
-                background: 'var(--bg-input)',
-                color: 'var(--text-primary)',
-                border: '1.5px solid var(--border-default)',
-                borderRadius: '8px',
-                outline: 'none',
-                fontWeight: 600
-              }}
-            >
-              <option value="all" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
-                Semua Sales Order ({uniqueSos.length})
-              </option>
-              {uniqueSos.map((so) => (
-                <option key={so} value={so} style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
-                  {so}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Filter Status */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Status:</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>📋 Status:</span>
             <select
               value={filterStatus}
               onChange={(e) => {
                 const nextSt = e.target.value;
                 setFilterStatus(nextSt);
-                loadOrders(searchQuery, nextSt, selectedVendor);
+                setFilterSo('all');
+                loadSalesOrders(selectedVendor, nextSt);
+                loadOrders(searchQuery, nextSt, selectedVendor, 'all');
               }}
               style={{
                 fontSize: '0.82rem',
@@ -701,18 +753,53 @@ export default function BatchSpreadsheetPage() {
               }}
             >
               <option value="proses" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
-                Sedang Proses (Selesai Disembunyikan)
-              </option>
-              <option value="all" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
-                Semua Status (Termasuk Selesai)
+                Sedang Proses (Default)
               </option>
               <option value="selesai" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
-                Hanya yang Sudah Selesai
+                Sudah Selesai
+              </option>
+              <option value="all" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+                Semua Status
               </option>
             </select>
           </div>
 
-          {/* Search box */}
+          {/* 3. Filter Sales Order (Daftar semua SO yang terkait dengan vendor & status terpilih) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>📦 Sales Order:</span>
+            <select
+              value={filterSo}
+              disabled={loadingSos}
+              onChange={(e) => {
+                const nextSo = e.target.value;
+                setFilterSo(nextSo);
+                loadOrders(searchQuery, filterStatus, selectedVendor, nextSo);
+              }}
+              style={{
+                fontSize: '0.82rem',
+                padding: '5px 10px',
+                height: '34px',
+                minWidth: '180px',
+                background: 'var(--bg-input)',
+                color: 'var(--text-primary)',
+                border: '1.5px solid var(--border-default)',
+                borderRadius: '8px',
+                outline: 'none',
+                fontWeight: 600
+              }}
+            >
+              <option value="all" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+                {loadingSos ? 'Memuat SO...' : `Semua Sales Order (${combinedSos.length})`}
+              </option>
+              {combinedSos.map((so) => (
+                <option key={so} value={so} style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+                  {so}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 4. Search box */}
           <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
             <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-muted)' }} />
             <input
@@ -722,7 +809,7 @@ export default function BatchSpreadsheetPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  loadOrders(e.target.value, filterStatus, selectedVendor);
+                  loadOrders(e.target.value, filterStatus, selectedVendor, filterSo);
                 }
               }}
               style={{
@@ -743,7 +830,7 @@ export default function BatchSpreadsheetPage() {
 
           <button
             type="button"
-            onClick={() => loadOrders(searchQuery, filterStatus, selectedVendor)}
+            onClick={() => loadOrders(searchQuery, filterStatus, selectedVendor, filterSo)}
             className="btn btn-secondary"
             style={{ fontSize: '0.78rem', height: '34px', padding: '0 10px', gap: '4px' }}
             title="Cari ke Database"
@@ -754,7 +841,10 @@ export default function BatchSpreadsheetPage() {
 
           <button
             type="button"
-            onClick={() => loadOrders(searchQuery, filterStatus, selectedVendor)}
+            onClick={() => {
+              loadSalesOrders(selectedVendor, filterStatus);
+              loadOrders(searchQuery, filterStatus, selectedVendor, filterSo);
+            }}
             className="btn btn-secondary"
             style={{ fontSize: '0.78rem', height: '34px', padding: '0 10px', gap: '4px' }}
             title="Refresh Data"
