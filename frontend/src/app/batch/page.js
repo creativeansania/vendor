@@ -60,8 +60,8 @@ export default function BatchSpreadsheetPage() {
   // Spreadsheet view mode
   const [activeSheet, setActiveSheet] = useState('kiriman'); // 'kiriman' | 'cutting'
 
-  // Filters (Default to 'proses' so completed orders are filtered out automatically)
-  const [filterSo, setFilterSo] = useState('all');
+  // Filters: default to '' (unselected SO) so orders are not heavily fetched upfront
+  const [filterSo, setFilterSo] = useState('');
   const [filterStatus, setFilterStatus] = useState('proses');
   const [searchQuery, setSearchQuery] = useState('');
   const [salesOrders, setSalesOrders] = useState([]);
@@ -101,16 +101,23 @@ export default function BatchSpreadsheetPage() {
 
   // Load orders helper for manual refresh / server search
   const loadOrders = useCallback(async (customSearch, customStatus, customVendor, customSo) => {
+    const st = customStatus !== undefined ? customStatus : filterStatus;
+    const srch = customSearch !== undefined ? customSearch : searchQuery;
+    const vnd = customVendor !== undefined ? customVendor : selectedVendor;
+    const so = customSo !== undefined ? customSo : filterSo;
+
+    // Jika SO belum dipilih dan tidak ada kata kunci pencarian, jangan query SPK (hemat kuota)
+    if (!so && (!srch || !srch.trim())) {
+      setOrders([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setFeedback({ text: '', type: '' });
     try {
-      const st = customStatus !== undefined ? customStatus : filterStatus;
-      const srch = customSearch !== undefined ? customSearch : searchQuery;
-      const vnd = customVendor !== undefined ? customVendor : selectedVendor;
-      const so = customSo !== undefined ? customSo : filterSo;
-
       const params = new URLSearchParams();
-      params.set('limit', '500');
+      params.set('limit', '300'); // 1 Sales Order umumnya terdiri dari 5-50 SPK
       params.set('sort', 'latest');
       if (st && st !== 'all') {
         params.set('status', st);
@@ -191,29 +198,11 @@ export default function BatchSpreadsheetPage() {
           console.warn('Gagal memuat daftar sales order:', e);
         }
 
-        // Load active (status=proses) orders by default
-        const orderParams = new URLSearchParams();
-        orderParams.set('limit', '500');
-        orderParams.set('sort', 'latest');
-        orderParams.set('status', 'proses');
-        if (initialVendorId) orderParams.set('vendorId', initialVendorId);
-
-        const res = await fetchApi(`/orders?${orderParams.toString()}`);
+        // Tidak memuat 500 SPK sekaligus agar hemat kuota & loading instan.
+        // Data SPK baru dimuat setelah user memilih Sales Order spesifik.
         if (!isMounted) return;
-        const loadedOrders = res.orders || [];
-        setOrders(loadedOrders);
-
-        const initialMap = {};
-        for (const o of loadedOrders) {
-          initialMap[o.id] = {
-            qtyGradeA: Number(o.qty_grade_a || 0) > 0 ? o.qty_grade_a : o.qty_spk || 0,
-            qtyGradeB: o.qty_grade_b || 0,
-            noSuratJalan: o.no_surat_jalan_sfp || '',
-            actualCutting: Number(o.actual_cutting || 0) > 0 ? o.actual_cutting : Math.round(Number(o.estimasi_dari_spb || o.qty_spk || 0)),
-            isDirty: false
-          };
-        }
-        setRowInputs(initialMap);
+        setOrders([]);
+        setRowInputs({});
       } catch (err) {
         if (isMounted) {
           if (err.message && err.message.includes('401')) {
@@ -252,7 +241,7 @@ export default function BatchSpreadsheetPage() {
         return false;
       }
 
-      if (filterSo !== 'all' && o.sales_order !== filterSo) {
+      if (filterSo && filterSo !== 'all' && o.sales_order !== filterSo) {
         return false;
       }
       const isCompleted =
@@ -650,7 +639,11 @@ export default function BatchSpreadsheetPage() {
         >
           <Save size={16} />
           <span>
-            {saving ? 'Menyimpan...' : `Simpan Semua (${displayedOrders.length} SPK)`}
+            {saving
+              ? 'Menyimpan...'
+              : displayedOrders.length === 0
+              ? 'Simpan Semua'
+              : `Simpan Semua (${displayedOrders.length} SPK${filterSo ? ` • SO ${filterSo}` : ''})`}
           </span>
         </button>
       </div>
@@ -699,9 +692,9 @@ export default function BatchSpreadsheetPage() {
                 onChange={(e) => {
                   const nextV = e.target.value;
                   setSelectedVendor(nextV);
-                  setFilterSo('all');
+                  setFilterSo('');
+                  setOrders([]);
                   loadSalesOrders(nextV, filterStatus);
-                  loadOrders(searchQuery, filterStatus, nextV, 'all');
                 }}
                 style={{
                   fontSize: '0.82rem',
@@ -736,9 +729,9 @@ export default function BatchSpreadsheetPage() {
               onChange={(e) => {
                 const nextSt = e.target.value;
                 setFilterStatus(nextSt);
-                setFilterSo('all');
+                setFilterSo('');
+                setOrders([]);
                 loadSalesOrders(selectedVendor, nextSt);
-                loadOrders(searchQuery, nextSt, selectedVendor, 'all');
               }}
               style={{
                 fontSize: '0.82rem',
@@ -773,23 +766,27 @@ export default function BatchSpreadsheetPage() {
               onChange={(e) => {
                 const nextSo = e.target.value;
                 setFilterSo(nextSo);
-                loadOrders(searchQuery, filterStatus, selectedVendor, nextSo);
+                if (nextSo) {
+                  loadOrders(searchQuery, filterStatus, selectedVendor, nextSo);
+                } else if (!searchQuery.trim()) {
+                  setOrders([]);
+                }
               }}
               style={{
                 fontSize: '0.82rem',
                 padding: '5px 10px',
                 height: '34px',
-                minWidth: '180px',
+                minWidth: '200px',
                 background: 'var(--bg-input)',
                 color: 'var(--text-primary)',
-                border: '1.5px solid var(--border-default)',
+                border: filterSo ? '1.5px solid var(--brand-gold)' : '1.5px solid var(--border-default)',
                 borderRadius: '8px',
                 outline: 'none',
                 fontWeight: 600
               }}
             >
-              <option value="all" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
-                {loadingSos ? 'Memuat SO...' : `Semua Sales Order (${combinedSos.length})`}
+              <option value="" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+                {loadingSos ? 'Memuat SO...' : `-- Pilih Sales Order (${combinedSos.length} SO) --`}
               </option>
               {combinedSos.map((so) => (
                 <option key={so} value={so} style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
@@ -843,7 +840,9 @@ export default function BatchSpreadsheetPage() {
             type="button"
             onClick={() => {
               loadSalesOrders(selectedVendor, filterStatus);
-              loadOrders(searchQuery, filterStatus, selectedVendor, filterSo);
+              if (filterSo || searchQuery.trim()) {
+                loadOrders(searchQuery, filterStatus, selectedVendor, filterSo);
+              }
             }}
             className="btn btn-secondary"
             style={{ fontSize: '0.78rem', height: '34px', padding: '0 10px', gap: '4px' }}
@@ -1166,10 +1165,38 @@ export default function BatchSpreadsheetPage() {
                     Memuat data spreadsheet...
                   </td>
                 </tr>
+              ) : !filterSo && !searchQuery.trim() ? (
+                <tr>
+                  <td colSpan={10} style={{ padding: '60px 20px', textAlign: 'center' }}>
+                    <div style={{ maxWidth: '440px', margin: '0 auto', color: 'var(--text-secondary)' }}>
+                      <div
+                        style={{
+                          width: '48px',
+                          height: '48px',
+                          borderRadius: '12px',
+                          background: 'rgba(234, 179, 8, 0.12)',
+                          color: '#ca8a04',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          margin: '0 auto 14px'
+                        }}
+                      >
+                        <Package size={26} />
+                      </div>
+                      <div style={{ fontSize: '0.96rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                        Pilih Sales Order Terlebih Dahulu
+                      </div>
+                      <div style={{ fontSize: '0.82rem', lineHeight: 1.5, color: 'var(--text-muted)' }}>
+                        Silakan pilih <strong>Sales Order</strong> pada filter di atas untuk memuat daftar SPK yang akan dikerjakan, atau ketik No. SPK di kolom pencarian.
+                      </div>
+                    </div>
+                  </td>
+                </tr>
               ) : displayedOrders.length === 0 ? (
                 <tr>
                   <td colSpan={10} style={{ padding: '36px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                    Tidak ada SPK yang sesuai dengan filter pencarian.
+                    Tidak ada SPK yang sesuai dengan filter atau Sales Order terpilih.
                   </td>
                 </tr>
               ) : (
