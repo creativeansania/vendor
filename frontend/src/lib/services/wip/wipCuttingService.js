@@ -109,8 +109,8 @@ export async function submitCuttingRolls({ user, orderId, rollUpdates = [], actu
     ? Math.max(0, parseFloat(actualCutting) || 0)
     : (sumFabricCutPcs > 0 ? sumFabricCutPcs : Number(order.actual_cutting || 0));
 
-  const estimasiSpb = parseFloat(order.estimasi_dari_spb || 0);
-  const selisihCutting = finalActualCutting > 0 ? finalActualCutting - estimasiSpb : Number(order.selisih_hasil_cutting || 0);
+  const estimasiSpb = Math.round(parseFloat(order.estimasi_dari_spb || 0));
+  const selisihCutting = finalActualCutting > 0 ? Math.round(finalActualCutting - estimasiSpb) : Math.round(Number(order.selisih_hasil_cutting || 0));
 
   // 2. Update WIP Order in Supabase (only mark cutting_locked_at when actual cutting PCS > 0)
   const orderUpdatePayload = {
@@ -236,8 +236,8 @@ export async function syncCuttingToOdoo(orderOrWipId, rollUpdates, actualCutting
         estimasi = wips && wips[0] ? (parseFloat(wips[0].x_studio_estimasi_dari_spb) || 0) : 0;
       }
 
-      wipWriteVals.x_studio_actual_cutting = actualCutting;
-      wipWriteVals.x_studio_selisih_hasil_cutting = actualCutting - estimasi;
+      wipWriteVals.x_studio_actual_cutting = Math.round(actualCutting);
+      wipWriteVals.x_studio_selisih_hasil_cutting = Math.round(actualCutting - (estimasi || 0));
     }
 
     if (Object.keys(wipWriteVals).length > 0) {

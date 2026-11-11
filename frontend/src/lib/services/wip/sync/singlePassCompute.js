@@ -278,8 +278,8 @@ export async function syncWipFromPickings(wipId, moId, { preloadedMo = null, pre
     const conversionFactor = (unitKain && unitCons && unitKain !== unitCons) ? 0.9144 : 1.0;
 
     const estimasiDariSpb = consumptionPerPcs > 0
-      ? (conversionFactor * kainQty) / consumptionPerPcs
-      : 0.0;
+      ? Math.round((conversionFactor * kainQty) / consumptionPerPcs)
+      : 0;
 
     const targetKebutuhanKain = parseFloat(wip.x_studio_qty_kebutuhan_kain) || 0.0;
     const statusKebutuhanKain = kainQty >= targetKebutuhanKain ? 'Cukup' : 'Kurang';
@@ -289,13 +289,13 @@ export async function syncWipFromPickings(wipId, moId, { preloadedMo = null, pre
       ...newRollLines.map((r) => r[2])
     ];
     const existingActualCuttingPcs = parseFloat(wip.x_studio_actual_cutting) || 0.0;
-    const actualCutting = existingActualCuttingPcs > 0
+    const actualCutting = Math.round(existingActualCuttingPcs > 0
       ? existingActualCuttingPcs
       : allLinesToSum
           .filter((l) => (l.x_name || '').toUpperCase().includes('KAIN'))
-          .reduce((sum, l) => sum + (parseFloat(l.x_studio_qty_berat_kg) || 0.0), 0.0);
+          .reduce((sum, l) => sum + (parseFloat(l.x_studio_qty_berat_kg) || 0.0), 0.0));
 
-    const selisihCutting = actualCutting - estimasiDariSpb;
+    const selisihCutting = Math.round(actualCutting - estimasiDariSpb);
 
     let workcenterIds = Array.isArray(preloadedWorkcenterIds) ? preloadedWorkcenterIds : [];
     if (!preloadedWorkcenterIds && mo.workorder_ids && mo.workorder_ids.length > 0) {

@@ -1089,10 +1089,10 @@ export default function BatchSpreadsheetPage() {
                   const isDone = o.status_produksi?.toLowerCase() === 'selesai';
                   const parsedProduct = parseProductName(o.product_name);
 
-                  // Calculate selisih cutting vs estimasi
-                  const estSpb = Number(o.estimasi_dari_spb || o.qty_spk || 0);
-                  const actCut = Number(inp.actualCutting ?? o.actual_cutting ?? 0);
-                  const selisihCut = actCut - estSpb;
+                  // Calculate selisih cutting vs estimasi (dibulatkan ke integer pcs terdekat)
+                  const estSpb = Math.round(Number(o.estimasi_dari_spb || o.qty_spk || 0));
+                  const actCut = Math.round(Number(inp.actualCutting ?? o.actual_cutting ?? 0));
+                  const selisihCut = Math.round(actCut - estSpb);
 
                   const rowBg = inp.isDirty
                     ? 'var(--brand-gold-light)'
@@ -1384,7 +1384,7 @@ export default function BatchSpreadsheetPage() {
                               color: selisihCut >= 0 ? 'var(--status-emerald)' : 'var(--status-rose)'
                             }}
                           >
-                            {selisihCut > 0 ? `+${selisihCut}` : selisihCut} pcs
+                            {selisihCut > 0 ? `+${selisihCut.toLocaleString('id-ID')}` : selisihCut.toLocaleString('id-ID')} pcs
                           </td>
                         </>
                       )}

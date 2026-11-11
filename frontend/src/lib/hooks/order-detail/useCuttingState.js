@@ -58,9 +58,9 @@ export function useCuttingState({
     return 0;
   }, [totalPhysicalFabric, actualCutting, order]);
 
-  // Actual cutting - estimasi dari spb (selisih hasil cutting)
+  // Actual cutting - estimasi dari spb (selisih hasil cutting) dibulatkan ke integer pcs terdekat
   const selisihCutting = useMemo(() => {
-    return currentActualCutting - estimasiSpb;
+    return Math.round(currentActualCutting - estimasiSpb);
   }, [currentActualCutting, estimasiSpb]);
 
   // Quick fill handlers

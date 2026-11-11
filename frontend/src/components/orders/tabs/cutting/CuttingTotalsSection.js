@@ -24,19 +24,21 @@ export default function CuttingTotalsSection({
     return sum + (parseFloat(val) || 0);
   }, 0);
 
-  const effectiveCutting =
+  const effectiveCutting = Math.round(
     currentActualCutting > 0
       ? currentActualCutting
       : (totalPhysicalFabric > 0
           ? totalPhysicalFabric
-          : (parseFloat(actualCutting) || parseFloat(order?.actual_cutting) || 0));
+          : (parseFloat(actualCutting) || parseFloat(order?.actual_cutting) || 0))
+  );
 
-  const effectiveEstimasi =
+  const effectiveEstimasi = Math.round(
     estimasiSpb > 0
       ? estimasiSpb
-      : (parseFloat(order?.estimasi_dari_spb) || 0);
+      : (parseFloat(order?.estimasi_dari_spb) || 0)
+  );
 
-  const selisih = effectiveCutting - effectiveEstimasi;
+  const selisih = Math.round(effectiveCutting - effectiveEstimasi);
 
   return (
     <div className="card" style={{ padding: '16px 18px', borderRadius: '16px' }}>
@@ -132,7 +134,7 @@ export default function CuttingTotalsSection({
             ✂️ Selisih Hasil Cutting:
           </span>
           <span className="mono-num" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            Actual ({effectiveCutting} pcs) - Estimasi SPB ({effectiveEstimasi} pcs) =
+            Actual ({effectiveCutting.toLocaleString('id-ID')} pcs) - Estimasi SPB ({effectiveEstimasi.toLocaleString('id-ID')} pcs) =
           </span>
           <strong
             className="mono-num"
@@ -149,7 +151,7 @@ export default function CuttingTotalsSection({
                   : 'var(--text-primary)'
             }}
           >
-            {effectiveCutting === 0 ? '-' : (selisih > 0 ? `+${selisih}` : selisih)} pcs
+            {effectiveCutting === 0 ? '-' : (selisih > 0 ? `+${selisih.toLocaleString('id-ID')}` : selisih.toLocaleString('id-ID'))} pcs
           </strong>
         </div>
 
@@ -162,11 +164,11 @@ export default function CuttingTotalsSection({
             </span>
           ) : selisih > 0 ? (
             <span className="badge badge-emerald" style={{ fontSize: '0.72rem', padding: '3px 8px' }}>
-              ↑ Lebih +{selisih} pcs
+              ↑ Lebih +{selisih.toLocaleString('id-ID')} pcs
             </span>
           ) : (
             <span className="badge badge-amber" style={{ fontSize: '0.72rem', padding: '3px 8px' }}>
-              ↓ Kurang {Math.abs(selisih)} pcs
+              ↓ Kurang {Math.abs(selisih).toLocaleString('id-ID')} pcs
             </span>
           )}
         </div>
