@@ -4,6 +4,7 @@ import { withWipLock } from '../wipLock.js';
 import { resolveSalesOrderForMo } from './soMoResolver.js';
 import { ensureDedicatedComponentPickings } from './pickingSplitter.js';
 import { syncWipFromPickings } from './singlePassCompute.js';
+import { deriveSpkInduk, syncSpkIndukRecap } from './spkRecapSync.js';
 
 const FULL_MO_EVENT_FIELDS = [
   'id',
@@ -102,10 +103,11 @@ export async function onMoConfirmed(moId, { autoSync = true, preloadedMo = null 
     const qtyKebutuhanKain = (parseFloat(mo.product_qty) || 0.0) * consumptionPerPcs;
     const workcenterIds = [...new Set((workorders || []).filter((wo) => wo.workcenter_id).map((wo) => wo.workcenter_id[0]))];
 
-    const spkInduk = moName.replace(/-\d+$/, '').trim() || moName;
+    const spkInduk = deriveSpkInduk(moName);
     const newWipPayload = {
       x_name: moName,
       x_studio_spk_induk: spkInduk,
+      x_studio_estimasi_spb_rekap: 0.0,
       x_studio_persentase_susut: 0.0,
       x_studio_manufacturing_order: id,
       x_studio_qty_kebutuhan_kain: qtyKebutuhanKain,
@@ -147,6 +149,11 @@ export async function onMoConfirmed(moId, { autoSync = true, preloadedMo = null 
         });
       } catch (mErr) {
         console.warn(`[WipSyncService] Initial Supabase sync warning for WIP #${newWipId}: ${mErr.message}`);
+      }
+      if (autoSync && spkInduk && spkInduk !== moName) {
+        await syncSpkIndukRecap(spkInduk).catch((recapErr) => {
+          console.warn(`[WipSyncService] Non-fatal family recap sync warning for ${spkInduk}:`, recapErr.message);
+        });
       }
     }
 
@@ -258,9 +265,19 @@ export async function onTransferDone(pickingId) {
     }
 
     if (wipId) {
-      const syncRes = await syncWipFromPickings(wipId, moId, { preloadedMo: moRecord });
+      const syncRes = await syncWipFromPickings(wipId, moId, {
+        preloadedMo: moRecord,
+        skipFamilyRecap: true
+      });
       syncedWips.push(syncRes);
     }
+  }
+
+  const impactedInduks = [...new Set(syncedWips.map((s) => s?.spkInduk).filter(Boolean))];
+  for (const spkInduk of impactedInduks) {
+    await syncSpkIndukRecap(spkInduk).catch((recapErr) => {
+      console.warn(`[WipSyncService] Non-fatal family recap sync warning for ${spkInduk}:`, recapErr.message);
+    });
   }
 
   return {

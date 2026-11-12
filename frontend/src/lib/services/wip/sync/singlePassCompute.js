@@ -4,6 +4,7 @@ import { withWipLock } from '../wipLock.js';
 import { classifyMaterialLine } from '../../../utils/materialClassifier.js';
 import { resolveFinishing } from './syncMapper.js';
 import { fetchVendorPriceFromOdoo } from './vendorPricingSync.js';
+import { deriveSpkInduk, syncSpkIndukRecap } from './spkRecapSync.js';
 
 function extractBaseLot(lotStr) {
   if (!lotStr) return 'Tanpa Lot';
@@ -137,8 +138,8 @@ async function reconcileAndBuildRollLines(wipId, wip, moName, pcMoveLines) {
  * Single-Pass Compute: Synchronizes all data and formulas for a WIP record.
  * Accepts optional `preloadedMo` & `preloadedWorkcenterIds` to avoid duplicate RPC reads.
  */
-export async function syncWipFromPickings(wipId, moId, { preloadedMo = null, preloadedWorkcenterIds = null } = {}) {
-  return withWipLock(`wip_${wipId}`, async () => {
+export async function syncWipFromPickings(wipId, moId, { preloadedMo = null, preloadedWorkcenterIds = null, skipFamilyRecap = false } = {}) {
+  const result = await withWipLock(`wip_${wipId}`, async () => {
     console.log(`[WipSyncService] Executing Single-Pass Compute for WIP #${wipId} (MO #${moId})...`);
 
     const canReuseMo = preloadedMo && Array.isArray(preloadedMo.picking_ids);
@@ -321,22 +322,10 @@ export async function syncWipFromPickings(wipId, moId, { preloadedMo = null, pre
 
     const totalHarga = hargaVendor * sfpQtyMasuk;
 
-    const spkInduk = moName.replace(/-\d+$/, '').trim() || moName;
-    const outputQty = (parseFloat(wip.x_studio_qty_kirim_a_grade || 0) + parseFloat(wip.x_studio_qty_kirim_b_grade || 0)) > 0
-      ? (parseFloat(wip.x_studio_qty_kirim_a_grade || 0) + parseFloat(wip.x_studio_qty_kirim_b_grade || 0))
-      : sfpQtyMasuk;
-    const targetQty = estimasiDariSpb > 0
-      ? estimasiDariSpb
-      : (parseFloat(mo.product_qty || wip.x_studio_qty_spk || 0));
-
-    let persentaseSusut = 0.0;
-    if (outputQty > 0 && targetQty > 0) {
-      persentaseSusut = Math.round(((targetQty - outputQty) / targetQty) * 10000) / 100;
-    }
+    const spkInduk = deriveSpkInduk(moName);
 
     const vals = {
       x_studio_spk_induk: spkInduk,
-      x_studio_persentase_susut: persentaseSusut,
       x_studio_kain_dari_gudang_qty: kainQty,
       x_studio_accessories_dari_gudang: accsQty,
       x_studio_estimasi_dari_spb: estimasiDariSpb,
@@ -441,6 +430,7 @@ export async function syncWipFromPickings(wipId, moId, { preloadedMo = null, pre
     return {
       wipId,
       moId,
+      spkInduk,
       kainQty,
       accsQty,
       estimasiDariSpb,
@@ -452,4 +442,14 @@ export async function syncWipFromPickings(wipId, moId, { preloadedMo = null, pre
       updated: true
     };
   });
+
+  if (result?.updated && result?.spkInduk && !skipFamilyRecap) {
+    try {
+      await syncSpkIndukRecap(result.spkInduk);
+    } catch (recapErr) {
+      console.warn(`[WipSyncService] Non-fatal family recap sync warning for ${result.spkInduk}:`, recapErr.message);
+    }
+  }
+
+  return result;
 }

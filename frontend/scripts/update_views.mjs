@@ -1,8 +1,32 @@
 import { adminOdooClient } from '../src/lib/odoo/odooClient.js';
 
+async function ensureRekapField() {
+  const existing = await adminOdooClient._callObject('ir.model.fields', 'search_read', [
+    [['model_id', '=', 1877], ['name', '=', 'x_studio_estimasi_spb_rekap']]
+  ], { fields: ['id', 'name', 'state', 'store'] });
+
+  if (existing && existing.length > 0) {
+    console.log('Field x_studio_estimasi_spb_rekap already exists:', existing[0]);
+    return existing[0].id;
+  }
+
+  const fieldId = await adminOdooClient._callObject('ir.model.fields', 'create', [{
+    model_id: 1877,
+    name: 'x_studio_estimasi_spb_rekap',
+    field_description: 'Total Estimasi SPB',
+    ttype: 'float',
+    state: 'manual',
+    store: true
+  }]);
+  console.log('Created field x_studio_estimasi_spb_rekap with ID:', fieldId);
+  return fieldId;
+}
+
 async function updateViews() {
   await adminOdooClient.authenticate();
   console.log('Authenticated UID:', adminOdooClient.uid);
+
+  await ensureRekapField();
 
   // 1. Update Search View 4409
   const searchArch = `<search>
@@ -42,13 +66,14 @@ async function updateViews() {
     <field name="x_studio_start_spk" optional="show"/>
     <field name="x_studio_sales_order" optional="show"/>
     <field name="x_studio_qty_spk" optional="show" sum="Total SPK"/>
+    <field name="x_studio_estimasi_spb_rekap" optional="show" string="Total Estimasi SPB" sum="Total Estimasi SPB"/>
     <field name="x_studio_qty_masuk_sfp" optional="show" sum="Total SFP"/>
+    <field name="x_studio_persentase_susut" optional="show" string="% Susut" avg="Rata-rata Susut"/>
     <field name="x_studio_qty_kirim_a_grade" optional="show" sum="Total Kirim A"/>
     <field name="x_studio_qty_kirim_b_grade" optional="show" sum="Total Kirim B"/>
     <field name="x_studio_sisa_makloon_kg" optional="show" sum="Total BSKL (Kg)"/>
-    <field name="x_studio_persentase_susut" optional="show" string="% Susut" avg="Rata-rata Susut"/>
-    <field name="x_studio_kain_dari_gudang_qty" optional="hide" sum="Total Kain (Yard)"/>
-    <field name="x_studio_estimasi_dari_spb" optional="hide" sum="Total Estimasi SPB"/>
+    <field name="x_studio_kain_dari_gudang_qty" optional="hide"/>
+    <field name="x_studio_estimasi_dari_spb" optional="hide" string="Estimasi SPB (Baris)"/>
     <field name="x_studio_actual_cutting" optional="hide" sum="Total Cutting"/>
   </xpath>
 </data>`;
@@ -59,7 +84,7 @@ async function updateViews() {
   ]);
   console.log('Successfully updated List View 4433!');
 
-  // 3. Create or Update "Rekap Susut Vendor" Window Action & Menu Item!
+  // 3. Ensure "Rekap Susut Vendor" Window Action & Menu Item remain configured
   const existingActions = await adminOdooClient._callObject('ir.actions.act_window', 'search_read', [
     [['name', '=', 'Rekap Susut Vendor'], ['res_model', '=', 'x_monitoring_wip_vendo']]
   ], { fields: ['id', 'name'] });
@@ -85,7 +110,6 @@ async function updateViews() {
     console.log(`Created new action ${actionId}`);
   }
 
-  // Check if Menu item exists under Vendoran (id: 686)
   const existingMenus = await adminOdooClient._callObject('ir.ui.menu', 'search_read', [
     [['parent_id', '=', 686], ['name', '=', 'Rekap Susut Vendor']]
   ], { fields: ['id', 'name'] });
