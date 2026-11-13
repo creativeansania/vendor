@@ -1,5 +1,6 @@
 import { adminOdooClient } from '../../../odoo/odooClient.js';
 import { deriveSpkInduk, computeSpkFamilyRecap } from './spkRecapSync.js';
+import { syncPabrikRecapForApproval } from './pabrikRecapSync.js';
 
 const WIP_MODEL = 'x_monitoring_wip_vendo';
 const PAGE_SIZE = 2000;
@@ -32,11 +33,6 @@ export async function reconcileWipSfpAndRecap({ full = false, days = 60, dryRun 
     ['picking_id.name', '=like', 'VD%/SFP/%'],
     ['state', '=', 'done']
   ];
-  if (!full && days > 0) {
-    const d = new Date();
-    d.setDate(d.getDate() - days);
-    smlDomain.push(['date', '>=', d.toISOString().split('T')[0]]);
-  }
 
   // 1. Fetch Vendor SFP move lines
   const allSmls = [];
@@ -200,15 +196,47 @@ export async function reconcileWipSfpAndRecap({ full = false, days = 60, dryRun 
     }
   }
 
+  // 6. Pabrik Approval Requests reconciliation (recent 30 days)
+  let pabrikStats = { checkedApprovals: 0, syncedApprovals: 0 };
+  if (!dryRun) {
+    try {
+      const dPabrik = new Date();
+      dPabrik.setDate(dPabrik.getDate() - (days || 30));
+      const pabrikDateStr = dPabrik.toISOString().split('T')[0];
+
+      const recentPabrikMos = await adminOdooClient._callObject('mrp.production', 'search_read', [
+        [['write_date', '>=', pabrikDateStr], ['x_studio_approval_request', '!=', false], ['state', '!=', 'cancel']],
+        ['id', 'x_studio_approval_request']
+      ], { limit: 1000 });
+
+      const apprIds = [...new Set((recentPabrikMos || []).map((m) => m.x_studio_approval_request?.[0]).filter(Boolean))];
+      pabrikStats.checkedApprovals = apprIds.length;
+
+      for (const apprId of apprIds) {
+        const pRes = await syncPabrikRecapForApproval(apprId).catch((err) => {
+          console.warn(`[Reconcile] Non-fatal Pabrik approval #${apprId} sync warning:`, err.message);
+          return null;
+        });
+        if (pRes) pabrikStats.syncedApprovals++;
+        await sleep(SLEEP_MS);
+      }
+    } catch (pabrikErr) {
+      console.warn(`[Reconcile] Pabrik reconcile warning:`, pabrikErr.message);
+    }
+  }
+
   const durationMs = Date.now() - startTime;
   return {
     success: true,
     dryRun,
-    totalCheckedWips: allWips.length,
-    totalSfpLines: allSmls.length,
-    discrepanciesFound: wipSfpUpdates.length,
-    wipsUpdated: dryRun ? 0 : wipSfpUpdates.length,
-    familiesUpdated,
+    vendor: {
+      totalCheckedWips: allWips.length,
+      totalSfpLines: allSmls.length,
+      discrepanciesFound: wipSfpUpdates.length,
+      wipsUpdated: dryRun ? 0 : wipSfpUpdates.length,
+      familiesUpdated
+    },
+    pabrik: pabrikStats,
     durationMs
   };
 }
