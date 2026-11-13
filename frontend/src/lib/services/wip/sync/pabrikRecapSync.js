@@ -354,6 +354,20 @@ export async function syncPabrikRecapForApproval(approvalId) {
       });
     }
 
+    // 4b. Calculate weighted % Susut Total Approval for the entire batch
+    let totalApprovalGreyYd = 0.0;
+    let totalApprovalFinishYd = 0.0;
+    for (const row of computedRows) {
+      totalApprovalGreyYd += row.x_studio_consumption_grey_yd || 0;
+      totalApprovalFinishYd += row.x_studio_total_finish || 0;
+    }
+    const susutTotalApproval = totalApprovalGreyYd > 0
+      ? round2(((totalApprovalGreyYd - totalApprovalFinishYd) / totalApprovalGreyYd) * 100)
+      : 0.0;
+    for (const row of computedRows) {
+      row.x_studio_persentase_susut_approval = susutTotalApproval;
+    }
+
     // 5. Upsert into x_rekap_susut_pabrik in Odoo
     const existingRekaps = await adminOdooClient._callObject(REKAP_MODEL, 'search_read', [
       [['x_studio_approval_request', '=', apprId]]

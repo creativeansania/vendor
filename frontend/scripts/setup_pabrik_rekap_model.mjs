@@ -24,6 +24,7 @@ const DESIRED_FIELDS = [
   { name: 'x_studio_qty_grade_c', field_description: 'Grade C (Yd)', ttype: 'float' },
   { name: 'x_studio_qty_bs', field_description: 'BS (Yd)', ttype: 'float' },
   { name: 'x_studio_total_finish', field_description: 'Total Finish (Yd)', ttype: 'float' },
+  { name: 'x_studio_persentase_susut_approval', field_description: '% Susut Total Approval', ttype: 'float' },
   { name: 'x_studio_persentase_susut_celup', field_description: '% Susut Celup', ttype: 'float' },
   { name: 'x_studio_persentase_susut_b_c', field_description: '% Susut B+C', ttype: 'float' },
   { name: 'x_studio_persentase_susut_bs', field_description: '% Susut BS', ttype: 'float' },
@@ -123,9 +124,10 @@ async function main() {
   <field name="x_studio_qty_grade_c" string="Grade C (Yd)" optional="show" sum="Total Grade C (Yd)"/>
   <field name="x_studio_qty_bs" string="BS (Yd)" optional="show" sum="Total BS (Yd)"/>
   <field name="x_studio_total_finish" string="Total Finish (Yd)" optional="show" sum="Total Finish (Yd)"/>
-  <field name="x_studio_persentase_susut_celup" string="% Susut Celup" optional="show" avg="Rata-rata Susut Celup"/>
-  <field name="x_studio_persentase_susut_b_c" string="% Susut B+C" optional="show" avg="Rata-rata Susut B+C"/>
-  <field name="x_studio_persentase_susut_bs" string="% Susut BS" optional="show" avg="Rata-rata Susut BS"/>
+  <field name="x_studio_persentase_susut_approval" string="% Susut Total Approval" optional="show"/>
+  <field name="x_studio_persentase_susut_celup" string="% Susut Celup" optional="show"/>
+  <field name="x_studio_persentase_susut_b_c" string="% Susut B+C" optional="show"/>
+  <field name="x_studio_persentase_susut_bs" string="% Susut BS" optional="show"/>
   <field name="x_studio_status" string="Status" optional="hide"/>
   <field name="write_date" string="Terakhir Update" optional="hide"/>
 </list>`;
@@ -158,6 +160,7 @@ async function main() {
         <field name="x_studio_qty_grade_c" readonly="1"/>
         <field name="x_studio_qty_bs" readonly="1"/>
         <field name="x_studio_total_finish" readonly="1"/>
+        <field name="x_studio_persentase_susut_approval" readonly="1"/>
         <field name="x_studio_persentase_susut_celup" readonly="1"/>
         <field name="x_studio_persentase_susut_b_c" readonly="1"/>
         <field name="x_studio_persentase_susut_bs" readonly="1"/>
