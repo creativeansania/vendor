@@ -5,6 +5,7 @@ import { resolveSalesOrderForMo } from './soMoResolver.js';
 import { ensureDedicatedComponentPickings } from './pickingSplitter.js';
 import { syncWipFromPickings } from './singlePassCompute.js';
 import { deriveSpkInduk, syncSpkIndukRecap } from './spkRecapSync.js';
+import { syncPabrikRecapForMo } from './pabrikRecapSync.js';
 
 const FULL_MO_EVENT_FIELDS = [
   'id',
@@ -23,6 +24,7 @@ const FULL_MO_EVENT_FIELDS = [
   'company_id',
   'warehouse_id',
   'picking_type_id',
+  'x_studio_approval_request',
   'date_start',
   'date_deadline'
 ];
@@ -32,6 +34,13 @@ export function isVendorMoRecord(mo) {
   const ptName = (mo.picking_type_id && mo.picking_type_id[1]) ? mo.picking_type_id[1].toUpperCase() : '';
   const whName = (mo.warehouse_id && mo.warehouse_id[1]) ? mo.warehouse_id[1].toUpperCase() : '';
   return ptName.includes('VENDOR') || whName.includes('VENDOR') || moName.startsWith('VD');
+}
+
+export function isPabrikMoRecord(mo) {
+  const moName = (mo.name || '').trim().toUpperCase();
+  const ptName = (mo.picking_type_id && mo.picking_type_id[1]) ? mo.picking_type_id[1].toUpperCase() : '';
+  const whName = (mo.warehouse_id && mo.warehouse_id[1]) ? mo.warehouse_id[1].toUpperCase() : '';
+  return ptName.includes('PABRIK') || whName.includes('PABRIK') || moName.startsWith('PB') || Boolean(mo.x_studio_approval_request);
 }
 
 /**
@@ -58,8 +67,15 @@ export async function onMoConfirmed(moId, { autoSync = true, preloadedMo = null 
       mo = mos[0];
     }
 
-    // Fast exit BEFORE resolving SO or searching WIP if this is an internal/non-vendor MO!
+    // Fast exit or route to Pabrik if this is not a vendor MO!
     if (!isVendorMoRecord(mo)) {
+      if (isPabrikMoRecord(mo)) {
+        const pabrikRes = await syncPabrikRecapForMo(id, { preloadedMo: mo }).catch((err) => {
+          console.warn(`[WipSyncService] Non-fatal Pabrik recap sync warning for MO #${id}:`, err.message);
+          return null;
+        });
+        return { success: true, pabrik: true, pabrikRes };
+      }
       const ptName = (mo.picking_type_id && mo.picking_type_id[1]) ? mo.picking_type_id[1] : 'Internal';
       return { success: true, skipped: true, reason: `Non-vendor operation type: ${ptName}` };
     }
@@ -190,9 +206,10 @@ export async function onTransferDone(pickingId) {
 
   const isRelevantCode = ['/PC/', '/SPB/', '/SFP/'].some((code) => pickingName.includes(code));
   const isVendorTransfer = ptName.includes('VENDOR') || pickingName.startsWith('VD');
+  const isPabrikTransfer = ptName.includes('PABRIK') || pickingName.startsWith('PB');
 
-  if (!isRelevantCode || !isVendorTransfer) {
-    return { success: true, skipped: true, reason: 'Not a vendor PC/SPB/SFP transfer' };
+  if (!isRelevantCode || (!isVendorTransfer && !isPabrikTransfer)) {
+    return { success: true, skipped: true, reason: 'Not a vendor or pabrik PC/SPB/SFP transfer' };
   }
 
   let moIds = [];
@@ -221,6 +238,24 @@ export async function onTransferDone(pickingId) {
 
   if (moIds.length === 0) {
     return { success: true, skipped: true, reason: 'No linked MO found' };
+  }
+
+  if (isPabrikTransfer) {
+    const pabrikSynced = [];
+    for (const mId of moIds) {
+      const pRes = await syncPabrikRecapForMo(mId).catch((err) => {
+        console.warn(`[WipSyncService] Non-fatal Pabrik transfer sync warning for MO #${mId}:`, err.message);
+        return null;
+      });
+      if (pRes) pabrikSynced.push(pRes);
+    }
+    return {
+      success: true,
+      pabrik: true,
+      pickingId: id,
+      pickingName,
+      pabrikSynced
+    };
   }
 
   // Read full MO fields once so downstream syncWipFromPickings / onMoConfirmed don't re-read MOs!
