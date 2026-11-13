@@ -8,6 +8,9 @@ const DESIRED_FIELDS = [
   { name: 'x_studio_approval_name', field_description: 'No Approval', ttype: 'char' },
   { name: 'x_studio_pabrik', field_description: 'Pabrik', ttype: 'many2one', relation: 'stock.warehouse' },
   { name: 'x_studio_pabrik_name', field_description: 'Nama Pabrik', ttype: 'char' },
+  { name: 'x_studio_manufacturing_order', field_description: 'Manufacturing Order', ttype: 'char' },
+  { name: 'x_studio_daftar_mo', field_description: 'Daftar MO', ttype: 'text' },
+  { name: 'x_studio_mo_ids', field_description: 'Daftar MO', ttype: 'many2many', relation: 'mrp.production' },
   { name: 'x_studio_jenis_kain', field_description: 'Jenis Kain', ttype: 'char' },
   { name: 'x_studio_warna', field_description: 'Warna', ttype: 'char' },
   { name: 'x_studio_consumption_grey_yd', field_description: 'Consumed Grey (Yd)', ttype: 'float' },
@@ -102,6 +105,7 @@ async function main() {
   <field name="x_name" string="Kode Rekap" optional="hide"/>
   <field name="x_studio_approval_request" string="Approval Request" optional="show"/>
   <field name="x_studio_pabrik" string="Pabrik" optional="show"/>
+  <field name="x_studio_manufacturing_order" string="Manufacturing Order" optional="show"/>
   <field name="x_studio_jenis_kain" string="Jenis Kain" optional="show"/>
   <field name="x_studio_warna" string="Warna" optional="show"/>
   <field name="x_studio_mo_count" string="Jml MO" optional="show" sum="Total MO"/>
@@ -129,6 +133,7 @@ async function main() {
         <field name="x_studio_approval_request" readonly="1"/>
         <field name="x_studio_approval_name" readonly="1"/>
         <field name="x_studio_pabrik" readonly="1"/>
+        <field name="x_studio_manufacturing_order" readonly="1"/>
         <field name="x_studio_jenis_kain" readonly="1"/>
         <field name="x_studio_warna" readonly="1"/>
         <field name="x_studio_mo_count" readonly="1"/>
@@ -146,15 +151,31 @@ async function main() {
         <field name="x_studio_persentase_susut_bs" readonly="1"/>
       </group>
     </group>
+    <notebook>
+      <page string="Daftar Manufacturing Order (MO)">
+        <field name="x_studio_mo_ids" readonly="1">
+          <list string="Manufacturing Orders">
+            <field name="name" string="No MO"/>
+            <field name="product_id" string="Product"/>
+            <field name="product_qty" string="Qty Demand"/>
+            <field name="qty_producing" string="Qty Finish"/>
+            <field name="product_uom_id" string="UoM"/>
+            <field name="state" string="State" widget="badge"/>
+          </list>
+        </field>
+      </page>
+    </notebook>
   </sheet>
 </form>`;
 
   const SEARCH_ARCH = `<search>
+  <field name="x_studio_manufacturing_order" string="Manufacturing Order"/>
   <field name="x_studio_approval_request" string="Approval Request"/>
   <field name="x_studio_approval_name" string="No Approval"/>
   <field name="x_studio_warna" string="Warna"/>
   <field name="x_studio_jenis_kain" string="Jenis Kain"/>
   <field name="x_studio_pabrik" string="Pabrik"/>
+  <field name="x_studio_daftar_mo" string="Daftar MO"/>
   <separator/>
   <filter string="Susut Celup &gt; 15%" name="high_susut_celup" domain="[('x_studio_persentase_susut_celup', '&gt;', 15)]"/>
   <filter string="Susut B+C &gt; 10%" name="high_susut_bc" domain="[('x_studio_persentase_susut_b_c', '&gt;', 10)]"/>

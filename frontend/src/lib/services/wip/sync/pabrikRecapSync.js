@@ -77,6 +77,56 @@ export function parsePabrikProduct(rawName) {
 }
 
 /**
+ * Formats a clean summary of MO names for list views.
+ * Combines roll MOs (-001, -002) into their base MO,
+ * and collapses consecutive numbered MOs into clean ranges (e.g. 'PBSS/MO/00013 s/d 00019').
+ */
+export function formatMoSummary(moNames) {
+  if (!moNames || moNames.length === 0) return '';
+  const baseNames = [...new Set(moNames.map((n) => String(n || '').replace(/-\d+$/, '').trim()))].filter(Boolean).sort();
+  if (baseNames.length === 0) return '';
+  if (baseNames.length === 1) return baseNames[0];
+
+  const parsed = baseNames.map((name) => {
+    const m = name.match(/^(.*\/MO\/)(\d+)$/);
+    if (m) {
+      return { prefix: m[1], num: parseInt(m[2], 10), pad: m[2].length, raw: name };
+    }
+    return { prefix: '', num: null, pad: 0, raw: name };
+  });
+
+  const ranges = [];
+  let currentRange = null;
+
+  for (let i = 0; i < parsed.length; i++) {
+    const item = parsed[i];
+    if (!currentRange) {
+      currentRange = [item];
+    } else {
+      const prev = currentRange[currentRange.length - 1];
+      if (item.num !== null && prev.num !== null && item.prefix === prev.prefix && item.num === prev.num + 1) {
+        currentRange.push(item);
+      } else {
+        ranges.push(currentRange);
+        currentRange = [item];
+      }
+    }
+  }
+  if (currentRange) ranges.push(currentRange);
+
+  const formattedParts = ranges.map((r) => {
+    if (r.length === 1) return r[0].raw;
+    if (r.length === 2) return `${r[0].raw}, ${r[1].raw}`;
+    const start = r[0];
+    const end = r[r.length - 1];
+    const endStr = String(end.num).padStart(end.pad, '0');
+    return `${start.raw} s/d ${endStr}`;
+  });
+
+  return formattedParts.join(', ');
+}
+
+/**
  * Normalizes Greige quantity to yards if it was recorded in meters.
  */
 export function normalizeGreigeToYard(qty, uomName) {
@@ -205,6 +255,11 @@ export async function syncPabrikRecapForApproval(approvalId) {
       const susutBS = totalFinish > 0 ? round2((bs / totalFinish) * 100) : 0.0;
 
       const codeName = `${approvalName} / ${warnaKey}`;
+      const moNames = group.mos.map((item) => item.mo.name);
+      const moIds = group.mos.map((item) => item.mo.id);
+      const moSummary = formatMoSummary(moNames);
+      const uniqueBaseMos = [...new Set(moNames.map((n) => String(n || '').replace(/-\d+$/, '').trim()))].filter(Boolean).sort();
+      const daftarMo = uniqueBaseMos.join(', ');
 
       computedRows.push({
         x_name: codeName,
@@ -212,6 +267,9 @@ export async function syncPabrikRecapForApproval(approvalId) {
         x_studio_approval_name: approvalName,
         x_studio_pabrik: warehouseId,
         x_studio_pabrik_name: warehouseName,
+        x_studio_manufacturing_order: moSummary,
+        x_studio_daftar_mo: daftarMo,
+        x_studio_mo_ids: [[6, 0, moIds]],
         x_studio_jenis_kain: group.jenisKain,
         x_studio_warna: warnaKey,
         x_studio_consumption_grey_yd: greyYd,

@@ -1,7 +1,12 @@
 import { adminOdooClient } from '../src/lib/odoo/odooClient.js';
 import { syncPabrikRecapForApproval } from '../src/lib/services/wip/sync/pabrikRecapSync.js';
 
-const CONCURRENCY = 4;
+const CONCURRENCY = 2;
+const SLEEP_MS = 60;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function runWithConcurrency(tasks, concurrency) {
   let cursor = 0;
@@ -9,6 +14,7 @@ async function runWithConcurrency(tasks, concurrency) {
     while (cursor < tasks.length) {
       const idx = cursor++;
       await tasks[idx]();
+      if (SLEEP_MS > 0) await sleep(SLEEP_MS);
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, () => worker()));
