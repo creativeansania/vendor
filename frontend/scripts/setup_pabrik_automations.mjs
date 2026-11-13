@@ -13,7 +13,7 @@ async function main() {
     model_id: 753, // mrp.production
     trigger: 'on_state_set',
     trg_selection_field_id: 2431, // Done
-    filter_domain: "['&', ('state', '=', 'done'), '|', ('picking_type_id', 'ilike', 'pabrik'), ('warehouse_id.name', 'ilike', 'pabrik')]",
+    filter_domain: "['&', ('state', '=', 'done'), '|', ('picking_type_id', 'ilike', 'pabrik'), ('warehouse_id', 'ilike', 'pabrik')]",
     action_server_ids: [[6, 0, [1420]]],
     active: true
   };
@@ -36,7 +36,7 @@ async function main() {
     model_id: 690, // stock.picking
     trigger: 'on_state_set',
     trg_selection_field_id: 2337, // Done
-    filter_domain: "['&', ('state', '=', 'done'), '&', '|', ('picking_type_id', 'ilike', 'pabrik'), ('warehouse_id.name', 'ilike', 'pabrik'), '|', ('name', 'ilike', '/SFP/'), ('name', 'ilike', '/PC/')]",
+    filter_domain: "['&', ('state', '=', 'done'), '&', ('picking_type_id', 'ilike', 'pabrik'), '|', ('name', 'ilike', '/SFP/'), ('name', 'ilike', '/PC/')]",
     action_server_ids: [[6, 0, [1421]]],
     active: true
   };
