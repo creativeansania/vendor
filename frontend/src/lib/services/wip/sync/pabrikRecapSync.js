@@ -175,13 +175,34 @@ export async function syncPabrikRecapForApproval(approvalId) {
     const warehouseName = Array.isArray(warehouseRecord) ? warehouseRecord[1] : '';
 
     let approvalSo = null;
+    let dateConfirmed = null;
+    let tanggalApproval = null;
+
     try {
       const apprDocs = await adminOdooClient._callObject('approval.request', 'read', [
         [apprId],
-        ['id', 'name', 'x_studio_sales_order']
+        ['id', 'name', 'x_studio_sales_order', 'date_confirmed', 'create_date', 'request_status', 'approver_ids', 'write_date']
       ]);
-      if (apprDocs && apprDocs.length > 0 && apprDocs[0].x_studio_sales_order) {
-        approvalSo = apprDocs[0].x_studio_sales_order;
+      if (apprDocs && apprDocs.length > 0) {
+        const apprDoc = apprDocs[0];
+        if (apprDoc.x_studio_sales_order) {
+          approvalSo = apprDoc.x_studio_sales_order;
+        }
+        dateConfirmed = apprDoc.date_confirmed || apprDoc.create_date || null;
+
+        if (Array.isArray(apprDoc.approver_ids) && apprDoc.approver_ids.length > 0) {
+          const approvers = await adminOdooClient._callObject('approval.approver', 'read', [
+            apprDoc.approver_ids,
+            ['id', 'status', 'write_date']
+          ]);
+          const approved = approvers.find((ap) => ap.status === 'approved');
+          if (approved && approved.write_date) {
+            tanggalApproval = approved.write_date;
+          }
+        }
+        if (!tanggalApproval && apprDoc.request_status === 'approved') {
+          tanggalApproval = apprDoc.write_date;
+        }
       }
     } catch {
       // ignore
@@ -313,6 +334,8 @@ export async function syncPabrikRecapForApproval(approvalId) {
         x_studio_sales_order: primarySoId,
         x_studio_sales_order_name: soNameStr,
         x_studio_so_ids: [[6, 0, soIds]],
+        x_studio_tanggal_approval: tanggalApproval,
+        x_studio_date_confirmed: dateConfirmed,
         x_studio_daftar_mo: daftarMo,
         x_studio_mo_ids: [[6, 0, moIds]],
         x_studio_jenis_kain: group.jenisKain,

@@ -8,6 +8,8 @@ async function updateViews() {
   const listArch = `<list string="Rekap Susut Pabrik" decoration-danger="x_studio_persentase_susut_celup &gt; 20" decoration-warning="x_studio_persentase_susut_b_c &gt; 15">
   <field name="x_name" string="Kode Rekap" optional="hide"/>
   <field name="x_studio_approval_request" string="Approval Request" optional="show"/>
+  <field name="x_studio_tanggal_approval" string="Tanggal Approval" optional="show"/>
+  <field name="x_studio_date_confirmed" string="Date Confirmed" optional="show"/>
   <field name="x_studio_pabrik" string="Pabrik" optional="show"/>
   <field name="x_studio_manufacturing_order" string="Manufacturing Order" optional="show"/>
   <field name="x_studio_sales_order" string="Sales Order" optional="show"/>
@@ -41,6 +43,8 @@ async function updateViews() {
       <group string="Informasi Produksi">
         <field name="x_studio_approval_request" readonly="1"/>
         <field name="x_studio_approval_name" readonly="1"/>
+        <field name="x_studio_tanggal_approval" readonly="1"/>
+        <field name="x_studio_date_confirmed" readonly="1"/>
         <field name="x_studio_pabrik" readonly="1"/>
         <field name="x_studio_manufacturing_order" readonly="1"/>
         <field name="x_studio_sales_order" readonly="1"/>
@@ -93,6 +97,8 @@ async function updateViews() {
   <field name="x_studio_pabrik" string="Pabrik"/>
   <field name="x_studio_daftar_mo" string="Daftar MO"/>
   <field name="x_studio_sales_order_name" string="Nama Sales Order"/>
+  <field name="x_studio_tanggal_approval" string="Tanggal Approval"/>
+  <field name="x_studio_date_confirmed" string="Date Confirmed"/>
   <separator/>
   <filter string="Susut Celup &gt; 15%" name="high_susut_celup" domain="[('x_studio_persentase_susut_celup', '&gt;', 15)]"/>
   <filter string="Susut B+C &gt; 10%" name="high_susut_bc" domain="[('x_studio_persentase_susut_b_c', '&gt;', 10)]"/>
@@ -100,6 +106,8 @@ async function updateViews() {
   <group>
     <filter string="Approval Request" name="group_by_approval" domain="[]" context="{'group_by': 'x_studio_approval_request'}"/>
     <filter string="Sales Order" name="group_by_so" domain="[]" context="{'group_by': 'x_studio_sales_order'}"/>
+    <filter string="Tanggal Approval" name="group_by_tgl_approval" domain="[]" context="{'group_by': 'x_studio_tanggal_approval:month'}"/>
+    <filter string="Date Confirmed" name="group_by_date_confirmed" domain="[]" context="{'group_by': 'x_studio_date_confirmed:month'}"/>
     <filter string="Pabrik" name="group_by_pabrik" domain="[]" context="{'group_by': 'x_studio_pabrik'}"/>
     <filter string="Jenis Kain" name="group_by_kain" domain="[]" context="{'group_by': 'x_studio_jenis_kain'}"/>
     <filter string="Warna" name="group_by_warna" domain="[]" context="{'group_by': 'x_studio_warna'}"/>
