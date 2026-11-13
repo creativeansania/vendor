@@ -22,10 +22,14 @@ async function updateViews() {
   <field name="x_studio_qty_grade_c" string="Grade C (Yd)" optional="show" sum="Total Grade C (Yd)"/>
   <field name="x_studio_qty_bs" string="BS (Yd)" optional="show" sum="Total BS (Yd)"/>
   <field name="x_studio_total_finish" string="Total Finish (Yd)" optional="show" sum="Total Finish (Yd)"/>
-  <field name="x_studio_persentase_susut_approval" string="% Susut Total Approval" optional="show"/>
-  <field name="x_studio_persentase_susut_celup" string="% Susut Celup" optional="show"/>
-  <field name="x_studio_persentase_susut_b_c" string="% Susut B+C" optional="show"/>
-  <field name="x_studio_persentase_susut_bs" string="% Susut BS" optional="show"/>
+  <field name="x_studio_susut_approval_display" string="% Susut Total Approval" optional="show"/>
+  <field name="x_studio_susut_celup_display" string="% Susut Celup" optional="show"/>
+  <field name="x_studio_susut_bc_display" string="% Susut B+C" optional="show"/>
+  <field name="x_studio_susut_bs_display" string="% Susut BS" optional="show"/>
+  <field name="x_studio_persentase_susut_approval" column_invisible="True"/>
+  <field name="x_studio_persentase_susut_celup" column_invisible="True"/>
+  <field name="x_studio_persentase_susut_b_c" column_invisible="True"/>
+  <field name="x_studio_persentase_susut_bs" column_invisible="True"/>
   <field name="x_studio_status" string="Status" optional="hide"/>
   <field name="write_date" string="Terakhir Update" optional="hide"/>
 </list>`;
@@ -62,10 +66,10 @@ async function updateViews() {
         <field name="x_studio_qty_grade_c" readonly="1"/>
         <field name="x_studio_qty_bs" readonly="1"/>
         <field name="x_studio_total_finish" readonly="1"/>
-        <field name="x_studio_persentase_susut_approval" readonly="1"/>
-        <field name="x_studio_persentase_susut_celup" readonly="1"/>
-        <field name="x_studio_persentase_susut_b_c" readonly="1"/>
-        <field name="x_studio_persentase_susut_bs" readonly="1"/>
+        <field name="x_studio_susut_approval_display" readonly="1"/>
+        <field name="x_studio_susut_celup_display" readonly="1"/>
+        <field name="x_studio_susut_bc_display" readonly="1"/>
+        <field name="x_studio_susut_bs_display" readonly="1"/>
       </group>
     </group>
     <notebook>
@@ -118,6 +122,14 @@ async function updateViews() {
 
   await adminOdooClient._callObject('ir.ui.view', 'write', [[4480], { arch: searchArch }]);
   console.log('Successfully updated View 4480 (Search View)');
+
+  // 4. Deactivate Studio View 4481 to avoid conflicting XPaths
+  try {
+    await adminOdooClient._callObject('ir.ui.view', 'write', [[4481], { arch: '<data/>', active: false }]);
+    console.log('Successfully deactivated View 4481 (Studio override)');
+  } catch (err) {
+    console.warn('Could not deactivate View 4481:', err.message);
+  }
 }
 
 updateViews().catch((err) => {

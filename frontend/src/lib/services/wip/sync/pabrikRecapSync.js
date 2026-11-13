@@ -10,6 +10,11 @@ function round2(num) {
   return Math.round((Number(num) || 0) * 100) / 100;
 }
 
+function formatPct(num) {
+  const val = Number(num) || 0.0;
+  return `${val.toFixed(2)}%`;
+}
+
 /**
  * Robust parser for Pabrik product display names.
  * Example: '[KNA1C059165A] KAIN BSY KS 7162 (PACKING ROLL, BIRU TOSCA MUDA, A (GRADE A))'
@@ -366,6 +371,10 @@ export async function syncPabrikRecapForApproval(approvalId) {
       : 0.0;
     for (const row of computedRows) {
       row.x_studio_persentase_susut_approval = susutTotalApproval;
+      row.x_studio_susut_approval_display = formatPct(susutTotalApproval);
+      row.x_studio_susut_celup_display = formatPct(row.x_studio_persentase_susut_celup);
+      row.x_studio_susut_bc_display = formatPct(row.x_studio_persentase_susut_b_c);
+      row.x_studio_susut_bs_display = formatPct(row.x_studio_persentase_susut_bs);
     }
 
     // 5. Upsert into x_rekap_susut_pabrik in Odoo
