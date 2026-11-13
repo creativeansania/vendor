@@ -9,6 +9,9 @@ const DESIRED_FIELDS = [
   { name: 'x_studio_pabrik', field_description: 'Pabrik', ttype: 'many2one', relation: 'stock.warehouse' },
   { name: 'x_studio_pabrik_name', field_description: 'Nama Pabrik', ttype: 'char' },
   { name: 'x_studio_manufacturing_order', field_description: 'Manufacturing Order', ttype: 'char' },
+  { name: 'x_studio_sales_order', field_description: 'Sales Order', ttype: 'many2one', relation: 'sale.order' },
+  { name: 'x_studio_sales_order_name', field_description: 'Nama Sales Order', ttype: 'char' },
+  { name: 'x_studio_so_ids', field_description: 'Daftar Sales Order', ttype: 'many2many', relation: 'sale.order' },
   { name: 'x_studio_daftar_mo', field_description: 'Daftar MO', ttype: 'text' },
   { name: 'x_studio_mo_ids', field_description: 'Daftar MO', ttype: 'many2many', relation: 'mrp.production' },
   { name: 'x_studio_jenis_kain', field_description: 'Jenis Kain', ttype: 'char' },
@@ -106,6 +109,7 @@ async function main() {
   <field name="x_studio_approval_request" string="Approval Request" optional="show"/>
   <field name="x_studio_pabrik" string="Pabrik" optional="show"/>
   <field name="x_studio_manufacturing_order" string="Manufacturing Order" optional="show"/>
+  <field name="x_studio_sales_order" string="Sales Order" optional="show"/>
   <field name="x_studio_jenis_kain" string="Jenis Kain" optional="show"/>
   <field name="x_studio_warna" string="Warna" optional="show"/>
   <field name="x_studio_mo_count" string="Jml MO" optional="show" sum="Total MO"/>
@@ -134,6 +138,8 @@ async function main() {
         <field name="x_studio_approval_name" readonly="1"/>
         <field name="x_studio_pabrik" readonly="1"/>
         <field name="x_studio_manufacturing_order" readonly="1"/>
+        <field name="x_studio_sales_order" readonly="1"/>
+        <field name="x_studio_sales_order_name" readonly="1"/>
         <field name="x_studio_jenis_kain" readonly="1"/>
         <field name="x_studio_warna" readonly="1"/>
         <field name="x_studio_mo_count" readonly="1"/>
@@ -170,18 +176,21 @@ async function main() {
 
   const SEARCH_ARCH = `<search>
   <field name="x_studio_manufacturing_order" string="Manufacturing Order"/>
+  <field name="x_studio_sales_order" string="Sales Order"/>
   <field name="x_studio_approval_request" string="Approval Request"/>
   <field name="x_studio_approval_name" string="No Approval"/>
   <field name="x_studio_warna" string="Warna"/>
   <field name="x_studio_jenis_kain" string="Jenis Kain"/>
   <field name="x_studio_pabrik" string="Pabrik"/>
   <field name="x_studio_daftar_mo" string="Daftar MO"/>
+  <field name="x_studio_sales_order_name" string="Nama Sales Order"/>
   <separator/>
   <filter string="Susut Celup &gt; 15%" name="high_susut_celup" domain="[('x_studio_persentase_susut_celup', '&gt;', 15)]"/>
   <filter string="Susut B+C &gt; 10%" name="high_susut_bc" domain="[('x_studio_persentase_susut_b_c', '&gt;', 10)]"/>
   <separator/>
   <group>
     <filter string="Approval Request" name="group_by_approval" domain="[]" context="{'group_by': 'x_studio_approval_request'}"/>
+    <filter string="Sales Order" name="group_by_so" domain="[]" context="{'group_by': 'x_studio_sales_order'}"/>
     <filter string="Pabrik" name="group_by_pabrik" domain="[]" context="{'group_by': 'x_studio_pabrik'}"/>
     <filter string="Jenis Kain" name="group_by_kain" domain="[]" context="{'group_by': 'x_studio_jenis_kain'}"/>
     <filter string="Warna" name="group_by_warna" domain="[]" context="{'group_by': 'x_studio_warna'}"/>

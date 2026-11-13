@@ -159,7 +159,7 @@ export async function syncPabrikRecapForApproval(approvalId) {
       fields: [
         'id', 'name', 'product_id', 'product_qty', 'qty_producing',
         'product_uom_id', 'warehouse_id', 'state', 'x_studio_approval_request',
-        'move_raw_ids'
+        'move_raw_ids', 'x_studio_sales_order'
       ]
     });
 
@@ -173,6 +173,19 @@ export async function syncPabrikRecapForApproval(approvalId) {
     const warehouseRecord = firstMo.warehouse_id;
     const warehouseId = Array.isArray(warehouseRecord) ? warehouseRecord[0] : null;
     const warehouseName = Array.isArray(warehouseRecord) ? warehouseRecord[1] : '';
+
+    let approvalSo = null;
+    try {
+      const apprDocs = await adminOdooClient._callObject('approval.request', 'read', [
+        [apprId],
+        ['id', 'name', 'x_studio_sales_order']
+      ]);
+      if (apprDocs && apprDocs.length > 0 && apprDocs[0].x_studio_sales_order) {
+        approvalSo = apprDocs[0].x_studio_sales_order;
+      }
+    } catch {
+      // ignore
+    }
 
     // 2. Fetch all raw moves (greige components)
     const rawMoveIds = [...new Set(mos.flatMap((m) => m.move_raw_ids || []))];
@@ -261,6 +274,35 @@ export async function syncPabrikRecapForApproval(approvalId) {
       const uniqueBaseMos = [...new Set(moNames.map((n) => String(n || '').replace(/-\d+$/, '').trim()))].filter(Boolean).sort();
       const daftarMo = uniqueBaseMos.join(', ');
 
+      // Resolve Sales Orders for this group
+      const soMap = new Map();
+      for (const item of group.mos) {
+        const so = item.mo.x_studio_sales_order;
+        if (so && Array.isArray(so)) {
+          soMap.set(so[0], so[1]);
+        }
+      }
+
+      // Fallback: if not set on this color's MOs, check any MO in the approval
+      if (soMap.size === 0) {
+        for (const m of mos) {
+          const so = m.x_studio_sales_order;
+          if (so && Array.isArray(so)) {
+            soMap.set(so[0], so[1]);
+          }
+        }
+      }
+
+      // Fallback: check approval request's sales order
+      if (soMap.size === 0 && approvalSo && Array.isArray(approvalSo)) {
+        soMap.set(approvalSo[0], approvalSo[1]);
+      }
+
+      const soIds = Array.from(soMap.keys());
+      const soNames = Array.from(soMap.values());
+      const primarySoId = soIds.length > 0 ? soIds[0] : false;
+      const soNameStr = soNames.join(', ');
+
       computedRows.push({
         x_name: codeName,
         x_studio_approval_request: apprId,
@@ -268,6 +310,9 @@ export async function syncPabrikRecapForApproval(approvalId) {
         x_studio_pabrik: warehouseId,
         x_studio_pabrik_name: warehouseName,
         x_studio_manufacturing_order: moSummary,
+        x_studio_sales_order: primarySoId,
+        x_studio_sales_order_name: soNameStr,
+        x_studio_so_ids: [[6, 0, soIds]],
         x_studio_daftar_mo: daftarMo,
         x_studio_mo_ids: [[6, 0, moIds]],
         x_studio_jenis_kain: group.jenisKain,
