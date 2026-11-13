@@ -106,7 +106,7 @@ async function main() {
   }
 
   // 4. Create List and Form Views
-  const LIST_ARCH = `<list string="Rekap Susut Pabrik" decoration-danger="x_studio_persentase_susut_celup &gt; 20" decoration-warning="x_studio_persentase_susut_b_c &gt; 15">
+  const LIST_ARCH = `<list string="Rekap Susut Pabrik" decoration-danger="x_studio_persentase_susut_celup &gt; 10" decoration-warning="x_studio_persentase_susut_b_c &gt; 2">
   <field name="x_name" string="Kode Rekap" optional="hide"/>
   <field name="x_studio_approval_request" string="Approval Request" optional="show"/>
   <field name="x_studio_tanggal_approval" string="Tanggal Approval" optional="show"/>
@@ -193,8 +193,8 @@ async function main() {
   <field name="x_studio_tanggal_approval" string="Tanggal Approval"/>
   <field name="x_studio_date_confirmed" string="Date Confirmed"/>
   <separator/>
-  <filter string="Susut Celup &gt; 15%" name="high_susut_celup" domain="[('x_studio_persentase_susut_celup', '&gt;', 15)]"/>
-  <filter string="Susut B+C &gt; 10%" name="high_susut_bc" domain="[('x_studio_persentase_susut_b_c', '&gt;', 10)]"/>
+  <filter string="Susut Celup &gt; 10%" name="high_susut_celup" domain="[('x_studio_persentase_susut_celup', '&gt;', 10)]"/>
+  <filter string="Cacat B+C &gt; 2%" name="high_susut_bc" domain="[('x_studio_persentase_susut_b_c', '&gt;', 2)]"/>
   <separator/>
   <group>
     <filter string="Approval Request" name="group_by_approval" domain="[]" context="{'group_by': 'x_studio_approval_request'}"/>
