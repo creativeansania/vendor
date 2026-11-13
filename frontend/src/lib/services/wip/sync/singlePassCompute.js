@@ -186,59 +186,32 @@ export async function syncWipFromPickings(wipId, moId, { preloadedMo = null, pre
     const moName = mo.name || '';
 
     const pickingIds = mo.picking_ids || [];
-    if (pickingIds.length === 0) {
-      return { wipId, updated: false };
-    }
 
-    const allPickings = await adminOdooClient._callObject('stock.picking', 'read', [
-      pickingIds,
-      ['id', 'name', 'state', 'origin', 'date_done', 'move_line_ids', 'picking_type_id']
-    ]);
-
-    const validDaftarTransferIds = allPickings
-      .filter((p) => {
-        const name = p.name || '';
-        if (name.includes('/PC/') || name.includes('/SPB/')) return true;
-        if (name.includes('/SFP/')) {
-          const origins = (p.origin || '').split(',').map((s) => s.trim());
-          if (origins.includes(moName)) return true;
-        }
-        return false;
-      })
-      .map((p) => p.id);
+    const allPickings = pickingIds.length > 0
+      ? await adminOdooClient._callObject('stock.picking', 'read', [
+          pickingIds,
+          ['id', 'name', 'state', 'origin', 'date_done', 'move_line_ids', 'picking_type_id']
+        ])
+      : [];
 
     const donePickings = allPickings.filter((p) => p.state === 'done');
     const donePcSpb = donePickings
       .filter((p) => (p.name || '').includes('/PC/') || (p.name || '').includes('/SPB/'))
       .sort((a, b) => (new Date(a.date_done || 0) - new Date(b.date_done || 0)) || (a.id - b.id));
-    const doneSfp = donePickings.filter((p) => {
-      if (!(p.name || '').includes('/SFP/')) return false;
-      const origins = (p.origin || '').split(',').map((s) => s.trim());
-      return origins.includes(moName);
-    }).sort((a, b) => new Date(a.date_done || 0) - new Date(b.date_done || 0));
 
-    // Combine PC/SPB move_line_ids AND latest SFP move_line_ids into ONE SINGLE stock.move.line read!
     const pcMoveLineIds = [...new Set(donePcSpb.flatMap((p) => p.move_line_ids || []))];
-    const latestSfp = doneSfp.length > 0 ? doneSfp[doneSfp.length - 1] : null;
-    const sfpMoveLineIds = latestSfp && latestSfp.move_line_ids ? latestSfp.move_line_ids : [];
-    const combinedMoveLineIds = [...new Set([...pcMoveLineIds, ...sfpMoveLineIds])];
 
     let kainQty = 0.0;
     let totalMaterialQty = 0.0;
     let pcMoveLines = [];
-    const moveLinesById = new Map();
 
-    if (combinedMoveLineIds.length > 0) {
-      const fetchedMoveLines = await adminOdooClient._callObject('stock.move.line', 'read', [
-        combinedMoveLineIds,
+    if (pcMoveLineIds.length > 0) {
+      pcMoveLines = await adminOdooClient._callObject('stock.move.line', 'read', [
+        pcMoveLineIds,
         ['id', 'product_id', 'lot_id', 'quantity', 'product_uom_id']
       ]);
-      for (const ml of fetchedMoveLines || []) {
-        moveLinesById.set(ml.id, ml);
-      }
 
-      pcMoveLines = pcMoveLineIds.map((id) => moveLinesById.get(id)).filter(Boolean);
-      const activeMoveLines = pcMoveLines.filter((l) => (parseFloat(l.quantity) || 0) > 0);
+      const activeMoveLines = (pcMoveLines || []).filter((l) => (parseFloat(l.quantity) || 0) > 0);
       for (const l of activeMoveLines) {
         const q = parseFloat(l.quantity) || 0.0;
         totalMaterialQty += q;
@@ -253,25 +226,113 @@ export async function syncWipFromPickings(wipId, moId, { preloadedMo = null, pre
     const accsQty = Math.max(0, totalMaterialQty - kainQty);
     const { existingRollLines, newRollLines, rollCommands } = await reconcileAndBuildRollLines(wipId, wip, moName, pcMoveLines);
 
+    // --- Accurate SFP Finished Goods Calculation ---
+    const moProdId = mo.product_id ? mo.product_id[0] : null;
+    const spkInduk = deriveSpkInduk(moName);
+
+    // 1. Candidate SFP move lines from direct stock.move.line query
+    const sfpCandidateLines = await adminOdooClient._callObject('stock.move.line', 'search_read', [
+      [
+        ['picking_id.name', 'ilike', '/SFP/'],
+        ['state', '=', 'done'],
+        ...(moProdId ? [['product_id', '=', moProdId]] : []),
+        '|',
+        ['origin', '=', moName],
+        ['x_studio_manufacturing_order', '=', moId]
+      ],
+      ['id', 'picking_id', 'product_id', 'quantity', 'origin', 'x_studio_manufacturing_order', 'date']
+    ]);
+
+    // 2. Also incorporate any done SFP pickings from mo.picking_ids
+    const doneSfpFromMo = donePickings.filter((p) => (p.name || '').includes('/SFP/'));
+    const extraSfpLineIds = [...new Set(doneSfpFromMo.flatMap((p) => p.move_line_ids || []))];
+    const knownSfpLineIds = new Set((sfpCandidateLines || []).map((l) => l.id));
+    const missingLineIds = extraSfpLineIds.filter((id) => !knownSfpLineIds.has(id));
+
+    let extraSfpLines = [];
+    if (missingLineIds.length > 0) {
+      extraSfpLines = await adminOdooClient._callObject('stock.move.line', 'read', [
+        missingLineIds,
+        ['id', 'picking_id', 'product_id', 'quantity', 'origin', 'x_studio_manufacturing_order', 'date']
+      ]);
+    }
+
+    const allSfpLinesMap = new Map();
+    for (const l of [...(sfpCandidateLines || []), ...(extraSfpLines || [])]) {
+      if (l && l.id) allSfpLinesMap.set(l.id, l);
+    }
+
+    // 3. Filter move lines that strictly belong to this specific MO
+    const matchingSfpLines = Array.from(allSfpLinesMap.values()).filter((l) => {
+      if (!l) return false;
+      if (moProdId && l.product_id && l.product_id[0] !== moProdId) return false;
+
+      const lineOrigin = String(l.origin || '').trim();
+
+      // Explicit match to this MO
+      if (lineOrigin === moName) return true;
+
+      // If lineOrigin explicitly names another backorder in the same SPK Induk family, skip it!
+      if (lineOrigin && lineOrigin !== moName && deriveSpkInduk(lineOrigin) === spkInduk) {
+        return false;
+      }
+
+      // x_studio_manufacturing_order matches this MO
+      if (Array.isArray(l.x_studio_manufacturing_order)) {
+        if (l.x_studio_manufacturing_order[0] === moId || l.x_studio_manufacturing_order[1] === moName) {
+          return true;
+        }
+      }
+
+      // Multi-MO origin contains moName
+      const originParts = lineOrigin.split(/[,/]/).map((s) => s.trim());
+      if (originParts.includes(moName)) return true;
+
+      return false;
+    });
+
     let sfpVals = {};
     let sfpQtyMasuk = 0.0;
-    if (latestSfp) {
-      let sfpLineQty = 0.0;
-      if (sfpMoveLineIds.length > 0) {
-        const sfpLines = sfpMoveLineIds.map((id) => moveLinesById.get(id)).filter(Boolean);
-        const moProdId = mo.product_id ? mo.product_id[0] : null;
-        const relevantLines = moProdId
-          ? sfpLines.filter((l) => l.product_id && l.product_id[0] === moProdId)
-          : sfpLines;
-        sfpLineQty = (relevantLines.length > 0 ? relevantLines : sfpLines).reduce((sum, l) => sum + (parseFloat(l.quantity) || 0.0), 0.0);
+    const sfpPickingIds = [];
+
+    if (matchingSfpLines.length > 0) {
+      sfpQtyMasuk = Math.round(matchingSfpLines.reduce((sum, l) => sum + (parseFloat(l.quantity) || 0.0), 0.0) * 100) / 100;
+
+      const pickingsMap = new Map();
+      for (const l of matchingSfpLines) {
+        if (l.picking_id && Array.isArray(l.picking_id)) {
+          const pId = l.picking_id[0];
+          const pName = l.picking_id[1];
+          sfpPickingIds.push(pId);
+          if (!pickingsMap.has(pId)) {
+            pickingsMap.set(pId, { id: pId, name: pName, date: l.date });
+          }
+        }
       }
-      sfpQtyMasuk = sfpLineQty;
+
+      const uniquePickings = Array.from(pickingsMap.values());
+      uniquePickings.sort((a, b) => (new Date(a.date || 0) - new Date(b.date || 0)) || (a.id - b.id));
+      const latestPick = uniquePickings[uniquePickings.length - 1];
+
       sfpVals = {
-        x_studio_no_surat_jalan_sfp: latestSfp.name,
-        x_studio_tanggal_sfp: latestSfp.date_done,
+        x_studio_no_surat_jalan_sfp: uniquePickings.map((p) => p.name).join(', '),
+        x_studio_tanggal_sfp: latestPick.date || null,
         x_studio_qty_masuk_sfp: sfpQtyMasuk
       };
+    } else {
+      sfpVals = {
+        x_studio_no_surat_jalan_sfp: false,
+        x_studio_tanggal_sfp: false,
+        x_studio_qty_masuk_sfp: 0.0
+      };
     }
+
+    const validDaftarTransferIds = [
+      ...new Set([
+        ...donePcSpb.map((p) => p.id),
+        ...sfpPickingIds
+      ])
+    ];
 
     const consumptionPerPcs = parseFloat(wip.x_studio_consumption_per_pcs_1) || 0.0;
     const unitKain = wip.x_studio_unit_kain_dari_gudang ? (Array.isArray(wip.x_studio_unit_kain_dari_gudang) ? wip.x_studio_unit_kain_dari_gudang[1] : wip.x_studio_unit_kain_dari_gudang) : '';
@@ -321,8 +382,6 @@ export async function syncWipFromPickings(wipId, moId, { preloadedMo = null, pre
     }
 
     const totalHarga = hargaVendor * sfpQtyMasuk;
-
-    const spkInduk = deriveSpkInduk(moName);
 
     const vals = {
       x_studio_spk_induk: spkInduk,

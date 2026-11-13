@@ -213,13 +213,41 @@ export async function onTransferDone(pickingId) {
   }
 
   let moIds = [];
-  if (pickingName.includes('/SFP/') && picking.origin) {
-    const origins = picking.origin.split(',').map((s) => s.trim()).filter(Boolean);
-    const mos = await adminOdooClient._callObject('mrp.production', 'search_read', [
-      [['name', 'in', origins]]
-    ], { fields: ['id', 'name'] });
-    if (mos && mos.length > 0) {
-      moIds.push(...mos.map((m) => m.id));
+  if (pickingName.includes('/SFP/')) {
+    if (picking.origin) {
+      const origins = picking.origin.split(',').map((s) => s.trim()).filter(Boolean);
+      const mos = await adminOdooClient._callObject('mrp.production', 'search_read', [
+        [['name', 'in', origins]]
+      ], { fields: ['id', 'name'] });
+      if (mos && mos.length > 0) {
+        moIds.push(...mos.map((m) => m.id));
+      }
+    }
+
+    try {
+      const pMoveLines = await adminOdooClient._callObject('stock.move.line', 'search_read', [
+        [['picking_id', '=', id]],
+        ['id', 'x_studio_manufacturing_order', 'origin']
+      ]);
+      const extraOrigins = [];
+      for (const ml of pMoveLines || []) {
+        if (Array.isArray(ml.x_studio_manufacturing_order)) {
+          moIds.push(ml.x_studio_manufacturing_order[0]);
+        }
+        if (ml.origin && ml.origin.includes('/MO/')) {
+          extraOrigins.push(ml.origin.trim());
+        }
+      }
+      if (extraOrigins.length > 0) {
+        const extraMos = await adminOdooClient._callObject('mrp.production', 'search_read', [
+          [['name', 'in', [...new Set(extraOrigins)]]]
+        ], { fields: ['id', 'name'] });
+        if (extraMos && extraMos.length > 0) {
+          moIds.push(...extraMos.map((m) => m.id));
+        }
+      }
+    } catch (errMl) {
+      console.warn(`[WipSyncService] Non-fatal move line MO lookup error: ${errMl.message}`);
     }
   }
 
