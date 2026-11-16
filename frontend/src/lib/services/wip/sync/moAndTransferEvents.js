@@ -100,7 +100,7 @@ export async function onMoConfirmed(moId, { autoSync = true, preloadedMo = null 
       mo.bom_id && mo.bom_id[0]
         ? adminOdooClient._callObject('mrp.bom.line', 'search_read', [
             [['bom_id', '=', mo.bom_id[0]]]
-          ], { fields: ['id', 'product_id', 'product_qty'] }).catch(() => [])
+          ], { fields: ['id', 'product_id', 'product_qty', 'x_studio_qty_presisi'] }).catch(() => [])
         : Promise.resolve([]),
       mo.workorder_ids && mo.workorder_ids.length > 0
         ? adminOdooClient._callObject('mrp.workorder', 'read', [
@@ -113,7 +113,7 @@ export async function onMoConfirmed(moId, { autoSync = true, preloadedMo = null 
     let consumptionPerPcs = 0.0;
     if (bomLines && bomLines.length > 0) {
       const clothLine = bomLines.find((bl) => bl.product_id && bl.product_id[1] && bl.product_id[1].toUpperCase().includes('KAIN')) || bomLines[0];
-      consumptionPerPcs = parseFloat(clothLine.product_qty) || 0.0;
+      consumptionPerPcs = parseFloat(clothLine.x_studio_qty_presisi || clothLine.product_qty) || 0.0;
     }
 
     const qtyKebutuhanKain = (parseFloat(mo.product_qty) || 0.0) * consumptionPerPcs;
