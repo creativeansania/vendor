@@ -340,8 +340,8 @@ async function createSfpActivityOnSo(odoo, {
 
   const totalQtyThisSfp = matchedItems.reduce((sum, item) => sum + item.qty, 0);
   const summary = matchedItems.length === 1
-    ? `SFP Done: ${pickingName} — ${matchedItems[0].productName} (${formatQty(matchedItems[0].qty)} ${matchedItems[0].uom})`
-    : `SFP Done: ${pickingName} — ${matchedItems.length} Produk (${formatQty(totalQtyThisSfp)} pcs)`;
+    ? `SFP Done: ${pickingName} — ${matchedItems[0].productName} - ${formatQty(matchedItems[0].qty)} ${matchedItems[0].uom}`
+    : `SFP Done: ${pickingName} — ${matchedItems.length} Produk - ${formatQty(totalQtyThisSfp)} pcs`;
 
   const moRef = Array.isArray(picking.x_studio_manufacturing_order)
     ? picking.x_studio_manufacturing_order[1]
