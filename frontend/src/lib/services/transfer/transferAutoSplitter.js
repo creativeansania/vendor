@@ -1,5 +1,6 @@
 import { acquireDistributedWebhookLock } from '../wip/distributedWebhookLock.js';
 import { transfersCache } from '../wip/wipCache.js';
+import { computePickingTotalsFromMoves, syncTransferTotals } from './transferTotalsService.js';
 
 const NO_TRACK_CTX = { tracking_disable: true, no_automation: true, mail_auto_delete: true };
 const SPLIT_LOCK_TTL_MS = 60 * 1000; // 60s cross-instance lock per shared picking ID
@@ -130,6 +131,7 @@ export async function executeAutoSplitPicking(odoo, plan, resolvedSo, moMap) {
   }
 
   const newCreatedPickings = [];
+  const touchedPickingIds = new Set([picking.id]);
 
   for (const moGroup of splitTargetGroups) {
     // Verify once more right before creating/moving that moves are still on source picking
@@ -222,6 +224,7 @@ export async function executeAutoSplitPicking(odoo, plan, resolvedSo, moMap) {
     }
 
     transfersCache.delete(Number(moGroup.moId));
+    touchedPickingIds.add(targetPickingId);
     if (wasCreatedFresh) {
       newCreatedPickings.push(targetPickingId);
     }
@@ -262,6 +265,12 @@ export async function executeAutoSplitPicking(odoo, plan, resolvedSo, moMap) {
     }
   }
 
+  try {
+    await syncTransferTotals(Array.from(touchedPickingIds), { odoo, syncVendorSfpSo: false });
+  } catch (totErr) {
+    console.warn(`[Transfer Auto-Split] Warning syncing transfer totals: ${totErr.message}`);
+  }
+
   return {
     pickingId: picking.id,
     pickingName,
@@ -281,7 +290,7 @@ export async function executeAutoSplitPicking(odoo, plan, resolvedSo, moMap) {
  * Link MO and SO fields on a standard single-MO stock.picking
  */
 export async function executeSinglePickingLink(odoo, plan, resolvedMo, resolvedSo) {
-  const { picking, pickingName, seqCode, isFactoryInternal, isDeliveryType } = plan;
+  const { picking, pickingName, seqCode, isFactoryInternal, isDeliveryType, pMoves } = plan;
 
   // Never touch empty cancelled/draft shell pickings
   if (picking.state === 'cancel' || (picking.state === 'draft' && (!picking.move_ids || picking.move_ids.length === 0))) {
@@ -320,6 +329,14 @@ export async function executeSinglePickingLink(odoo, plan, resolvedMo, resolvedS
       vals.sale_id = resolvedSo.id;
       affectedSoIds.add(resolvedSo.id);
     }
+  }
+
+  const { totalDemand, totalQuantity } = computePickingTotalsFromMoves(pMoves);
+  if (Math.abs(Number(picking.x_studio_total_demand || 0) - totalDemand) > 1e-6) {
+    vals.x_studio_total_demand = totalDemand;
+  }
+  if (Math.abs(Number(picking.x_studio_total_quantity || 0) - totalQuantity) > 1e-6) {
+    vals.x_studio_total_quantity = totalQuantity;
   }
 
   let updated = false;

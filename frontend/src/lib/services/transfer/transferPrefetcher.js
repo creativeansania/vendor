@@ -16,7 +16,8 @@ export async function prefetchMovesAndGroups(odoo, pickings) {
         [
           'id', 'raw_material_production_id', 'production_id',
           'move_dest_ids', 'move_orig_ids', 'production_group_id',
-          'move_line_ids', 'origin', 'sale_line_id'
+          'move_line_ids', 'origin', 'sale_line_id',
+          'product_uom_qty', 'quantity'
         ]
       ]);
       moves.forEach((m) => movesMap.set(m.id, m));
