@@ -1,12 +1,16 @@
 import { adminOdooClient } from '../odoo/odooClient.js';
+import { supabaseServer } from '../supabaseServer.js';
 
 const NO_TRACK_CTX = { tracking_disable: true, no_automation: true, mail_auto_delete: true };
 const ODOO_BOT_USER_ID = 1;
 const FALLBACK_SALES_INTERNAL_NAME = 'Sales Internal';
 const FALLBACK_SALES_INTERNAL_ID = 8;
+const RECEIVE_JOB_ORDER_TYPE_NAME = 'Receive Product Job Order';
+const FALLBACK_RECEIVE_JOB_ORDER_TYPE_ID = 23;
+const AUDIT_ACTIVITY_ACTION = 'so_sfp_activity';
 
 let cachedSaleOrderModelId = null;
-let cachedTodoActivityTypeId = null;
+let cachedReceiveJobOrderTypeId = null;
 let cachedSalesInternalId = null;
 
 function formatQty(val) {
@@ -72,13 +76,16 @@ async function getSaleOrderModelId(odoo) {
   return cachedSaleOrderModelId;
 }
 
-async function getTodoActivityTypeId(odoo) {
-  if (cachedTodoActivityTypeId) return cachedTodoActivityTypeId;
+async function getReceiveJobOrderActivityTypeId(odoo) {
+  if (cachedReceiveJobOrderTypeId) return cachedReceiveJobOrderTypeId;
   const types = await odoo._callObject('mail.activity.type', 'search_read', [
-    [['name', '=', 'To-Do']]
+    [
+      ['name', '=', RECEIVE_JOB_ORDER_TYPE_NAME],
+      ['active', '=', true]
+    ]
   ], { fields: ['id'], limit: 1 });
-  cachedTodoActivityTypeId = types?.[0]?.id || 4;
-  return cachedTodoActivityTypeId;
+  cachedReceiveJobOrderTypeId = types?.[0]?.id || FALLBACK_RECEIVE_JOB_ORDER_TYPE_ID;
+  return cachedReceiveJobOrderTypeId;
 }
 
 async function getSalesInternalUserId(odoo) {
@@ -298,24 +305,45 @@ export async function recalculateSoSfpQuantities(odoo = adminOdooClient, soId, {
   };
 }
 
-async function hasExistingActivityOrLogForSfp(odoo, soId, pickingName) {
+function buildActivityDedupeKey(pickingId, soId) {
+  return `sfp:${pickingId}:so:${soId}`;
+}
+
+async function hasExistingActivityForSfp(odoo, { pickingId, soId, summary, receivedDateText }) {
+  try {
+    const { data, error } = await supabaseServer
+      .from('audit_logs')
+      .select('id')
+      .eq('user_id', 0)
+      .eq('action', AUDIT_ACTIVITY_ACTION)
+      .eq('reason', buildActivityDedupeKey(pickingId, soId))
+      .limit(1);
+    if (!error && data && data.length > 0) return true;
+  } catch {
+    // Fall back to Odoo check below if Supabase is unavailable
+  }
+
   const existingActivities = await odoo._callObject('mail.activity', 'search_count', [
     [
       ['res_model', '=', 'sale.order'],
       ['res_id', '=', soId],
-      ['summary', 'ilike', pickingName]
+      ['summary', '=', summary],
+      ['note', 'ilike', receivedDateText]
     ]
   ]);
-  if (existingActivities > 0) return true;
+  return existingActivities > 0;
+}
 
-  const existingMessages = await odoo._callObject('mail.message', 'search_count', [
-    [
-      ['model', '=', 'sale.order'],
-      ['res_id', '=', soId],
-      ['body', 'ilike', pickingName]
-    ]
-  ]);
-  return existingMessages > 0;
+async function recordActivityCreated(pickingId, soId) {
+  try {
+    await supabaseServer.from('audit_logs').insert({
+      user_id: 0,
+      action: AUDIT_ACTIVITY_ACTION,
+      reason: buildActivityDedupeKey(pickingId, soId)
+    });
+  } catch (err) {
+    console.warn(`[soSfpService] Non-fatal audit_logs insert warning: ${err.message}`);
+  }
 }
 
 async function createSfpActivityOnSo(odoo, {
@@ -323,29 +351,33 @@ async function createSfpActivityOnSo(odoo, {
   picking,
   matchedItems,
   totalByProduct,
-  responsibleUserIdOverride = null
+  responsibleUserIdOverride = null,
+  skipDedupe = false
 }) {
-  const pickingName = String(picking.name || '').trim();
-  const alreadyExists = await hasExistingActivityOrLogForSfp(odoo, so.id, pickingName);
-  if (alreadyExists) {
-    return { created: false, reason: `Activity/log for ${pickingName} already exists on ${so.name}` };
-  }
-
-  const [resModelId, activityTypeId, resolvedUserId] = await Promise.all([
-    getSaleOrderModelId(odoo),
-    getTodoActivityTypeId(odoo),
-    responsibleUserIdOverride ? Promise.resolve(responsibleUserIdOverride) : resolveSoResponsibleUserId(odoo, so)
-  ]);
-  const responsibleUserId = resolvedUserId;
-
   const totalQtyThisSfp = matchedItems.reduce((sum, item) => sum + item.qty, 0);
   const summary = matchedItems.length === 1
-    ? `SFP Done: ${pickingName} — ${matchedItems[0].productName} - ${formatQty(matchedItems[0].qty)} ${matchedItems[0].uom}`
-    : `SFP Done: ${pickingName} — ${matchedItems.length} Produk - ${formatQty(totalQtyThisSfp)} pcs`;
+    ? `${matchedItems[0].productName} - ${formatQty(matchedItems[0].qty)} ${matchedItems[0].uom}`
+    : `${matchedItems.length} Produk Selesai - ${formatQty(totalQtyThisSfp)} pcs`;
+  const receivedDateText = formatWibDateTime(picking.date_done);
 
-  const moRef = Array.isArray(picking.x_studio_manufacturing_order)
-    ? picking.x_studio_manufacturing_order[1]
-    : (picking.origin || '-');
+  if (!skipDedupe) {
+    const alreadyExists = await hasExistingActivityForSfp(odoo, {
+      pickingId: picking.id,
+      soId: so.id,
+      summary,
+      receivedDateText
+    });
+    if (alreadyExists) {
+      return { created: false, reason: `Activity for SFP #${picking.id} already exists on ${so.name}` };
+    }
+  }
+
+  const [resModelId, activityTypeId, responsibleUserId] = await Promise.all([
+    getSaleOrderModelId(odoo),
+    getReceiveJobOrderActivityTypeId(odoo),
+    responsibleUserIdOverride ? Promise.resolve(responsibleUserIdOverride) : resolveSoResponsibleUserId(odoo, so)
+  ]);
+
   const sourceLabel = Array.isArray(picking.picking_type_id)
     ? picking.picking_type_id[1]
     : '-';
@@ -356,12 +388,10 @@ async function createSfpActivityOnSo(odoo, {
   }).join('');
 
   const noteHtml = [
-    `<p><strong>Barang Jadi Vendor Selesai (SFP Done)</strong></p>`,
+    `<p><strong>Barang Jadi Vendor Selesai</strong></p>`,
     `<p>`,
-    `<strong>No. SFP:</strong> ${escapeHtml(pickingName)}<br/>`,
-    `<strong>No. MO:</strong> ${escapeHtml(moRef)}<br/>`,
     `<strong>Sumber / Vendor:</strong> ${escapeHtml(sourceLabel)}<br/>`,
-    `<strong>Tanggal Diterima:</strong> ${escapeHtml(formatWibDateTime(picking.date_done))}`,
+    `<strong>Tanggal Diterima:</strong> ${escapeHtml(receivedDateText)}`,
     `</p>`,
     `<ul>${rowsHtml}</ul>`
   ].join('');
@@ -376,9 +406,14 @@ async function createSfpActivityOnSo(odoo, {
     note: noteHtml
   }]);
 
+  if (!skipDedupe) {
+    await recordActivityCreated(picking.id, so.id);
+  }
+
   return {
     created: true,
     activityId,
+    activityTypeId,
     responsibleUserId,
     summary
   };
@@ -390,13 +425,14 @@ async function createSfpActivityOnSo(odoo, {
  * 2. Resolves linked Sales Order(s).
  * 3. Keeps only finished goods present on the SO's order_line.
  * 4. Recalculates `x_studio_qty_sfp_done` on matching SO lines.
- * 5. Creates an idempotent To-Do activity assigned to SO creator/salesperson (fallback Sales Internal).
+ * 5. Creates an idempotent Receive Product Job Order activity assigned to SO creator/salesperson (fallback Sales Internal).
  */
 export async function handleVendorSfpDone(pickingId, {
   odoo = adminOdooClient,
   createActivity = true,
   updateLineQty = true,
-  responsibleUserIdOverride = null
+  responsibleUserIdOverride = null,
+  skipDedupe = false
 } = {}) {
   await odoo.authenticate();
   const id = Number(pickingId);
@@ -522,7 +558,8 @@ export async function handleVendorSfpDone(pickingId, {
         picking,
         matchedItems,
         totalByProduct: recalc.qtyByProduct,
-        responsibleUserIdOverride
+        responsibleUserIdOverride,
+        skipDedupe
       });
     }
 
