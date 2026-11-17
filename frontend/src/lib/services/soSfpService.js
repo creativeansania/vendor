@@ -318,18 +318,25 @@ async function hasExistingActivityOrLogForSfp(odoo, soId, pickingName) {
   return existingMessages > 0;
 }
 
-async function createSfpActivityOnSo(odoo, { so, picking, matchedItems, totalByProduct }) {
+async function createSfpActivityOnSo(odoo, {
+  so,
+  picking,
+  matchedItems,
+  totalByProduct,
+  responsibleUserIdOverride = null
+}) {
   const pickingName = String(picking.name || '').trim();
   const alreadyExists = await hasExistingActivityOrLogForSfp(odoo, so.id, pickingName);
   if (alreadyExists) {
     return { created: false, reason: `Activity/log for ${pickingName} already exists on ${so.name}` };
   }
 
-  const [resModelId, activityTypeId, responsibleUserId] = await Promise.all([
+  const [resModelId, activityTypeId, resolvedUserId] = await Promise.all([
     getSaleOrderModelId(odoo),
     getTodoActivityTypeId(odoo),
-    resolveSoResponsibleUserId(odoo, so)
+    responsibleUserIdOverride ? Promise.resolve(responsibleUserIdOverride) : resolveSoResponsibleUserId(odoo, so)
   ]);
+  const responsibleUserId = resolvedUserId;
 
   const totalQtyThisSfp = matchedItems.reduce((sum, item) => sum + item.qty, 0);
   const summary = matchedItems.length === 1
@@ -354,7 +361,7 @@ async function createSfpActivityOnSo(odoo, { so, picking, matchedItems, totalByP
     `<strong>No. SFP:</strong> ${escapeHtml(pickingName)}<br/>`,
     `<strong>No. MO:</strong> ${escapeHtml(moRef)}<br/>`,
     `<strong>Sumber / Vendor:</strong> ${escapeHtml(sourceLabel)}<br/>`,
-    `<strong>Tanggal Done:</strong> ${escapeHtml(formatWibDateTime(picking.date_done))}`,
+    `<strong>Tanggal Diterima:</strong> ${escapeHtml(formatWibDateTime(picking.date_done))}`,
     `</p>`,
     `<ul>${rowsHtml}</ul>`
   ].join('');
@@ -388,7 +395,8 @@ async function createSfpActivityOnSo(odoo, { so, picking, matchedItems, totalByP
 export async function handleVendorSfpDone(pickingId, {
   odoo = adminOdooClient,
   createActivity = true,
-  updateLineQty = true
+  updateLineQty = true,
+  responsibleUserIdOverride = null
 } = {}) {
   await odoo.authenticate();
   const id = Number(pickingId);
@@ -513,7 +521,8 @@ export async function handleVendorSfpDone(pickingId, {
         so: recalc.so,
         picking,
         matchedItems,
-        totalByProduct: recalc.qtyByProduct
+        totalByProduct: recalc.qtyByProduct,
+        responsibleUserIdOverride
       });
     }
 
