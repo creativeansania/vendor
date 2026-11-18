@@ -2,7 +2,8 @@ import { adminOdooClient } from '../src/lib/odoo/odooClient.js';
 
 const WEBHOOK_URL = 'https://vendor-sandy-eight.vercel.app/api/webhooks/odoo/so-sfp-done';
 const SERVER_ACTION_NAME = '[Custom] Send Webhook SO SFP Done';
-const AUTOMATION_NAME = '[Custom] Trigger SO Activity & Qty SFP on Vendor SFP Done';
+const LEGACY_AUTOMATION_NAME = '[Custom] Trigger SO Activity & Qty SFP on Vendor SFP Done';
+const AUTOMATION_NAME = '[Custom] Trigger SO Activity & Qty SFP on Vendor & Pabrik SFP Done';
 const STUDIO_SO_FORM_VIEW_ID = 2522;
 const SALE_ORDER_LINE_MODEL_ID = 806;
 const STOCK_PICKING_MODEL_ID = 690;
@@ -92,7 +93,7 @@ async function ensureWebhookAndAutomation() {
   }
 
   const existingAutos = await adminOdooClient._callObject('base.automation', 'search_read', [
-    [['name', '=', AUTOMATION_NAME]]
+    [['name', 'in', [AUTOMATION_NAME, LEGACY_AUTOMATION_NAME]]]
   ], { fields: ['id'] });
 
   const autoPayload = {
@@ -100,7 +101,7 @@ async function ensureWebhookAndAutomation() {
     model_id: STOCK_PICKING_MODEL_ID,
     trigger: 'on_state_set',
     trg_selection_field_id: STOCK_PICKING_STATE_DONE_ID,
-    filter_domain: "['&', ('state', '=', 'done'), '&', ('name', 'ilike', '/SFP/'), '|', ('name', '=like', 'VD%'), ('picking_type_id', 'ilike', 'vendor')]",
+    filter_domain: "['&', ('state', '=', 'done'), '&', ('name', 'ilike', '/SFP/'), '|', '|', '|', ('name', '=like', 'VD%'), ('name', '=like', 'PB%'), ('picking_type_id', 'ilike', 'vendor'), ('picking_type_id', 'ilike', 'pabrik')]",
     action_server_ids: [[6, 0, [actionId]]],
     active: true
   };

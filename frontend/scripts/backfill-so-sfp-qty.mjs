@@ -1,5 +1,8 @@
 import { adminOdooClient } from '../src/lib/odoo/odooClient.js';
-import { recalculateSoSfpQuantities } from '../src/lib/services/soSfpService.js';
+import {
+  TARGET_SFP_PICKING_DOMAIN,
+  recalculateSoSfpQuantities
+} from '../src/lib/services/soSfpService.js';
 
 const NO_TRACK_CTX = { tracking_disable: true, no_automation: true, mail_auto_delete: true };
 const PAGE_SIZE = 2000;
@@ -24,12 +27,11 @@ async function fetchAllPaginated(model, domain, fields) {
 }
 
 async function runFullBulkBackfill() {
-  console.log('1/4 Fetching all Done Vendor SFPs...');
+  console.log('1/4 Fetching all Done Vendor & Pabrik SFPs...');
   const sfps = await fetchAllPaginated(
     'stock.picking',
     [
-      ['state', '=', 'done'],
-      ['name', '=like', 'VD%/SFP/%'],
+      ...TARGET_SFP_PICKING_DOMAIN,
       '|',
       ['x_studio_sales_order', '!=', false],
       ['sale_id', '!=', false]
@@ -48,18 +50,23 @@ async function runFullBulkBackfill() {
       soIdSet.add(soId);
     }
   }
-  console.log(`Found ${sfps.length} Done Vendor SFPs across ${soIdSet.size} unique Sales Order(s).`);
+  console.log(`Found ${sfps.length} Done Vendor/Pabrik SFPs across ${soIdSet.size} unique Sales Order(s).`);
 
-  console.log('2/4 Fetching all Done stock moves for Vendor SFPs...');
-  const moves = await fetchAllPaginated(
-    'stock.move',
-    [
-      ['picking_id.state', '=', 'done'],
-      ['picking_id.name', '=like', 'VD%/SFP/%'],
-      ['state', '=', 'done']
-    ],
-    ['id', 'picking_id', 'product_id', 'quantity', 'product_uom_qty']
-  );
+  console.log('2/4 Fetching all Done stock moves for Vendor & Pabrik SFPs...');
+  const sfpIds = sfps.map((p) => p.id);
+  const moves = [];
+  for (let i = 0; i < sfpIds.length; i += 500) {
+    const chunk = sfpIds.slice(i, i + 500);
+    const batchMoves = await fetchAllPaginated(
+      'stock.move',
+      [
+        ['picking_id', 'in', chunk],
+        ['state', '=', 'done']
+      ],
+      ['id', 'picking_id', 'product_id', 'quantity', 'product_uom_qty']
+    );
+    moves.push(...batchMoves);
+  }
 
   const qtyBySoAndProduct = new Map();
   for (const mv of moves) {

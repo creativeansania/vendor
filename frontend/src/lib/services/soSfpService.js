@@ -56,16 +56,48 @@ function formatWibDateTime(odooUtcStr) {
 }
 
 /**
- * Determine if a stock.picking record is a Done Vendor SFP transfer.
+ * Canonical Odoo domain matching Done Vendor & Pabrik SFP transfers.
+ * Includes `picking_type_id ilike vendor/pabrik` so warehouses with non-PB codes
+ * (e.g. PDBM / PABRIK DBM) are never missed.
  */
-export function isVendorSfpPicking(picking) {
-  if (!picking || picking.state !== 'done') return false;
+export const TARGET_SFP_PICKING_DOMAIN = [
+  ['state', '=', 'done'],
+  ['name', 'ilike', '/SFP/'],
+  '|', '|', '|',
+  ['name', '=like', 'VD%'],
+  ['name', '=like', 'PB%'],
+  ['picking_type_id', 'ilike', 'vendor'],
+  ['picking_type_id', 'ilike', 'pabrik']
+];
+
+export function isPabrikSfpPicking(picking) {
+  if (!picking) return false;
   const upperName = String(picking.name || '').trim().toUpperCase();
   const ptName = Array.isArray(picking.picking_type_id)
     ? String(picking.picking_type_id[1] || '').toUpperCase()
     : '';
-  return upperName.includes('/SFP/') && (upperName.startsWith('VD') || ptName.includes('VENDOR'));
+  return ptName.includes('PABRIK') || upperName.startsWith('PB');
 }
+
+/**
+ * Determine if a stock.picking record is a Done Vendor or Pabrik SFP transfer.
+ */
+export function isTargetSfpPicking(picking) {
+  if (!picking || picking.state !== 'done') return false;
+  const upperName = String(picking.name || '').trim().toUpperCase();
+  if (!upperName.includes('/SFP/')) return false;
+  const ptName = Array.isArray(picking.picking_type_id)
+    ? String(picking.picking_type_id[1] || '').toUpperCase()
+    : '';
+  return (
+    upperName.startsWith('VD') ||
+    upperName.startsWith('PB') ||
+    ptName.includes('VENDOR') ||
+    ptName.includes('PABRIK')
+  );
+}
+
+export { isTargetSfpPicking as isVendorSfpPicking };
 
 async function getSaleOrderModelId(odoo) {
   if (cachedSaleOrderModelId) return cachedSaleOrderModelId;
@@ -230,8 +262,7 @@ export async function recalculateSoSfpQuantities(odoo = adminOdooClient, soId, {
 
   const linkedSfps = await odoo._callObject('stock.picking', 'search_read', [
     [
-      ['state', '=', 'done'],
-      ['name', '=like', 'VD%/SFP/%'],
+      ...TARGET_SFP_PICKING_DOMAIN,
       '|',
       ['x_studio_sales_order', '=', soId],
       ['sale_id', '=', soId]
@@ -387,10 +418,14 @@ async function createSfpActivityOnSo(odoo, {
     return `<li><strong>${escapeHtml(item.productName)}</strong>: +${escapeHtml(formatQty(item.qty))} ${escapeHtml(item.uom)} (Total SFP Done: ${escapeHtml(formatQty(totalDone))} / Order: ${escapeHtml(formatQty(item.orderedQty))})</li>`;
   }).join('');
 
+  const isPabrik = isPabrikSfpPicking(picking);
+  const headingText = isPabrik ? 'Barang Jadi Pabrik Selesai' : 'Barang Jadi Vendor Selesai';
+  const sourceFieldLabel = isPabrik ? 'Sumber / Pabrik:' : 'Sumber / Vendor:';
+
   const noteHtml = [
-    `<p><strong>Barang Jadi Vendor Selesai</strong></p>`,
+    `<p><strong>${headingText}</strong></p>`,
     `<p>`,
-    `<strong>Sumber / Vendor:</strong> ${escapeHtml(sourceLabel)}<br/>`,
+    `<strong>${sourceFieldLabel}</strong> ${escapeHtml(sourceLabel)}<br/>`,
     `<strong>Tanggal Diterima:</strong> ${escapeHtml(receivedDateText)}`,
     `</p>`,
     `<ul>${rowsHtml}</ul>`
@@ -453,11 +488,11 @@ export async function handleVendorSfpDone(pickingId, {
   }
 
   const picking = pickings[0];
-  if (!isVendorSfpPicking(picking)) {
+  if (!isTargetSfpPicking(picking)) {
     return {
       success: true,
       skipped: true,
-      reason: `Skipped non-Vendor or non-Done SFP (${picking.name}, state=${picking.state})`
+      reason: `Skipped non-Vendor/Pabrik or non-Done SFP (${picking.name}, state=${picking.state})`
     };
   }
 

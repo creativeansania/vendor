@@ -37,11 +37,11 @@ export async function POST(req) {
 
     // 0ms fast-filter when Odoo includes picking name in webhook payload
     const rawName = String(payload.name || '').trim().toUpperCase();
-    if (rawName && (!rawName.includes('/SFP/') || !rawName.startsWith('VD'))) {
+    if (rawName && !rawName.includes('/SFP/')) {
       return NextResponse.json({
         success: true,
         skipped: true,
-        message: `Skipped non-Vendor SFP transfer ${rawName} at webhook edge`
+        message: `Skipped non-SFP transfer ${rawName} at webhook edge`
       });
     }
 
@@ -50,7 +50,7 @@ export async function POST(req) {
       return NextResponse.json({
         success: true,
         deduplicated: true,
-        message: `Vendor SFP #${pickingId} already queued within cooldown window`
+        message: `SFP #${pickingId} already queued within cooldown window`
       });
     }
 
@@ -62,7 +62,7 @@ export async function POST(req) {
 
     after(async () => {
       try {
-        console.log(`[SO SFP Webhook] Processing Vendor SFP Done: #${pickingId}`);
+        console.log(`[SO SFP Webhook] Processing Vendor/Pabrik SFP Done: #${pickingId}`);
         const res = await handleVendorSfpDone(pickingId);
         console.log(`[SO SFP Webhook] Finished SFP #${pickingId}:`, JSON.stringify(res));
       } catch (err) {
