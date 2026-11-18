@@ -1,14 +1,93 @@
 import { NextResponse, after } from 'next/server';
 import { adminOdooClient } from '@/lib/odoo/odooClient';
 import { verifyOdooWebhook } from '@/lib/webhookAuth';
+import { supabaseServer } from '@/lib/supabaseServer';
 import { acquireDistributedWebhookLock } from '@/lib/services/wip/distributedWebhookLock';
 
 export const maxDuration = 60;
 
 const PRODUCT_UNIT_PRECISION_ID = 6;
+const NO_TRACK_CTX = { tracking_disable: true, no_automation: true, mail_auto_delete: true };
+const PRECISION_MUTEX_ACTION = 'precision_mutex';
+const PRECISION_MUTEX_KEY = 'decimal_prec:6';
+const PRECISION_MUTEX_STALE_MS = 25000;
+const PRECISION_MUTEX_WAIT_MS = 20000;
+
+let localPrecisionQueue = Promise.resolve();
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Serialize temporary updates to Odoo's global `decimal.precision` #6 across
+ * concurrent requests (both in-process and across Vercel serverless instances)
+ * using the existing `audit_logs` table (zero DB migration required).
+ */
+async function withProductUnitPrecisionLock(fn) {
+  const previous = localPrecisionQueue;
+  let releaseLocal;
+  localPrecisionQueue = new Promise((resolve) => {
+    releaseLocal = resolve;
+  });
+
+  await previous;
+
+  let lockRowId = null;
+  try {
+    try {
+      const { data: inserted } = await supabaseServer
+        .from('audit_logs')
+        .insert({
+          user_id: 0,
+          action: PRECISION_MUTEX_ACTION,
+          reason: PRECISION_MUTEX_KEY
+        })
+        .select('id')
+        .single();
+
+      if (inserted?.id) {
+        lockRowId = inserted.id;
+        const deadline = Date.now() + PRECISION_MUTEX_WAIT_MS;
+
+        while (Date.now() < deadline) {
+          const cutoffIso = new Date(Date.now() - PRECISION_MUTEX_STALE_MS).toISOString();
+          const { data: headRows, error: headErr } = await supabaseServer
+            .from('audit_logs')
+            .select('id')
+            .eq('user_id', 0)
+            .eq('action', PRECISION_MUTEX_ACTION)
+            .eq('reason', PRECISION_MUTEX_KEY)
+            .gte('created_at', cutoffIso)
+            .order('created_at', { ascending: true })
+            .order('id', { ascending: true })
+            .limit(1);
+
+          if (headErr || !headRows || headRows.length === 0 || headRows[0].id === lockRowId) {
+            break;
+          }
+          await sleep(250);
+        }
+      }
+    } catch {
+      // Fallback safely to in-process mutex if Supabase check fails
+    }
+
+    return await fn();
+  } finally {
+    if (lockRowId) {
+      try {
+        await supabaseServer.from('audit_logs').delete().eq('id', lockRowId);
+      } catch {
+        // Stale mutex rows expire after PRECISION_MUTEX_STALE_MS
+      }
+    }
+    releaseLocal();
+  }
+}
 
 async function syncBomLinesPrecision(lineIds) {
-  if (!lineIds || lineIds.length === 0) return { updated: 0 };
+  if (!lineIds || lineIds.length === 0) return { updatedProductQty: 0, updatedPresisi: 0 };
 
   await adminOdooClient.authenticate();
 
@@ -20,7 +99,7 @@ async function syncBomLinesPrecision(lineIds) {
   const toUpdateProductQty = [];
   const toUpdatePresisi = [];
 
-  for (const line of lines) {
+  for (const line of lines || []) {
     const presisi = Number(line.x_studio_qty_presisi || 0);
     const stdQty = Number(line.product_qty || 0);
 
@@ -35,38 +114,41 @@ async function syncBomLinesPrecision(lineIds) {
     await adminOdooClient.executeKw('mrp.bom.line', 'write', [
       [item.id],
       { x_studio_qty_presisi: item.qty }
-    ]);
+    ], { context: NO_TRACK_CTX });
   }
 
   if (toUpdateProductQty.length > 0) {
-    const prec = await adminOdooClient.executeKw('decimal.precision', 'read', [
-      [PRODUCT_UNIT_PRECISION_ID],
-      ['digits']
-    ]);
-    const oldDigits = prec?.[0]?.digits ?? 2;
+    await withProductUnitPrecisionLock(async () => {
+      const prec = await adminOdooClient.executeKw('decimal.precision', 'read', [
+        [PRODUCT_UNIT_PRECISION_ID],
+        ['digits']
+      ]);
+      const oldDigits = prec?.[0]?.digits ?? 2;
+      const shouldRestore = oldDigits < 14;
 
-    try {
-      if (oldDigits < 14) {
-        await adminOdooClient.executeKw('decimal.precision', 'write', [
-          [PRODUCT_UNIT_PRECISION_ID],
-          { digits: 14 }
-        ]);
-      }
+      try {
+        if (shouldRestore) {
+          await adminOdooClient.executeKw('decimal.precision', 'write', [
+            [PRODUCT_UNIT_PRECISION_ID],
+            { digits: 14 }
+          ], { context: NO_TRACK_CTX });
+        }
 
-      for (const item of toUpdateProductQty) {
-        await adminOdooClient.executeKw('mrp.bom.line', 'write', [
-          [item.id],
-          { product_qty: item.qty }
-        ]);
+        for (const item of toUpdateProductQty) {
+          await adminOdooClient.executeKw('mrp.bom.line', 'write', [
+            [item.id],
+            { product_qty: item.qty }
+          ], { context: NO_TRACK_CTX });
+        }
+      } finally {
+        if (shouldRestore) {
+          await adminOdooClient.executeKw('decimal.precision', 'write', [
+            [PRODUCT_UNIT_PRECISION_ID],
+            { digits: oldDigits }
+          ], { context: NO_TRACK_CTX });
+        }
       }
-    } finally {
-      if (oldDigits < 14) {
-        await adminOdooClient.executeKw('decimal.precision', 'write', [
-          [PRODUCT_UNIT_PRECISION_ID],
-          { digits: oldDigits }
-        ]);
-      }
-    }
+    });
   }
 
   return {
@@ -116,10 +198,29 @@ export async function POST(req) {
       );
     }
 
+    // 0ms fast-skip self-echo when Odoo sends both precision and standard qty already matching
+    const hasPresisiField = Object.prototype.hasOwnProperty.call(payload, 'x_studio_qty_presisi');
+    const hasStdField = Object.prototype.hasOwnProperty.call(payload, 'product_qty');
+    let valueTag = 'any';
+
+    if (hasPresisiField && hasStdField && ids.length === 1) {
+      const pPresisi = Number(payload.x_studio_qty_presisi || 0);
+      const pStd = Number(payload.product_qty || 0);
+      if ((pPresisi > 0 && Math.abs(pStd - pPresisi) <= 1e-14) || (pPresisi === 0 && pStd === 0)) {
+        return NextResponse.json({
+          success: true,
+          skipped: true,
+          message: `Skipped already-synced BoM line #${ids[0]} at webhook edge`
+        });
+      }
+      valueTag = `${pPresisi}:${pStd}`;
+    }
+
+    // Value-aware lock prevents rapid sequential edits (<5s) from being dropped while deduplicating identical echoes
     const lockResults = await Promise.all(
       ids.map(async (id) => ({
         id,
-        acquired: await acquireDistributedWebhookLock(`bom_line_prec:${id}`, 10000)
+        acquired: await acquireDistributedWebhookLock(`bom_line_prec:${id}:${valueTag}`, 5000)
       }))
     );
 
@@ -130,6 +231,12 @@ export async function POST(req) {
         deduplicated: true,
         skippedIds: ids
       });
+    }
+
+    const isSync = Boolean(payload.sync || searchParams.get('sync'));
+    if (isSync) {
+      const result = await syncBomLinesPrecision(pendingIds);
+      return NextResponse.json({ success: true, ...result });
     }
 
     after(async () => {
