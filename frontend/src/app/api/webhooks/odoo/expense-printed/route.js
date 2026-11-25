@@ -85,7 +85,7 @@ export async function GET(req) {
 
     const pendingIds = [];
     for (const id of ids) {
-      const acquired = await acquireDistributedWebhookLock(`expense_printed:exp:${id}`, 5000);
+      const acquired = await acquireDistributedWebhookLock(`expense_printed:exp:${id}`, 1000);
       if (acquired) pendingIds.push(id);
     }
 

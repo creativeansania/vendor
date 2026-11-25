@@ -60,11 +60,14 @@ const EXPENSE_VIEW_SPECS = [
     type: 'qweb',
     inherit_id: REPORT_EXPENSE_FINISH_QWEB_VIEW_ID,
     priority: 25,
-    // Invisible 1x1 PNG beacon only emitted when expense is not yet printed.
-    // Works for all states (draft/approved/paid) and both single & batch prints
-    // without triggering hr_expense's ir.attachment AccessError on approved/paid records.
+    // Single invisible 1x1 PNG beacon per print job (emitted only on the first page if any doc is unprinted).
+    // Handles both single and batch prints in 1 HTTP request & 1 Odoo write(), works across all states
+    // (draft/approved/paid) without triggering hr_expense's ir.attachment AccessError.
     arch_db: `<xpath expr="//div[@class='page']" position="inside">
-    <img t-if="o and not o.x_studio_printed" t-attf-src="${WEBHOOK_URL}?id=#{o.id}&amp;src=report_984" style="width:1px;height:1px;opacity:0;position:absolute;" alt=""/>
+    <t t-if="o and docs and o.id == docs[0].id">
+        <t t-set="unprinted_ids" t-value="[str(d.id) for d in docs if not d.x_studio_printed]"/>
+        <img t-if="unprinted_ids" t-attf-src="${WEBHOOK_URL}?ids=#{','.join(unprinted_ids)}&amp;src=report_984" style="width:1px;height:1px;opacity:0;position:absolute;" alt=""/>
+    </t>
 </xpath>`,
   },
 ];
