@@ -4,22 +4,22 @@ const DRY_RUN = process.argv.includes('--dry-run');
 const SKIP_BACKFILL = process.argv.includes('--skip-backfill');
 
 const EXPENSE_MODEL_ID = 906; // hr.expense
-const ATTACHMENT_MODEL_ID = 29; // ir.attachment
-const REPORT_EXPENSE_FINISH_ID = 984; // Expenses Report Finish (hr_expense.report_expense_sheet_copy_2)
+const REPORT_EXPENSE_FINISH_ID = 984; // Expenses Report Finish
+const REPORT_EXPENSE_FINISH_QWEB_VIEW_ID = 2917; // hr_expense.report_expense_sheet_copy_2
 
 const FIELD_NAME = 'x_studio_printed';
-const PRINT_MARKER_EXPR = "'[EXPENSE_PRINT_LOG]_%s.pdf' % (object.id)";
 const WEBHOOK_URL = 'https://vendor-sandy-eight.vercel.app/api/webhooks/odoo/expense-printed';
 
-const SERVER_ACTION_NAME = '[Custom] Send Webhook Expense Printed';
-const AUTOMATION_NAME = '[Custom] Mark Expense Printed on Expenses Report Finish';
+const LEGACY_SERVER_ACTION_NAME = '[Custom] Send Webhook Expense Printed';
+const LEGACY_AUTOMATION_NAME = '[Custom] Mark Expense Printed on Expenses Report Finish';
 
 const BACKFILL_CUTOFF_DATE = '2026-11-01'; // Paid expenses strictly before Nov 1, 2026 -> Printed = True
 const NO_TRACK_CTX = { tracking_disable: true, no_automation: true, mail_auto_delete: true };
 
-const VIEW_SPECS = [
+const EXPENSE_VIEW_SPECS = [
   {
     name: 'hr.expense.list.inherit.printed',
+    model: 'hr.expense',
     type: 'list',
     inherit_id: 2730, // hr.expense.list (inherited by 2731 & 2732)
     priority: 25,
@@ -29,6 +29,7 @@ const VIEW_SPECS = [
   },
   {
     name: 'hr.expense.form.inherit.printed',
+    model: 'hr.expense',
     type: 'form',
     inherit_id: 2733, // hr.expense.view.form
     priority: 25,
@@ -38,6 +39,7 @@ const VIEW_SPECS = [
   },
   {
     name: 'hr.expense.search.inherit.printed',
+    model: 'hr.expense',
     type: 'search',
     inherit_id: 2741, // hr.expense.view.search (inherited by 4167 search with panel)
     priority: 25,
@@ -51,6 +53,19 @@ const VIEW_SPECS = [
         <filter string="Printed" name="group_by_printed" domain="[]" context="{'group_by': 'x_studio_printed'}"/>
     </xpath>
 </data>`,
+  },
+  {
+    name: 'hr_expense.report_expense_sheet_copy_2.inherit.printed',
+    model: false,
+    type: 'qweb',
+    inherit_id: REPORT_EXPENSE_FINISH_QWEB_VIEW_ID,
+    priority: 25,
+    // Invisible 1x1 PNG beacon only emitted when expense is not yet printed.
+    // Works for all states (draft/approved/paid) and both single & batch prints
+    // without triggering hr_expense's ir.attachment AccessError on approved/paid records.
+    arch_db: `<xpath expr="//div[@class='page']" position="inside">
+    <img t-if="o and not o.x_studio_printed" t-attf-src="${WEBHOOK_URL}?id=#{o.id}&amp;src=report_984" style="width:1px;height:1px;opacity:0;position:absolute;" alt=""/>
+</xpath>`,
   },
 ];
 
@@ -93,8 +108,11 @@ async function ensurePrintedField() {
 }
 
 async function upsertView(spec) {
+  const searchDomain = spec.model
+    ? [['model', '=', spec.model], ['name', '=', spec.name]]
+    : [['type', '=', spec.type], ['name', '=', spec.name]];
   const existing = await adminOdooClient._callObject('ir.ui.view', 'search_read', [
-    [['model', '=', 'hr.expense'], ['name', '=', spec.name]],
+    searchDomain,
   ], { fields: ['id', 'name', 'active'] });
 
   if (existing.length > 0) {
@@ -118,117 +136,55 @@ async function upsertView(spec) {
     return null;
   }
 
-  const viewId = await adminOdooClient._callObject('ir.ui.view', 'create', [{
+  const vals = {
     name: spec.name,
-    model: 'hr.expense',
     type: spec.type,
     mode: 'extension',
     inherit_id: spec.inherit_id,
     priority: spec.priority,
     arch_db: spec.arch_db,
     active: true,
-  }]);
+  };
+  if (spec.model) vals.model = spec.model;
+
+  const viewId = await adminOdooClient._callObject('ir.ui.view', 'create', [vals]);
   console.log(`Created view ID ${viewId}: ${spec.name}`);
   return viewId;
 }
 
-async function configureReportAttachment() {
+async function cleanupLegacyAttachmentTrigger() {
+  // Ensure Report #984 does not attempt ir.attachment creation (blocked by hr_expense on approved/paid)
   const [report] = await adminOdooClient._callObject('ir.actions.report', 'read', [
     [REPORT_EXPENSE_FINISH_ID],
-    ['id', 'name', 'report_name', 'attachment', 'attachment_use'],
+    ['id', 'name', 'attachment', 'attachment_use'],
   ]);
-  if (!report) {
-    throw new Error(`Report ID ${REPORT_EXPENSE_FINISH_ID} not found`);
-  }
-
-  if (DRY_RUN) {
-    console.log(`[DRY-RUN] Would configure report #${report.id} ("${report.name}"): attachment=${PRINT_MARKER_EXPR}, attachment_use=false (was attachment=${JSON.stringify(report.attachment)}, attachment_use=${report.attachment_use})`);
-    return;
-  }
-
-  await adminOdooClient._callObject('ir.actions.report', 'write', [[REPORT_EXPENSE_FINISH_ID], {
-    attachment: PRINT_MARKER_EXPR,
-    attachment_use: false,
-  }]);
-  console.log(`Configured report #${report.id} ("${report.name}") with attachment=${PRINT_MARKER_EXPR}, attachment_use=false`);
-}
-
-async function upsertWebhookAutomation() {
-  // Look up ir.attachment field IDs dynamically (id, name, res_model, res_id)
-  const attFields = await adminOdooClient._callObject('ir.model.fields', 'search_read', [
-    [['model', '=', 'ir.attachment'], ['name', 'in', ['id', 'name', 'res_model', 'res_id']]],
-  ], { fields: ['id', 'name'] });
-  const webhookFieldIds = attFields.map((f) => f.id);
-
-  // 1. Upsert ir.actions.server (0-LoC state='webhook')
-  const existingSrvs = await adminOdooClient._callObject('ir.actions.server', 'search_read', [
-    [['name', '=', SERVER_ACTION_NAME], ['model_id', '=', ATTACHMENT_MODEL_ID]],
-  ], { fields: ['id', 'name'] });
-
-  let serverActionId;
-  if (existingSrvs.length > 0) {
-    serverActionId = existingSrvs[0].id;
+  if (report && (report.attachment || report.attachment_use)) {
     if (DRY_RUN) {
-      console.log(`[DRY-RUN] Would update ir.actions.server ID ${serverActionId} (${SERVER_ACTION_NAME}) -> ${WEBHOOK_URL}`);
+      console.log(`[DRY-RUN] Would clear report #${report.id} attachment/attachment_use`);
     } else {
-      await adminOdooClient._callObject('ir.actions.server', 'write', [[serverActionId], {
-        state: 'webhook',
-        webhook_url: WEBHOOK_URL,
-        webhook_field_ids: [[6, 0, webhookFieldIds]],
+      await adminOdooClient._callObject('ir.actions.report', 'write', [[REPORT_EXPENSE_FINISH_ID], {
+        attachment: false,
+        attachment_use: false,
       }]);
-      console.log(`Updated ir.actions.server ID ${serverActionId}: ${SERVER_ACTION_NAME}`);
+      console.log(`Cleared legacy report #${report.id} attachment settings.`);
     }
-  } else if (DRY_RUN) {
-    console.log(`[DRY-RUN] Would create ir.actions.server "${SERVER_ACTION_NAME}" (state=webhook, url=${WEBHOOK_URL}, fields=${JSON.stringify(webhookFieldIds)})`);
-    serverActionId = null;
-  } else {
-    serverActionId = await adminOdooClient._callObject('ir.actions.server', 'create', [{
-      name: SERVER_ACTION_NAME,
-      model_id: ATTACHMENT_MODEL_ID,
-      state: 'webhook',
-      webhook_url: WEBHOOK_URL,
-      webhook_field_ids: [[6, 0, webhookFieldIds]],
-    }]);
-    console.log(`Created ir.actions.server ID ${serverActionId}: ${SERVER_ACTION_NAME}`);
   }
 
-  // 2. Upsert base.automation (on_create on ir.attachment matching [EXPENSE_PRINT_LOG]_% for hr.expense)
-  const filterDomain = "[('res_model', '=', 'hr.expense'), ('name', '=like', '[EXPENSE_PRINT_LOG]_%')]";
-  const existingAutos = await adminOdooClient._callObject('base.automation', 'search_read', [
-    [['name', '=', AUTOMATION_NAME]],
-  ], { fields: ['id', 'name', 'active'] });
-
-  let automationId;
-  if (existingAutos.length > 0) {
-    automationId = existingAutos[0].id;
-    if (DRY_RUN) {
-      console.log(`[DRY-RUN] Would update base.automation ID ${automationId} (${AUTOMATION_NAME}), filter_domain=${filterDomain}`);
-    } else {
-      await adminOdooClient._callObject('base.automation', 'write', [[automationId], {
-        model_id: ATTACHMENT_MODEL_ID,
-        trigger: 'on_create',
-        filter_domain: filterDomain,
-        action_server_ids: [[6, 0, [serverActionId]]],
-        active: true,
-      }]);
-      console.log(`Updated base.automation ID ${automationId}: ${AUTOMATION_NAME}`);
-    }
-  } else if (DRY_RUN) {
-    console.log(`[DRY-RUN] Would create base.automation "${AUTOMATION_NAME}" (on_create, filter_domain=${filterDomain})`);
-    automationId = null;
-  } else {
-    automationId = await adminOdooClient._callObject('base.automation', 'create', [{
-      name: AUTOMATION_NAME,
-      model_id: ATTACHMENT_MODEL_ID,
-      trigger: 'on_create',
-      filter_domain: filterDomain,
-      action_server_ids: [[6, 0, [serverActionId]]],
-      active: true,
-    }]);
-    console.log(`Created base.automation ID ${automationId}: ${AUTOMATION_NAME}`);
+  const autos = await adminOdooClient._callObject('base.automation', 'search', [
+    [['name', '=', LEGACY_AUTOMATION_NAME]],
+  ]);
+  if (autos.length > 0 && !DRY_RUN) {
+    await adminOdooClient._callObject('base.automation', 'unlink', [autos]);
+    console.log(`Removed legacy automation IDs: ${JSON.stringify(autos)}`);
   }
 
-  return { serverActionId, automationId };
+  const srvs = await adminOdooClient._callObject('ir.actions.server', 'search', [
+    [['name', '=', LEGACY_SERVER_ACTION_NAME]],
+  ]);
+  if (srvs.length > 0 && !DRY_RUN) {
+    await adminOdooClient._callObject('ir.actions.server', 'unlink', [srvs]);
+    console.log(`Removed legacy server action IDs: ${JSON.stringify(srvs)}`);
+  }
 }
 
 async function backfillPreNovemberPaidExpenses() {
@@ -245,11 +201,10 @@ async function backfillPreNovemberPaidExpenses() {
   ]);
 
   if (DRY_RUN) {
-    console.log(`[DRY-RUN] Would backfill x_studio_printed=True on ${preNovPaidIds.length} paid expenses with date < ${BACKFILL_CUTOFF_DATE} (leaving ${novCount} expenses from ${BACKFILL_CUTOFF_DATE} onward untouched)`);
-    return { backfilledCount: preNovPaidIds.length, novemberCount: novCount };
+    console.log(`[DRY-RUN] Would backfill x_studio_printed=True on paid expenses with date < ${BACKFILL_CUTOFF_DATE} (total pre-Nov paid: ${preNovPaidIds.length}; ${novCount} Nov+ untouched)`);
+    return { preNovPaidTotal: preNovPaidIds.length, novemberCount: novCount };
   }
 
-  // Filter only those not yet marked printed (idempotent)
   const toUpdateIds = await adminOdooClient._callObject('hr.expense', 'search', [
     [['date', '<', BACKFILL_CUTOFF_DATE], ['state', '=', 'paid'], [FIELD_NAME, '=', false]],
   ]);
@@ -265,7 +220,7 @@ async function backfillPreNovemberPaidExpenses() {
     updated += chunk.length;
   }
 
-  console.log(`Backfilled x_studio_printed=True on ${updated} pre-November paid expenses (total pre-Nov paid: ${preNovPaidIds.length}; ${novCount} Nov+ expenses left untouched).`);
+  console.log(`Backfilled x_studio_printed=True on ${updated} pre-November paid expenses (total pre-Nov paid: ${preNovPaidIds.length}; ${novCount} Nov+ untouched).`);
   return { backfilledCount: updated, preNovPaidTotal: preNovPaidIds.length, novemberCount: novCount };
 }
 
@@ -274,14 +229,13 @@ async function main() {
   await adminOdooClient.authenticate();
 
   const fieldId = await ensurePrintedField();
+  await cleanupLegacyAttachmentTrigger();
 
   const viewIds = {};
-  for (const spec of VIEW_SPECS) {
+  for (const spec of EXPENSE_VIEW_SPECS) {
     viewIds[spec.name] = await upsertView(spec);
   }
 
-  await configureReportAttachment();
-  const { serverActionId, automationId } = await upsertWebhookAutomation();
   const backfill = await backfillPreNovemberPaidExpenses();
 
   console.log('\n=== SUMMARY ===');
@@ -290,8 +244,6 @@ async function main() {
     fieldId,
     viewIds,
     reportId: REPORT_EXPENSE_FINISH_ID,
-    serverActionId,
-    automationId,
     backfill,
   }, null, 2));
 }
