@@ -25,14 +25,21 @@ export async function POST(req) {
     }
 
     // 0ms fast-filter when Odoo includes name/warehouse/picking_type in webhook payload
-    const rawName = String(payload.name || payload.x_name || '').trim();
+    const rawName = String(payload.name || payload.x_name || '').trim().toUpperCase();
     const rawPt = Array.isArray(payload.picking_type_id) ? String(payload.picking_type_id[1] || '') : String(payload.picking_type_name || '');
     const rawWh = Array.isArray(payload.warehouse_id) ? String(payload.warehouse_id[1] || '') : String(payload.warehouse_name || '');
-    if (rawName && !rawName.startsWith('VD') && rawPt && !rawPt.toUpperCase().includes('VENDOR') && (!rawWh || !rawWh.toUpperCase().includes('VENDOR'))) {
+    const isVendorOrPabrik =
+      rawName.startsWith('VD') ||
+      rawName.startsWith('PB') ||
+      rawPt.toUpperCase().includes('VENDOR') ||
+      rawPt.toUpperCase().includes('PABRIK') ||
+      rawWh.toUpperCase().includes('VENDOR') ||
+      rawWh.toUpperCase().includes('PABRIK');
+    if (rawName && (rawPt || rawWh) && !isVendorOrPabrik) {
       return NextResponse.json({
         success: true,
         skipped: true,
-        message: `Skipped non-vendor MO ${rawName} at webhook edge (0 Odoo RPC calls)`
+        message: `Skipped non-vendor/pabrik MO ${rawName} at webhook edge (0 Odoo RPC calls)`
       });
     }
 

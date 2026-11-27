@@ -60,7 +60,8 @@ export async function reconcileWipSfpAndRecap({ full = false, days = 60, dryRun 
         'x_studio_kain_dari_gudang_qty', 'x_studio_estimasi_dari_spb',
         'x_studio_qty_masuk_sfp', 'x_studio_no_surat_jalan_sfp',
         'x_studio_tanggal_sfp', 'x_studio_spk_induk',
-        'x_studio_estimasi_spb_rekap', 'x_studio_persentase_susut'
+        'x_studio_estimasi_spb_rekap', 'x_studio_persentase_susut',
+        'x_studio_harga', 'x_studio_total_harga'
       ],
       0, PAGE_SIZE, 'id asc'
     ]);
@@ -121,6 +122,14 @@ export async function reconcileWipSfpAndRecap({ full = false, days = 60, dryRun 
     if (Math.abs(targetQty - currentQty) > 0.005) {
       vals.x_studio_qty_masuk_sfp = targetQty;
       wip.x_studio_qty_masuk_sfp = targetQty;
+      const hargaVendor = parseFloat(wip.x_studio_harga) || 0.0;
+      if (hargaVendor > 0) {
+        const targetTotalHarga = Math.round(hargaVendor * targetQty * 100) / 100;
+        if (Math.abs(targetTotalHarga - (parseFloat(wip.x_studio_total_harga) || 0)) > 0.01) {
+          vals.x_studio_total_harga = targetTotalHarga;
+          wip.x_studio_total_harga = targetTotalHarga;
+        }
+      }
     }
     if (targetSfpNo !== currentSfpNo) {
       vals.x_studio_no_surat_jalan_sfp = targetSfpNo;
@@ -140,13 +149,18 @@ export async function reconcileWipSfpAndRecap({ full = false, days = 60, dryRun 
     }
   }
 
-  // 4. Apply WIP SFP writes if discrepancies exist
+  // 4. Apply WIP SFP writes if discrepancies exist (bounded concurrency for 60s serverless budget)
   if (!dryRun && wipSfpUpdates.length > 0) {
-    for (const item of wipSfpUpdates) {
-      await adminOdooClient._callObject(WIP_MODEL, 'write', [[item.id], item.vals], {
-        context: { tracking_disable: true, no_automation: true }
-      });
-      await sleep(SLEEP_MS);
+    const CONCURRENCY = 5;
+    for (let i = 0; i < wipSfpUpdates.length; i += CONCURRENCY) {
+      const slice = wipSfpUpdates.slice(i, i + CONCURRENCY);
+      await Promise.all(
+        slice.map((item) =>
+          adminOdooClient._callObject(WIP_MODEL, 'write', [[item.id], item.vals], {
+            context: { tracking_disable: true, no_automation: true }
+          })
+        )
+      );
     }
   }
 
