@@ -3,15 +3,21 @@ import { authenticateRequest } from '@/lib/auth';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 const VENDOR_WAREHOUSE_CODES = {
-  64: 'VDNB',
-  37: 'VDUS',
-  54: 'VDAJ',
   35: 'VDKWS',
-  39: 'VDYY',
   36: 'VDHR',
-  41: 'VDHD',
+  37: 'VDUS',
+  38: 'VDIP',
+  39: 'VDYY',
   40: 'VDAM',
-  38: 'VDIP'
+  41: 'VDHD',
+  54: 'VDAJ',
+  55: 'VDEV',
+  56: 'VDRZ',
+  64: 'VDNB',
+  76: 'VDJM',
+  84: 'VDBUM',
+  86: 'VDBGA',
+  87: 'VDJBI'
 };
 
 export async function GET(req) {
