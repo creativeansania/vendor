@@ -527,6 +527,13 @@ export default function BuyerDashboardView({ token }) {
                   <em>On Track</em>.
                 </li>
                 <li>
+                  <strong>Tahap WIP Produksi:</strong> ditentukan otomatis berdasarkan kategori
+                  produksi (<em>POLOS</em> / <em>DIGITAL PRINT</em>) dan progres SPK manufaktur:
+                  Persiapan Bahan → Dyeing / Celup → Digital Printing (khusus motif print) →
+                  Cutting, Sewing &amp; Finishing → Close / Selesai (seluruh SPK selesai atau
+                  progres ≥ 100%).
+                </li>
+                <li>
                   <strong>Filter &amp; Grafik Interaktif:</strong> gunakan panel filter di atas
                   (No PO, Artikel, Warna, Status, Tahap WIP, Bulan/Rentang Plan Delivery, Rentang
                   Tgl PO) atau klik langsung kartu status, batang tahap WIP, maupun batang minggu

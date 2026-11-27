@@ -5,11 +5,10 @@ const MONTHS_ID_SHORT = [
 
 export const WIP_STAGES_CLIENT = [
   { key: 'persiapan_bahan', label: 'Persiapan Bahan', order: 1 },
-  { key: 'celup_print', label: 'Celup / Print', order: 2 },
-  { key: 'cutting', label: 'Cutting', order: 3 },
-  { key: 'jahit', label: 'Jahit', order: 4 },
-  { key: 'qc_packing', label: 'QC & Packing', order: 5 },
-  { key: 'selesai', label: 'Selesai', order: 6 }
+  { key: 'dyeing', label: 'Dyeing / Celup', order: 2 },
+  { key: 'digital_printing', label: 'Digital Printing', order: 3 },
+  { key: 'cutting_sewing_finishing', label: 'Cutting, Sewing & Finishing', order: 4 },
+  { key: 'selesai', label: 'Close / Selesai', order: 5 }
 ];
 
 export const STATUS_LABELS = {
