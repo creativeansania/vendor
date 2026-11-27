@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { logout } from '@/lib/api';
 import ThemeToggle from '@/components/ThemeToggle';
 import StatusBadge from '@/components/common/StatusBadge';
-import { Users, Smartphone, LogOut, Table2 } from 'lucide-react';
+import { Users, Smartphone, LogOut, Table2, Share2 } from 'lucide-react';
 
 export default function DashboardNavbar({ user }) {
   const router = useRouter();
@@ -37,6 +37,18 @@ export default function DashboardNavbar({ user }) {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+        {['master_admin', 'admin'].includes(user.role) && (
+          <button
+            onClick={() => router.push('/admin/buyers')}
+            className="btn btn-secondary"
+            style={{ fontSize: '0.78rem', padding: '7px 12px', borderRadius: '10px', gap: '6px' }}
+            title="Kelola Link Dashboard Buyer External"
+          >
+            <Share2 size={15} color="var(--status-sky)" />
+            <span className="hide-on-mobile">Link Buyer</span>
+          </button>
+        )}
+
         {user.role === 'master_admin' && (
           <button
             onClick={() => router.push('/admin/users')}

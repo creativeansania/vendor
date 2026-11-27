@@ -180,3 +180,6 @@ ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 -- Indeks tambahan untuk mempercepat query dashboard & filter deadline
 CREATE INDEX IF NOT EXISTS idx_wip_active_locks ON wip_orders(is_active, cutting_locked_at, result_locked_at, parent_wip_order_id);
 CREATE INDEX IF NOT EXISTS idx_wip_deadline ON wip_orders(deadline_spk) WHERE is_active = TRUE;
+
+-- 12. INDEX TAMBAHAN UNTUK EXTERNAL BUYER DASHBOARD CACHE (disimpan di audit_logs tanpa migrasi wajib)
+CREATE INDEX IF NOT EXISTS idx_audit_action_reason ON audit_logs(user_id, action, reason);

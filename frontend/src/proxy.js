@@ -31,7 +31,11 @@ export function proxy(request) {
   }
 
   // 3. Role-based server guard for /admin/*
-  if (pathname.startsWith('/admin') && decoded.role !== 'master_admin') {
+  if (pathname.startsWith('/admin/buyers')) {
+    if (!['master_admin', 'admin'].includes(decoded.role)) {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
+  } else if (pathname.startsWith('/admin') && decoded.role !== 'master_admin') {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
