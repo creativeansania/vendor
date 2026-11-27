@@ -61,6 +61,37 @@ export function formatWeekShortId(dateStr, showYear = false) {
 }
 
 /**
+ * Format YYYY-MM -> 'Nov 2026'
+ */
+export function formatMonthId(monthStr) {
+  if (!monthStr) return '—';
+  const match = String(monthStr).match(/^(\d{4})-(\d{2})/);
+  if (!match) return String(monthStr);
+  const year = match[1];
+  const monthIdx = Number(match[2]) - 1;
+  return `${MONTHS_ID_SHORT[monthIdx] || match[2]} ${year}`;
+}
+
+/**
+ * Format Monday week key YYYY-MM-DD -> '23 Nov – 29 Nov 2026'
+ */
+export function formatWeekRangeId(weekStartStr) {
+  if (!weekStartStr) return '—';
+  const y = Number(weekStartStr.slice(0, 4));
+  const m = Number(weekStartStr.slice(5, 7)) - 1;
+  const d = Number(weekStartStr.slice(8, 10));
+  const start = new Date(Date.UTC(y, m, d));
+  if (Number.isNaN(start.getTime())) return weekStartStr;
+  const end = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+  const sDay = start.getUTCDate();
+  const sMon = MONTHS_ID_SHORT[start.getUTCMonth()];
+  const eDay = end.getUTCDate();
+  const eMon = MONTHS_ID_SHORT[end.getUTCMonth()];
+  const eYear = end.getUTCFullYear();
+  return `${sDay} ${sMon} – ${eDay} ${eMon} ${eYear}`;
+}
+
+/**
  * Format ISO timestamp -> '27 Nov 2026, 15:20 GMT+7'
  */
 export function formatSyncedAtWib(isoStr) {
@@ -76,7 +107,7 @@ export function formatSyncedAtWib(isoStr) {
   return `${day} ${mon} ${year}, ${hh}:${mm} GMT+7`;
 }
 
-function getMondayWeekKeyClient(dateStr) {
+export function getMondayWeekKeyClient(dateStr) {
   if (!dateStr) return null;
   const y = Number(dateStr.slice(0, 4));
   const m = Number(dateStr.slice(5, 7)) - 1;

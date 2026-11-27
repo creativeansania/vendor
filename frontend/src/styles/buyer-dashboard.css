@@ -77,17 +77,132 @@
   color: #0f172a;
 }
 
-/* Subtle Filter & Action Toolbar */
+/* Subtle Filter & Action Panel */
+.buyer-filter-panel {
+  margin: 18px 0 20px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .buyer-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin: 18px 0 20px;
-  padding: 10px 12px;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
+}
+
+.buyer-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 10px 12px;
+  padding-top: 10px;
+  border-top: 1px solid #e5e7eb;
+}
+
+@media (min-width: 640px) {
+  .buyer-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .buyer-filter-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.buyer-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.buyer-filter-label {
+  font-size: 0.71rem;
+  font-weight: 600;
+  color: #64748b;
+  letter-spacing: 0.01em;
+}
+
+.buyer-select,
+.buyer-date-input {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 0.81rem;
+  font-family: inherit;
+  outline: none;
+  min-width: 0;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.buyer-select:focus,
+.buyer-date-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.buyer-date-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+}
+
+.buyer-date-sep {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.buyer-active-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.buyer-active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.buyer-active-chip:hover {
+  background: #dbeafe;
+}
+
+.buyer-filter-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 700;
 }
 
 .buyer-search-wrap {
@@ -492,12 +607,35 @@
 }
 
 .buyer-week-col {
-  flex: 1 0 58px;
-  max-width: 84px;
+  flex: 1 0 60px;
+  max-width: 86px;
   display: flex;
   flex-direction: column;
   align-items: center;
   position: relative;
+  background: transparent;
+  border: none;
+  padding: 4px 3px 0;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.buyer-week-col:hover {
+  background: #f8fafc;
+}
+
+.buyer-week-col.selected {
+  background: #eff6ff;
+}
+
+.buyer-week-col.dimmed {
+  opacity: 0.42;
+}
+
+.buyer-week-col.dimmed:hover {
+  opacity: 0.8;
 }
 
 .buyer-week-total {
@@ -509,6 +647,11 @@
   white-space: nowrap;
 }
 
+.buyer-week-col.selected .buyer-week-total {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
 .buyer-week-stack {
   width: 100%;
   max-width: 56px;
@@ -517,11 +660,11 @@
   justify-content: flex-end;
   border-radius: 4px 4px 0 0;
   overflow: hidden;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s ease, box-shadow 0.15s ease;
 }
 
-.buyer-week-col:hover .buyer-week-stack {
-  opacity: 0.9;
+.buyer-week-col.selected .buyer-week-stack {
+  box-shadow: 0 0 0 2px #2563eb;
 }
 
 .buyer-week-sisa {
@@ -543,12 +686,22 @@
 }
 
 .buyer-week-label {
-  flex: 1 0 58px;
-  max-width: 84px;
+  flex: 1 0 60px;
+  max-width: 86px;
   text-align: center;
   font-size: 0.75rem;
   color: #64748b;
   white-space: nowrap;
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.buyer-week-label.selected {
+  color: #1d4ed8;
+  font-weight: 700;
 }
 
 /* Daftar PO Table */

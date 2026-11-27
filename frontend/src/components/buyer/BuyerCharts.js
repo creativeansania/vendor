@@ -1,6 +1,10 @@
 'use client';
 
-import { formatIntId, formatWeekShortId } from '@/lib/buyerDashboardClient';
+import {
+  formatIntId,
+  formatWeekShortId,
+  formatWeekRangeId
+} from '@/lib/buyerDashboardClient';
 
 export default function BuyerCharts({
   stages = [],
@@ -8,17 +12,19 @@ export default function BuyerCharts({
   unscheduledCount = 0,
   unscheduledQty = 0,
   selectedStage = 'all',
-  onToggleStage
+  onToggleStage,
+  selectedWeek = 'all',
+  onToggleWeek
 }) {
   const maxStageQty = Math.max(1, ...stages.map((s) => Number(s.qty_po || 0)));
-
-  // Show up to 12 weekly buckets cleanly in chart (if more, still horizontally scrollable)
   const maxWeekQty = Math.max(1, ...weekly.map((w) => Number(w.qty_po || 0)));
   const chartHeightPx = 158;
 
-  // Determine if weekly spans multiple calendar years so label stays unambiguous
-  const distinctYears = new Set(weekly.map((w) => String(w.week_start || '').slice(0, 4)).filter(Boolean));
+  const distinctYears = new Set(
+    weekly.map((w) => String(w.week_start || '').slice(0, 4)).filter(Boolean)
+  );
   const showYearInWeek = distinctYears.size > 1;
+  const hasWeekFilter = selectedWeek !== 'all';
 
   return (
     <div className="buyer-charts-grid">
@@ -26,7 +32,7 @@ export default function BuyerCharts({
       <section className="buyer-card">
         <h2 className="buyer-section-title">Posisi produksi per tahap</h2>
         <p className="buyer-section-sub">
-          Qty PO menurut tahap WIP saat ini, urut dari awal hingga selesai.
+          Qty PO menurut tahap WIP saat ini, urut dari awal hingga selesai. Klik tahap untuk filter.
         </p>
 
         <div className="buyer-stage-list">
@@ -64,11 +70,11 @@ export default function BuyerCharts({
         </div>
       </section>
 
-      {/* Right Card: Jadwal kirim per minggu */}
+      {/* Right Card: Jadwal kirim per minggu (clickable week columns!) */}
       <section className="buyer-card">
         <h2 className="buyer-section-title">Jadwal kirim per minggu</h2>
         <p className="buyer-section-sub">
-          Qty PO menurut minggu Plan Delivery (minggu mulai Senin), dibagi sudah selesai dan sisa.
+          Qty PO menurut minggu Plan Delivery (mulai Senin). Klik batang minggu untuk menyaring PO.
         </p>
 
         <div className="buyer-legend">
@@ -97,7 +103,7 @@ export default function BuyerCharts({
           </div>
         ) : (
           <div className="buyer-weekly-scroll">
-            <div style={{ minWidth: weekly.length > 6 ? `${weekly.length * 72}px` : '100%' }}>
+            <div style={{ minWidth: weekly.length > 6 ? `${weekly.length * 74}px` : '100%' }}>
               <div className="buyer-weekly-chart">
                 {weekly.map((w) => {
                   const total = Number(w.qty_po || 0);
@@ -106,12 +112,16 @@ export default function BuyerCharts({
                   const totalBarPx = Math.max(6, Math.round((total / maxWeekQty) * chartHeightPx));
                   const donePx = total > 0 ? Math.round((done / total) * totalBarPx) : 0;
                   const sisaPx = Math.max(0, totalBarPx - donePx);
+                  const isSelected = selectedWeek === w.week_start;
+                  const isDimmed = hasWeekFilter && !isSelected;
 
                   return (
-                    <div
+                    <button
                       key={w.week_start}
-                      className="buyer-week-col"
-                      title={`Minggu ${formatWeekShortId(w.week_start, true)} | Qty PO: ${formatIntId(total)} pcs | Selesai: ${formatIntId(w.qty_selesai_actual)} pcs | Sisa: ${formatIntId(sisa)} pcs (${w.item_count} item)`}
+                      type="button"
+                      className={`buyer-week-col ${isSelected ? 'selected' : ''} ${isDimmed ? 'dimmed' : ''}`}
+                      onClick={() => onToggleWeek && onToggleWeek(w.week_start)}
+                      title={`Minggu ${formatWeekRangeId(w.week_start)} | Qty PO: ${formatIntId(total)} pcs | Selesai: ${formatIntId(w.qty_selesai_actual)} pcs | Sisa: ${formatIntId(sisa)} pcs (${w.item_count} item) — Klik untuk filter`}
                     >
                       <span className="buyer-week-total">{formatIntId(total)}</span>
                       <div className="buyer-week-stack" style={{ height: `${totalBarPx}px` }}>
@@ -122,17 +132,26 @@ export default function BuyerCharts({
                           <div className="buyer-week-done" style={{ height: `${donePx}px` }} />
                         )}
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
 
               <div className="buyer-week-labels">
-                {weekly.map((w) => (
-                  <div key={w.week_start} className="buyer-week-label">
-                    {formatWeekShortId(w.week_start, showYearInWeek)}
-                  </div>
-                ))}
+                {weekly.map((w) => {
+                  const isSelected = selectedWeek === w.week_start;
+                  return (
+                    <button
+                      key={w.week_start}
+                      type="button"
+                      className={`buyer-week-label ${isSelected ? 'selected' : ''}`}
+                      onClick={() => onToggleWeek && onToggleWeek(w.week_start)}
+                      title={`Filter minggu ${formatWeekRangeId(w.week_start)}`}
+                    >
+                      {formatWeekShortId(w.week_start, showYearInWeek)}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

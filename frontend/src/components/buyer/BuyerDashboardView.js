@@ -2,12 +2,9 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  Search,
-  Download,
   RefreshCw,
   ChevronRight,
   ChevronDown,
-  X,
   AlertCircle
 } from 'lucide-react';
 import '@/styles/buyer-dashboard.css';
@@ -18,8 +15,10 @@ import {
   formatIntId,
   formatPctId,
   formatSyncedAtWib,
+  getMondayWeekKeyClient,
   STATUS_LABELS
 } from '@/lib/buyerDashboardClient';
+import BuyerFilterPanel from './BuyerFilterPanel';
 import BuyerCharts from './BuyerCharts';
 import BuyerPoTable from './BuyerPoTable';
 
@@ -30,6 +29,73 @@ const STATUS_PILLS = [
   { key: 'terlambat', label: 'PO terlambat', accent: '#dc2626' }
 ];
 
+const INITIAL_FILTERS = {
+  search: '',
+  onlyOpen: false,
+  status: 'all',
+  stage: 'all',
+  poNumber: 'all',
+  artikel: 'all',
+  warna: 'all',
+  deliveryMonth: 'all',
+  week: 'all',
+  planFrom: '',
+  planTo: '',
+  poFrom: '',
+  poTo: ''
+};
+
+function matchesCoreFilters(item, f, excludeKeys = []) {
+  const skip = new Set(excludeKeys);
+
+  if (!skip.has('onlyOpen') && f.onlyOpen && item.health_status === 'selesai') {
+    return false;
+  }
+  if (!skip.has('status') && f.status !== 'all' && item.health_status !== f.status) {
+    return false;
+  }
+  if (!skip.has('stage') && f.stage !== 'all' && item.stage_key !== f.stage) {
+    return false;
+  }
+  if (!skip.has('poNumber') && f.poNumber !== 'all' && item.no_po_kss !== f.poNumber) {
+    return false;
+  }
+  if (!skip.has('artikel') && f.artikel !== 'all' && item.nama_artikel !== f.artikel) {
+    return false;
+  }
+  if (!skip.has('warna') && f.warna !== 'all' && item.warna !== f.warna) {
+    return false;
+  }
+  if (!skip.has('deliveryMonth') && f.deliveryMonth !== 'all') {
+    if (f.deliveryMonth === '__unscheduled__') {
+      if (item.plan_delivery) return false;
+    } else if (!item.plan_delivery || !item.plan_delivery.startsWith(f.deliveryMonth)) {
+      return false;
+    }
+  }
+  if (!skip.has('week') && f.week !== 'all') {
+    const wk = getMondayWeekKeyClient(item.plan_delivery);
+    if (wk !== f.week) return false;
+  }
+  if (!skip.has('planRange') && (f.planFrom || f.planTo)) {
+    if (!item.plan_delivery) return false;
+    if (f.planFrom && item.plan_delivery < f.planFrom) return false;
+    if (f.planTo && item.plan_delivery > f.planTo) return false;
+  }
+  if (!skip.has('poRange') && (f.poFrom || f.poTo)) {
+    if (!item.tgl_po) return false;
+    if (f.poFrom && item.tgl_po < f.poFrom) return false;
+    if (f.poTo && item.tgl_po > f.poTo) return false;
+  }
+  if (!skip.has('search') && f.search.trim()) {
+    const q = f.search.trim().toLowerCase();
+    const hay = `${item.no_po_kss} ${item.no_po_buyer} ${item.sku} ${item.nama_artikel} ${item.warna} ${item.stage_label}`.toLowerCase();
+    if (!hay.includes(q)) return false;
+  }
+
+  return true;
+}
+
 export default function BuyerDashboardView({ token }) {
   const [data, setData] = useState(null);
   const [cacheMeta, setCacheMeta] = useState(null);
@@ -37,11 +103,7 @@ export default function BuyerDashboardView({ token }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  // Interactive client-side filters
-  const [search, setSearch] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('all');
-  const [selectedStage, setSelectedStage] = useState('all');
-  const [onlyOpen, setOnlyOpen] = useState(false);
+  const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [showAllAttention, setShowAllAttention] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
 
@@ -76,42 +138,114 @@ export default function BuyerDashboardView({ token }) {
     loadDashboard(false);
   }, [loadDashboard]);
 
-  // Base filtered items (by search + onlyOpen) for status pills counts
-  const baseFilteredItems = useMemo(() => {
-    const allItems = data?.items || [];
-    const q = search.trim().toLowerCase();
-
-    return allItems.filter((item) => {
-      if (onlyOpen && item.health_status === 'selesai') return false;
-      if (q) {
-        const hay = `${item.no_po_kss} ${item.no_po_buyer} ${item.sku} ${item.nama_artikel} ${item.warna} ${item.stage_label}`.toLowerCase();
-        if (!hay.includes(q)) return false;
+  const handleChangeFilter = useCallback((key, value) => {
+    setFilters((prev) => {
+      const next = { ...prev, [key]: value };
+      // Keep cascading dropdowns consistent: reset warna if artikel/PO changed and warna is no longer valid
+      if (key === 'artikel' || key === 'poNumber') {
+        next.warna = 'all';
       }
-      return true;
+      // If user picks a specific Plan Delivery month, clear conflicting week click
+      if (key === 'deliveryMonth' && value !== 'all') {
+        next.week = 'all';
+      }
+      return next;
     });
-  }, [data, search, onlyOpen]);
+  }, []);
 
-  // Final filtered items (including clicked status pill & stage bar)
-  const filteredItems = useMemo(() => {
-    return baseFilteredItems.filter((item) => {
-      if (selectedStatus !== 'all' && item.health_status !== selectedStatus) return false;
-      if (selectedStage !== 'all' && item.stage_key !== selectedStage) return false;
-      return true;
-    });
-  }, [baseFilteredItems, selectedStatus, selectedStage]);
+  const handleResetFilters = useCallback(() => {
+    setFilters(INITIAL_FILTERS);
+  }, []);
 
-  const baseAgg = useMemo(() => computeClientAggregates(baseFilteredItems), [baseFilteredItems]);
+  const allItems = useMemo(() => data?.items || [], [data]);
+
+  // Dynamic dropdown option lists derived from live buyer data
+  const filterOptions = useMemo(() => {
+    const poMap = new Map();
+    const artikelSet = new Set();
+    const monthCountMap = new Map();
+    let hasUnscheduled = false;
+
+    for (const item of allItems) {
+      if (item.no_po_kss && !poMap.has(item.no_po_kss)) {
+        const buyerRef =
+          item.no_po_buyer && item.no_po_buyer !== '-' ? ` (${item.no_po_buyer})` : '';
+        poMap.set(item.no_po_kss, {
+          kss: item.no_po_kss,
+          label: `${item.no_po_kss}${buyerRef}`
+        });
+      }
+      if (item.nama_artikel) artikelSet.add(item.nama_artikel);
+      if (item.plan_delivery && item.plan_delivery.length >= 7) {
+        const ym = item.plan_delivery.slice(0, 7);
+        monthCountMap.set(ym, (monthCountMap.get(ym) || 0) + 1);
+      } else {
+        hasUnscheduled = true;
+      }
+    }
+
+    // Warna options cascade cleanly from selected PO & Artikel
+    const warnaSet = new Set();
+    for (const item of allItems) {
+      if (filters.poNumber !== 'all' && item.no_po_kss !== filters.poNumber) continue;
+      if (filters.artikel !== 'all' && item.nama_artikel !== filters.artikel) continue;
+      if (item.warna) warnaSet.add(item.warna);
+    }
+
+    return {
+      poNumbers: Array.from(poMap.values()).sort((a, b) => a.kss.localeCompare(b.kss)),
+      artikels: Array.from(artikelSet).sort((a, b) => a.localeCompare(b)),
+      warnas: Array.from(warnaSet).sort((a, b) => a.localeCompare(b)),
+      deliveryMonths: Array.from(monthCountMap.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([key, count]) => ({ key, count })),
+      hasUnscheduled
+    };
+  }, [allItems, filters.poNumber, filters.artikel]);
+
+  // Final filtered items (drives KPIs, narrative, Perlu Perhatian, Daftar PO, CSV export)
+  const filteredItems = useMemo(
+    () => allItems.filter((item) => matchesCoreFilters(item, filters)),
+    [allItems, filters]
+  );
+
+  // Cross-filter slices so status pills, stage bars, and weekly columns remain easy to switch
+  const itemsForStatusPills = useMemo(
+    () => allItems.filter((item) => matchesCoreFilters(item, filters, ['status'])),
+    [allItems, filters]
+  );
+  const itemsForStages = useMemo(
+    () => allItems.filter((item) => matchesCoreFilters(item, filters, ['stage'])),
+    [allItems, filters]
+  );
+  const itemsForWeekly = useMemo(
+    () => allItems.filter((item) => matchesCoreFilters(item, filters, ['week'])),
+    [allItems, filters]
+  );
+
   const agg = useMemo(() => computeClientAggregates(filteredItems), [filteredItems]);
+  const statusPillsAgg = useMemo(
+    () => computeClientAggregates(itemsForStatusPills),
+    [itemsForStatusPills]
+  );
+  const stagesAgg = useMemo(() => computeClientAggregates(itemsForStages), [itemsForStages]);
+  const weeklyAgg = useMemo(() => computeClientAggregates(itemsForWeekly), [itemsForWeekly]);
 
-  const hasActiveFilter =
-    Boolean(search.trim()) || selectedStatus !== 'all' || selectedStage !== 'all' || onlyOpen;
-
-  const resetFilters = () => {
-    setSearch('');
-    setSelectedStatus('all');
-    setSelectedStage('all');
-    setOnlyOpen(false);
-  };
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (filters.search.trim()) n++;
+    if (filters.onlyOpen) n++;
+    if (filters.status !== 'all') n++;
+    if (filters.stage !== 'all') n++;
+    if (filters.poNumber !== 'all') n++;
+    if (filters.artikel !== 'all') n++;
+    if (filters.warna !== 'all') n++;
+    if (filters.deliveryMonth !== 'all') n++;
+    if (filters.week !== 'all') n++;
+    if (filters.planFrom || filters.planTo) n++;
+    if (filters.poFrom || filters.poTo) n++;
+    return n;
+  }, [filters]);
 
   if (loading) {
     return (
@@ -169,8 +303,8 @@ export default function BuyerDashboardView({ token }) {
     );
   }
 
-  const { summary, stages, weekly, attention_items: attentionItems } = agg;
-  const pillCounts = baseAgg.summary.status_counts;
+  const { summary, attention_items: attentionItems } = agg;
+  const pillCounts = statusPillsAgg.summary.status_counts;
   const visibleAttention = showAllAttention ? attentionItems : attentionItems.slice(0, 8);
 
   return (
@@ -192,78 +326,18 @@ export default function BuyerDashboardView({ token }) {
           </p>
         </header>
 
-        {/* Clean Interactive Filter Bar */}
-        <div className="buyer-toolbar">
-          <div className="buyer-search-wrap">
-            <Search size={15} className="buyer-search-icon" />
-            <input
-              type="text"
-              className="buyer-search-input"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari No PO KSS, No PO Buyer, SKU, artikel, atau warna..."
-            />
-          </div>
-
-          <button
-            type="button"
-            className={`buyer-chip-btn ${onlyOpen ? 'active' : ''}`}
-            onClick={() => setOnlyOpen((v) => !v)}
-          >
-            Belum selesai saja
-          </button>
-
-          {selectedStatus !== 'all' && (
-            <button
-              type="button"
-              className="buyer-chip-btn active"
-              onClick={() => setSelectedStatus('all')}
-            >
-              Status: {STATUS_LABELS[selectedStatus]}
-              <X size={13} />
-            </button>
-          )}
-
-          {selectedStage !== 'all' && (
-            <button
-              type="button"
-              className="buyer-chip-btn active"
-              onClick={() => setSelectedStage('all')}
-            >
-              Tahap: {stages.find((s) => s.key === selectedStage)?.label || selectedStage}
-              <X size={13} />
-            </button>
-          )}
-
-          {hasActiveFilter && (
-            <button type="button" className="buyer-chip-btn" onClick={resetFilters}>
-              Reset
-            </button>
-          )}
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
-            <button
-              type="button"
-              className="buyer-chip-btn"
-              onClick={() => exportBuyerItemsToCsv(data.buyer_name, filteredItems)}
-              disabled={filteredItems.length === 0}
-              title="Unduh tabel PO ke file CSV (Excel)"
-            >
-              <Download size={14} />
-              Export CSV
-            </button>
-            <button
-              type="button"
-              className="buyer-chip-btn"
-              onClick={() => loadDashboard(true)}
-              disabled={refreshing}
-              title="Perbarui data (otomatis setiap 15 menit)"
-            >
-              <RefreshCw size={14} className={refreshing ? 'spin' : ''} />
-              {refreshing ? 'Memuat...' : 'Refresh'}
-            </button>
-          </div>
-        </div>
+        {/* Full Interactive Filter Panel */}
+        <BuyerFilterPanel
+          filters={filters}
+          onChangeFilter={handleChangeFilter}
+          onResetAll={handleResetFilters}
+          options={filterOptions}
+          activeFilterCount={activeFilterCount}
+          refreshing={refreshing}
+          onRefresh={() => loadDashboard(true)}
+          onExportCsv={() => exportBuyerItemsToCsv(data.buyer_name, filteredItems)}
+          canExport={filteredItems.length > 0}
+        />
 
         {/* 4 KPI Summary Cards */}
         <section className="buyer-kpi-grid">
@@ -299,7 +373,7 @@ export default function BuyerDashboardView({ token }) {
         {/* 4 Status Pills Bar (clickable filters) */}
         <section className="buyer-status-grid">
           {STATUS_PILLS.map((pill) => {
-            const isSelected = selectedStatus === pill.key;
+            const isSelected = filters.status === pill.key;
             return (
               <button
                 key={pill.key}
@@ -307,7 +381,7 @@ export default function BuyerDashboardView({ token }) {
                 className={`buyer-status-pill ${isSelected ? 'active' : ''}`}
                 style={{ '--pill-accent': pill.accent }}
                 onClick={() =>
-                  setSelectedStatus((prev) => (prev === pill.key ? 'all' : pill.key))
+                  handleChangeFilter('status', filters.status === pill.key ? 'all' : pill.key)
                 }
                 title={`Filter ${pill.label}`}
               >
@@ -401,14 +475,20 @@ export default function BuyerDashboardView({ token }) {
           )}
         </section>
 
-        {/* Side-by-side Charts */}
+        {/* Side-by-side Interactive Charts */}
         <BuyerCharts
-          stages={stages}
-          weekly={weekly}
-          unscheduledCount={summary.unscheduled_count}
-          unscheduledQty={summary.unscheduled_qty}
-          selectedStage={selectedStage}
-          onToggleStage={(key) => setSelectedStage((prev) => (prev === key ? 'all' : key))}
+          stages={stagesAgg.stages}
+          weekly={weeklyAgg.weekly}
+          unscheduledCount={weeklyAgg.summary.unscheduled_count}
+          unscheduledQty={weeklyAgg.summary.unscheduled_qty}
+          selectedStage={filters.stage}
+          onToggleStage={(key) =>
+            handleChangeFilter('stage', filters.stage === key ? 'all' : key)
+          }
+          selectedWeek={filters.week}
+          onToggleWeek={(wk) =>
+            handleChangeFilter('week', filters.week === wk ? 'all' : wk)
+          }
         />
 
         {/* Daftar PO Table */}
@@ -447,9 +527,10 @@ export default function BuyerDashboardView({ token }) {
                   <em>On Track</em>.
                 </li>
                 <li>
-                  <strong>Posisi produksi per tahap:</strong> menunjukkan tahap WIP aktual setiap
-                  item (Persiapan Bahan → Celup / Print → Cutting → Jahit → QC &amp; Packing →
-                  Selesai). Klik salah satu tahap atau kartu status di atas untuk menyaring tabel.
+                  <strong>Filter &amp; Grafik Interaktif:</strong> gunakan panel filter di atas
+                  (No PO, Artikel, Warna, Status, Tahap WIP, Bulan/Rentang Plan Delivery, Rentang
+                  Tgl PO) atau klik langsung kartu status, batang tahap WIP, maupun batang minggu
+                  pada grafik <em>Jadwal kirim per minggu</em>.
                 </li>
                 <li>
                   <strong>Pembaruan data:</strong> data disinkronkan otomatis setiap 15 menit.
