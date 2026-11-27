@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -15,12 +15,19 @@ import {
   Trash2,
   CheckCircle2,
   AlertTriangle,
-  Link2
+  Link2,
+  Search,
+  Download
 } from 'lucide-react';
 import { fetchApi, ensureCurrentUser, logout } from '@/lib/api';
 import ThemeToggle from '@/components/ThemeToggle';
 import BuyerFormModal from '@/components/admin/BuyerFormModal';
 import { formatIntId, formatPctId, formatSyncedAtWib } from '@/lib/buyerDashboardClient';
+
+function escapeCsvCell(val) {
+  const s = String(val ?? '');
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
 
 export default function AdminBuyersPage() {
   const router = useRouter();
@@ -33,6 +40,11 @@ export default function AdminBuyersPage() {
   const [refreshingToken, setRefreshingToken] = useState(null);
   const [copiedToken, setCopiedToken] = useState(null);
   const [feedback, setFeedback] = useState({ text: '', type: '' });
+
+  // Search, Filter & Sort state for managing many buyers cleanly
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('qty_desc');
 
   const [modalState, setModalState] = useState({
     open: false,
@@ -91,9 +103,71 @@ export default function AdminBuyersPage() {
     };
   }, [router, loadDashboards]);
 
-  const buildShareUrl = (token) => {
+  const buildShareUrl = useCallback((token) => {
     if (typeof window === 'undefined') return `/buyer/${token}`;
     return `${window.location.origin}/buyer/${token}`;
+  }, []);
+
+  const filteredDashboards = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const list = dashboards.filter((d) => {
+      if (statusFilter === 'active' && !d.is_active) return false;
+      if (statusFilter === 'inactive' && d.is_active) return false;
+      if (q) {
+        const partnerText = (d.odoo_partner_names || []).join(' ');
+        const idsText = (d.odoo_partner_ids || []).join(' ');
+        const hay = `${d.buyer_name} ${partnerText} ${idsText} ${d.token}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+
+    return [...list].sort((a, b) => {
+      if (sortBy === 'name_asc') {
+        return String(a.buyer_name || '').localeCompare(String(b.buyer_name || ''));
+      }
+      if (sortBy === 'items_desc') {
+        return (b.last_summary?.total_items || 0) - (a.last_summary?.total_items || 0);
+      }
+      return (b.last_summary?.total_qty_po || 0) - (a.last_summary?.total_qty_po || 0);
+    });
+  }, [dashboards, search, statusFilter, sortBy]);
+
+  const handleExportLinksCsv = () => {
+    const headers = [
+      'Nama Buyer',
+      'Status',
+      'Link Dashboard Buyer',
+      'Partner ID Odoo',
+      'Item PO',
+      'Dokumen PO',
+      'Qty PO (pcs)',
+      'Qty Selesai (pcs)',
+      '% Selesai',
+      'Terakhir Sync (GMT+7)'
+    ];
+    const rows = filteredDashboards.map((d) => [
+      d.buyer_name,
+      d.is_active ? 'Aktif' : 'Nonaktif',
+      buildShareUrl(d.token),
+      (d.odoo_partner_ids || []).join('; '),
+      d.last_summary?.total_items ?? 0,
+      d.last_summary?.total_po_docs ?? 0,
+      d.last_summary?.total_qty_po ?? 0,
+      d.last_summary?.total_qty_selesai ?? 0,
+      d.last_summary ? `${d.last_summary.pct_finish}%` : '-',
+      d.last_synced_at ? formatSyncedAtWib(d.last_synced_at) : '-'
+    ]);
+    const csv = '\uFEFF' + [headers, ...rows].map((r) => r.map(escapeCsvCell).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Daftar_Link_Dashboard_Buyer_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleCopyLink = async (token) => {
@@ -237,7 +311,7 @@ export default function AdminBuyersPage() {
           </button>
           <div style={{ minWidth: 0 }}>
             <h1 style={{ fontSize: '0.98rem', margin: 0, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              Link Dashboard Buyer External
+              Link Dashboard Buyer External ({dashboards.length})
             </h1>
             <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
               Kelola 1 link monitoring WIP khusus per buyer · Auto-sync tiap 15 menit
@@ -248,12 +322,22 @@ export default function AdminBuyersPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
           <ThemeToggle />
           <button
+            onClick={handleExportLinksCsv}
+            className="btn btn-secondary"
+            style={{ fontSize: '0.8rem', padding: '7px 11px' }}
+            disabled={filteredDashboards.length === 0}
+            title="Unduh semua link buyer ke file CSV"
+          >
+            <Download size={15} />
+            <span className="hide-on-mobile">Export CSV</span>
+          </button>
+          <button
             onClick={handleOpenCreate}
             className="btn btn-primary"
             style={{ fontSize: '0.8rem', padding: '7px 12px' }}
           >
             <Plus size={15} />
-            <span>Buat Link Buyer</span>
+            <span>Buat Link</span>
           </button>
         </div>
       </header>
@@ -282,6 +366,86 @@ export default function AdminBuyersPage() {
           </div>
         )}
 
+        {/* Search, Status Filter & Sort Bar */}
+        {dashboards.length > 0 && (
+          <div
+            className="card"
+            style={{
+              padding: '12px 14px',
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: '10px'
+            }}
+          >
+            <div style={{ position: 'relative', flex: '1 1 240px', minWidth: '180px' }}>
+              <Search
+                size={15}
+                style={{
+                  position: 'absolute',
+                  left: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted)'
+                }}
+              />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Cari nama buyer, Partner ID Odoo, atau token..."
+                style={{
+                  width: '100%',
+                  padding: '8px 10px 8px 34px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-default)',
+                  background: 'var(--bg-input)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.84rem'
+                }}
+              />
+            </div>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{
+                padding: '8px 10px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-default)',
+                background: 'var(--bg-input)',
+                color: 'var(--text-primary)',
+                fontSize: '0.82rem'
+              }}
+            >
+              <option value="all">Semua Status ({dashboards.length})</option>
+              <option value="active">Aktif</option>
+              <option value="inactive">Nonaktif</option>
+            </select>
+
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              style={{
+                padding: '8px 10px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-default)',
+                background: 'var(--bg-input)',
+                color: 'var(--text-primary)',
+                fontSize: '0.82rem'
+              }}
+            >
+              <option value="qty_desc">Urutkan: Qty PO Terbesar</option>
+              <option value="items_desc">Urutkan: Item PO Terbanyak</option>
+              <option value="name_asc">Urutkan: Nama A–Z</option>
+            </select>
+
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+              Menampilkan {filteredDashboards.length} dari {dashboards.length} buyer
+            </span>
+          </div>
+        )}
+
         {loading ? (
           <div className="card" style={{ textAlign: 'center', padding: '52px 20px' }}>
             <div className="spinner" style={{ margin: '0 auto 14px' }} />
@@ -301,13 +465,26 @@ export default function AdminBuyersPage() {
               Buat Link Buyer Pertama
             </button>
           </div>
+        ) : filteredDashboards.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: '44px 20px' }}>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              Tidak ada buyer yang cocok dengan pencarian &ldquo;{search}&rdquo;.
+            </p>
+          </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '14px' }}>
-            {dashboards.map((item) => {
+            {filteredDashboards.map((item) => {
               const shareUrl = buildShareUrl(item.token);
               const summary = item.last_summary;
               const isRefreshing = refreshingToken === item.token;
               const isCopied = copiedToken === item.token;
+              const partnerLabel =
+                (item.odoo_partner_ids || []).length > 3
+                  ? `${item.odoo_partner_ids.length} partner Odoo tergabung`
+                  : (item.odoo_partner_names?.length
+                      ? item.odoo_partner_names
+                      : item.odoo_partner_ids.map((id) => `#${id}`)
+                    ).join(', ');
 
               return (
                 <div
@@ -326,8 +503,18 @@ export default function AdminBuyersPage() {
                       <h3 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 700 }}>
                         {item.buyer_name}
                       </h3>
-                      <p style={{ margin: '3px 0 0', fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-                        Partner Odoo: {(item.odoo_partner_names?.length ? item.odoo_partner_names : item.odoo_partner_ids.map((id) => `#${id}`)).join(', ')}
+                      <p
+                        style={{
+                          margin: '3px 0 0',
+                          fontSize: '0.74rem',
+                          color: 'var(--text-muted)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}
+                        title={partnerLabel}
+                      >
+                        Partner Odoo: {partnerLabel}
                       </p>
                     </div>
                     <span
