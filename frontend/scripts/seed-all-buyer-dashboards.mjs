@@ -28,7 +28,7 @@ const { syncBuyerSnapshotFromOdoo } = await import(
 );
 
 const BASE_URL = process.env.PUBLIC_PORTAL_URL || 'https://vendor-sandy-eight.vercel.app';
-const START_DATE = '2026-01-01';
+const START_DATE = '2026-06-01';
 const CONCURRENCY = 3;
 
 function normName(s) {
@@ -134,13 +134,15 @@ async function processGroup(group, idx) {
       });
       createdCount++;
     } else {
-      // Merge any newly discovered sub-partner IDs while preserving existing token & custom name
+      // Merge any newly discovered sub-partner IDs & align start_date if needed while preserving token & custom name
       const mergedIds = Array.from(new Set([...(cfg.odoo_partner_ids || []), ...group.partner_ids]));
       const needsPartnerUpdate = mergedIds.length !== (cfg.odoo_partner_ids || []).length;
-      if (needsPartnerUpdate) {
+      const needsDateUpdate = cfg.start_date !== START_DATE;
+      if (needsPartnerUpdate || needsDateUpdate) {
         cfg = await updateBuyerDashboard(cfg.token, {
           odoo_partner_ids: mergedIds,
-          odoo_partner_names: Array.from(new Set([...(cfg.odoo_partner_names || []), ...group.partner_names]))
+          odoo_partner_names: Array.from(new Set([...(cfg.odoo_partner_names || []), ...group.partner_names])),
+          start_date: START_DATE
         });
         updatedCount++;
       }
@@ -189,8 +191,12 @@ if (remainingExisting.length > 0) {
   let rCursor = 0;
   const rWorkers = Array.from({ length: CONCURRENCY }, async () => {
     while (rCursor < remainingExisting.length) {
-      const d = remainingExisting[rCursor++];
+      let d = remainingExisting[rCursor++];
       try {
+        if (d.start_date !== START_DATE) {
+          d = await updateBuyerDashboard(d.token, { start_date: START_DATE });
+          updatedCount++;
+        }
         const snap = await syncBuyerSnapshotFromOdoo(d);
         await saveBuyerSnapshot(d.token, snap);
         syncedCount++;

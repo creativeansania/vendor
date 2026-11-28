@@ -127,11 +127,21 @@ function parseProductPresentation(line, productRec) {
   }
 
   const artikel = String(productRec?.name || cleaned || rawDisplay).trim();
-  const warna = String(line.x_studio_warna_buyer || internalColors[0] || '-').trim();
+  const rawWarnaBuyer = String(line.x_studio_warna_buyer || '').trim();
+  const productColor = internalColors[0] || '';
+
+  let warna = '-';
+  if (rawWarnaBuyer && /^\d+$/.test(rawWarnaBuyer) && productColor && productColor !== rawWarnaBuyer) {
+    warna = `${productColor} (${rawWarnaBuyer})`;
+  } else if (rawWarnaBuyer) {
+    warna = rawWarnaBuyer;
+  } else if (productColor) {
+    warna = productColor;
+  }
 
   const matchColors = new Set(internalColors);
-  if (line.x_studio_warna_buyer) {
-    const wb = normalizeToken(line.x_studio_warna_buyer);
+  if (rawWarnaBuyer) {
+    const wb = normalizeToken(rawWarnaBuyer);
     if (wb && wb !== '-') matchColors.add(wb);
   }
 
@@ -289,14 +299,14 @@ function classifyLineStage({
 }
 
 /**
- * Health status rule:
- * - Selesai: qty_selesai >= qty_po OR WIP stage is Close / Selesai (no open MOs left)
+ * Health status rule (decoupled from MO WIP stage):
+ * - Selesai: qty_po > 0 && qty_selesai >= qty_po (% Finish >= 100%)
  * - Terlambat: belum selesai && lewat Plan Delivery (daysRemaining < 0)
  * - Perlu Perhatian: belum selesai && belum lewat Plan Delivery && daysRemaining <= 7 && pctFinish < 80
  * - On Track: semua kondisi lain yang belum selesai
  */
-export function classifyHealthStatus({ qtyPo, qtySelesai, pctFinish, daysRemaining, stageKey }) {
-  if ((qtyPo > 0 && qtySelesai >= qtyPo) || stageKey === 'selesai') {
+export function classifyHealthStatus({ qtyPo, qtySelesai, pctFinish, daysRemaining }) {
+  if (qtyPo > 0 && qtySelesai >= qtyPo) {
     return 'selesai';
   }
   if (daysRemaining !== null && daysRemaining < 0) {
@@ -525,11 +535,9 @@ export async function syncBuyerSnapshotFromOdoo(buyerConfig) {
     const tglPo = toWibDateStr(so.x_studio_po_customer) || toWibDateStr(so.date_order);
     const planDelivery = toWibDateStr(so.commitment_date);
 
-    if (startDateFilter) {
-      const refDate = planDelivery || tglPo || '';
-      if (refDate && refDate < startDateFilter) {
-        continue;
-      }
+    // Date scope: filter by Tgl PO >= start_date (e.g. 2026-06-01) when configured
+    if (startDateFilter && tglPo && tglPo < startDateFilter) {
+      continue;
     }
 
     validLines.push({ line, so, tglPo, planDelivery, qtyPo, qtySfp, qtyDelivered, qtySelesai });
@@ -714,8 +722,7 @@ export async function syncBuyerSnapshotFromOdoo(buyerConfig) {
       qtyPo,
       qtySelesai,
       pctFinish,
-      daysRemaining,
-      stageKey
+      daysRemaining
     });
 
     items.push({

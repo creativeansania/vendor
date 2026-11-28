@@ -31,7 +31,7 @@ function normalizeConfigRow(row) {
     buyer_name: cfg.buyer_name || 'Buyer',
     odoo_partner_ids: normalizePartnerIds(cfg.odoo_partner_ids),
     odoo_partner_names: Array.isArray(cfg.odoo_partner_names) ? cfg.odoo_partner_names : [],
-    start_date: cfg.start_date || '2026-01-01',
+    start_date: cfg.start_date !== undefined ? cfg.start_date : '2026-06-01',
     notes: cfg.notes || '',
     is_active: cfg.is_active !== false,
     created_by: cfg.created_by || null,
@@ -123,7 +123,7 @@ export async function createBuyerDashboard({
   buyer_name,
   odoo_partner_ids,
   odoo_partner_names = [],
-  start_date = '2026-01-01',
+  start_date = '2026-06-01',
   notes = '',
   created_by = null
 }) {

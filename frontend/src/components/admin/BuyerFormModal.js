@@ -16,7 +16,7 @@ export default function BuyerFormModal({
   const [buyerName, setBuyerName] = useState(initialData?.buyer_name || '');
   const [selectedIds, setSelectedIds] = useState(initialData?.odoo_partner_ids || []);
   const [startDate, setStartDate] = useState(
-    initialData?.start_date !== undefined ? initialData.start_date : '2026-01-01'
+    initialData?.start_date !== undefined ? initialData.start_date : '2026-06-01'
   );
   const [notes, setNotes] = useState(initialData?.notes || '');
   const [partnerSearch, setPartnerSearch] = useState('');
@@ -303,7 +303,7 @@ export default function BuyerFormModal({
                   color: 'var(--text-primary)'
                 }}
               >
-                Periode Plan Delivery Mulai
+                Periode Tanggal PO Mulai
               </label>
               <input
                 type="date"
@@ -320,7 +320,7 @@ export default function BuyerFormModal({
                 }}
               />
               <p style={{ margin: '4px 0 0', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                Filter PO mulai tanggal Plan Delivery ini. Kosongkan untuk semua periode.
+                Filter SO berdasarkan Tgl PO mulai tanggal ini. Kosongkan untuk semua periode.
               </p>
             </div>
 

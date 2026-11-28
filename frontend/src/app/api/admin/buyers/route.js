@@ -64,7 +64,7 @@ export async function POST(req) {
       buyer_name: body?.buyer_name,
       odoo_partner_ids: body?.odoo_partner_ids,
       odoo_partner_names: body?.odoo_partner_names || [],
-      start_date: body?.start_date !== undefined ? body.start_date : '2026-01-01',
+      start_date: body?.start_date !== undefined ? body.start_date : '2026-06-01',
       notes: body?.notes || '',
       created_by: auth.user.id
     });

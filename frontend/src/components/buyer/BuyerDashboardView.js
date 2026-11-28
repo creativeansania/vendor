@@ -520,19 +520,19 @@ export default function BuyerDashboardView({ token }) {
                   produksi.
                 </li>
                 <li>
-                  <strong>Status Kesehatan PO:</strong> <em>Selesai</em> jika progres ≥ 100%;{' '}
-                  <em>Terlambat</em> jika belum selesai dan sudah melewati tanggal Plan Delivery;{' '}
-                  <em>Perlu Perhatian</em> jika belum selesai, belum melewati Plan Delivery, sisa
-                  waktu ≤ 7 hari, dan progres (% Finish) masih di bawah 80%; selebihnya{' '}
-                  <em>On Track</em>.
+                  <strong>Status Kesehatan PO:</strong> terpisah dari tahap WIP produksi —{' '}
+                  <em>Selesai</em> hanya jika progres (% Finish) ≥ 100%; <em>Terlambat</em> jika
+                  belum 100% dan sudah melewati tanggal Plan Delivery; <em>Perlu Perhatian</em> jika
+                  belum 100%, belum melewati Plan Delivery, sisa waktu ≤ 7 hari, dan progres di bawah
+                  80%; selebihnya <em>On Track</em>.
                 </li>
                 <li>
                   <strong>Tahap WIP Produksi:</strong> ditentukan otomatis berdasarkan kategori
                   produksi (<em>POLOS</em> / <em>DIGITAL PRINT</em>), SPK manufaktur, dan Purchase
                   Order bahan baku pabrikan: Persiapan Bahan → Dyeing / Printing (SPK Pabrik Celup
                   atau PO bahan baku terkonfirmasi) → Digital Printing (khusus motif print) →
-                  Cutting, Sewing &amp; Finishing → Close / Selesai (seluruh SPK selesai atau
-                  progres ≥ 100%).
+                  Cutting, Sewing &amp; Finishing → Close / Selesai (seluruh SPK produksi telah
+                  tuntas atau progres ≥ 100%).
                 </li>
                 <li>
                   <strong>Filter &amp; Grafik Interaktif:</strong> gunakan panel filter di atas
