@@ -528,8 +528,9 @@ export default function BuyerDashboardView({ token }) {
                 </li>
                 <li>
                   <strong>Tahap WIP Produksi:</strong> ditentukan otomatis berdasarkan kategori
-                  produksi (<em>POLOS</em> / <em>DIGITAL PRINT</em>) dan progres SPK manufaktur:
-                  Persiapan Bahan → Dyeing / Celup → Digital Printing (khusus motif print) →
+                  produksi (<em>POLOS</em> / <em>DIGITAL PRINT</em>), SPK manufaktur, dan Purchase
+                  Order bahan baku pabrikan: Persiapan Bahan → Dyeing / Printing (SPK Pabrik Celup
+                  atau PO bahan baku terkonfirmasi) → Digital Printing (khusus motif print) →
                   Cutting, Sewing &amp; Finishing → Close / Selesai (seluruh SPK selesai atau
                   progres ≥ 100%).
                 </li>

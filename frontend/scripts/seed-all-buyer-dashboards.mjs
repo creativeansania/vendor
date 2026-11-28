@@ -45,7 +45,7 @@ function cleanDisplayName(name) {
     .trim();
 }
 
-console.log('1) Fetching all External non-SAMPLE Sale Orders from Odoo...');
+console.log('1) Fetching all External non-SAMPLE Sale Orders (POLOS / DIGITAL PRINT) from Odoo...');
 const sos = await adminOdooClient.executeKw(
   'sale.order',
   'search_read',
@@ -53,7 +53,8 @@ const sos = await adminOdooClient.executeKw(
     [
       ['state', '=', 'sale'],
       ['x_studio_jenis_so', '=', 'Eksternal'],
-      ['name', 'not ilike', 'SAMPLE']
+      ['name', 'not ilike', 'SAMPLE'],
+      ['x_studio_category', 'in', ['POLOS', 'DIGITAL PRINT']]
     ]
   ],
   {
@@ -170,7 +171,7 @@ async function processGroup(group, idx) {
   }
 }
 
-// Run with controlled concurrency
+// Run with controlled concurrency across discovered groups
 let cursor = 0;
 const workers = Array.from({ length: CONCURRENCY }, async () => {
   while (cursor < groups.length) {
@@ -179,6 +180,29 @@ const workers = Array.from({ length: CONCURRENCY }, async () => {
   }
 });
 await Promise.all(workers);
+
+// Also refresh any pre-existing buyer dashboards whose SOs all had empty category so stale cache is cleared
+const syncedTokens = new Set(results.map((r) => r.token));
+const remainingExisting = existingDashboards.filter((d) => !syncedTokens.has(d.token));
+if (remainingExisting.length > 0) {
+  console.log(`\nRefreshing ${remainingExisting.length} existing dashboards with no POLOS/DIGITAL PRINT SOs yet...`);
+  let rCursor = 0;
+  const rWorkers = Array.from({ length: CONCURRENCY }, async () => {
+    while (rCursor < remainingExisting.length) {
+      const d = remainingExisting[rCursor++];
+      try {
+        const snap = await syncBuyerSnapshotFromOdoo(d);
+        await saveBuyerSnapshot(d.token, snap);
+        syncedCount++;
+        console.log(`  CLEARED/SYNCED ${d.buyer_name} -> ${snap.summary.total_items} items`);
+      } catch (err) {
+        failedCount++;
+        console.error(`  FAIL ${d.buyer_name}: ${err.message}`);
+      }
+    }
+  });
+  await Promise.all(rWorkers);
+}
 
 results.sort((a, b) => b.qty_po - a.qty_po);
 console.log('\n=== SUMMARY ===');

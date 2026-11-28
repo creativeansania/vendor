@@ -2,7 +2,7 @@ import { adminOdooClient, defaultOdooClient } from '../../odoo/odooClient.js';
 
 export const WIP_STAGES = [
   { key: 'persiapan_bahan', label: 'Persiapan Bahan', order: 1 },
-  { key: 'dyeing', label: 'Dyeing / Celup', order: 2 },
+  { key: 'dyeing', label: 'Dyeing / Printing', order: 2 },
   { key: 'digital_printing', label: 'Digital Printing', order: 3 },
   { key: 'cutting_sewing_finishing', label: 'Cutting, Sewing & Finishing', order: 4 },
   { key: 'selesai', label: 'Close / Selesai', order: 5 }
@@ -10,8 +10,12 @@ export const WIP_STAGES = [
 
 const STAGE_LABEL_BY_KEY = Object.fromEntries(WIP_STAGES.map((s) => [s.key, s.label]));
 
+const ALLOWED_SO_CATEGORIES = ['POLOS', 'DIGITAL PRINT'];
 const ACTIVE_MO_STATES = new Set(['confirmed', 'progress', 'to_close']);
 const OPEN_MO_STATES = new Set(['draft', 'confirmed', 'progress', 'to_close']);
+
+const ACCESSORY_PRODUCT_RE =
+  /^(\[ACC[^\]]*\]\s*)?(BARCODE|HANGTAG|HANG\s*TAG|LABEL|ZIPLOCK|ZIP\s*LOCK|PLASTIK|POUCH|BOX|KARTON|POLYBAG|STIKER|STICKER|PITA|BENANG|RESLETING|KANCING)\b/i;
 
 function getOdooClient() {
   if (process.env.ODOO_ADMIN_USERNAME && process.env.ODOO_ADMIN_PASSWORD) {
@@ -146,15 +150,9 @@ function isVdMo(mo) {
   return /^VD/i.test(String(mo.name || '').trim());
 }
 
-function resolveEffectiveCategory(so, soMos) {
-  const explicit = normalizeToken(so.x_studio_category);
-  if (explicit === 'POLOS') return 'POLOS';
-  if (explicit === 'DIGITAL PRINT') return 'DIGITAL PRINT';
-
-  // Fallback when x_studio_category is still empty on historical SOs
-  if (soMos.some((m) => isWhdgpMo(m))) return 'DIGITAL PRINT';
-  if (/DIGITAL/i.test(String(so.x_studio_jenis_produk || ''))) return 'DIGITAL PRINT';
-  return 'POLOS';
+function isAccessoryPurchaseLine(poLine) {
+  const prodName = String(poLine.product_id?.[1] || poLine.name || '').trim();
+  return ACCESSORY_PRODUCT_RE.test(prodName);
 }
 
 /**
@@ -181,27 +179,51 @@ function getLineMatchedMos(soMos, lineProdId, lineMatchColors) {
 }
 
 /**
- * Factory-confirmed WIP stage classifier based on `sale.order.x_studio_category` + MO prefix/state:
+ * Check whether there is a confirmed Purchase Order (`state = 'purchase'`)
+ * with Vendor Reference (`partner_ref`) matching this SO for this line/color (excluding accessory lines).
+ */
+function hasConfirmedPurchaseForLine(soPoLines, lineProdId, lineMatchColors) {
+  for (const pl of soPoLines) {
+    if (pl._isAccessory) continue;
+    const plProdId = pl.product_id?.[0];
+    if (plProdId && plProdId === lineProdId) {
+      return true;
+    }
+    if (lineMatchColors.size > 0 && pl._colorTokens && pl._colorTokens.length > 0) {
+      if (pl._colorTokens.some((tok) => lineMatchColors.has(tok))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Factory-confirmed WIP stage classifier based on `sale.order.x_studio_category` + MO & Purchase Order rules:
+ * (Only SOs with x_studio_category IN ('POLOS', 'DIGITAL PRINT') enter the dashboard.)
  *
  * POLOS:
- * - Persiapan Bahan           : semua MO statusnya draft (atau belum ada MO)
- * - Dyeing / Celup            : ada MO kode PB* berstatus confirmed/progress untuk warna tsb
- * - Cutting, Sewing & Finishing: ada MO kode VD* (atau in-house non-PB/WHDGP) berstatus confirmed/progress untuk warna tsb
- * - Close / Selesai           : % Finish >= 100% ATAU sudah ada MO & tidak ada lagi MO berstatus draft/confirmed/progress
+ * - Persiapan Bahan             : semua MO statusnya draft (atau belum ada MO & belum ada PO purchase)
+ * - Dyeing / Printing           : ada MO kode PB* berstatus confirmed/progress utk warna tsb
+ *                                 ATAU ada purchase.order status 'purchase' (Vendor Ref = SO tsb) utk warna tsb
+ * - Cutting, Sewing & Finishing : ada MO kode VD* (atau in-house non-PB/WHDGP) berstatus confirmed/progress utk warna tsb
+ * - Close / Selesai             : % Finish >= 100% ATAU sudah ada MO & tidak ada lagi MO draft/confirmed/progress
  *
  * DIGITAL PRINT:
- * - Persiapan Bahan           : semua MO statusnya draft (atau belum ada MO)
- * - Dyeing / Celup            : ada MO kode PB* berstatus confirmed/progress untuk SO tsb
- * - Digital Printing          : ada MO kode WHDGP* berstatus confirmed/progress untuk warna tsb
- * - Cutting, Sewing & Finishing: ada MO kode VD* berstatus confirmed/progress untuk warna tsb
- * - Close / Selesai           : % Finish >= 100% ATAU sudah ada MO & tidak ada lagi MO berstatus draft/confirmed/progress
+ * - Persiapan Bahan             : semua MO statusnya draft (atau belum ada MO & belum ada PO purchase)
+ * - Dyeing / Printing           : ada MO kode PB* berstatus confirmed/progress utk SO tsb
+ *                                 ATAU ada purchase.order status 'purchase' (Vendor Ref = SO tsb) utk warna tsb
+ * - Digital Printing            : ada MO kode WHDGP* berstatus confirmed/progress utk warna tsb
+ * - Cutting, Sewing & Finishing : ada MO kode VD* (atau in-house non-PB/WHDGP) berstatus confirmed/progress utk warna tsb
+ * - Close / Selesai             : % Finish >= 100% ATAU sudah ada MO & tidak ada lagi MO draft/confirmed/progress
  */
 function classifyLineStage({
   category,
   qtyPo,
   qtySelesai,
   lineMos,
-  soPbMos
+  soPbMos,
+  hasPurchasedFabric
 }) {
   // 1. Close / Selesai by completed quantity (>= 100%)
   if (qtyPo > 0 && qtySelesai >= qtyPo) {
@@ -242,17 +264,16 @@ function classifyLineStage({
     }
   }
 
-  // 5. Dyeing / Celup:
-  //    - POLOS        -> PB* active for this color
-  //    - DIGITAL PRINT -> PB* active for this SO
+  // 5. Dyeing / Printing:
+  //    - POLOS         -> PB* active for this color OR confirmed Purchase Order (partner_ref = SO) for this color
+  //    - DIGITAL PRINT -> PB* active for this SO    OR confirmed Purchase Order (partner_ref = SO) for this color
   const pbPool = category === 'DIGITAL PRINT' ? soPbMos : lineMos.filter(isPbMo);
   const hasActivePb = pbPool.some((m) => ACTIVE_MO_STATES.has(m.state));
-  if (hasActivePb) {
+  if (hasActivePb || hasPurchasedFabric) {
     return 'dyeing';
   }
 
-  // Transition handoff preservation: if upstream stage is already 'done' while downstream MO is still 'draft',
-  // reflect the furthest completed stage rather than reverting to Persiapan Bahan.
+  // Transition handoff preservation when upstream stage is already done while downstream MO is still draft
   if (lineMos.some((m) => isVdMo(m) && m.state === 'done')) {
     return 'cutting_sewing_finishing';
   }
@@ -263,7 +284,7 @@ function classifyLineStage({
     return 'dyeing';
   }
 
-  // 6. Default: Persiapan Bahan (all MOs draft or no MOs created yet)
+  // 6. Default: Persiapan Bahan
   return 'persiapan_bahan';
 }
 
@@ -409,7 +430,7 @@ export function computeDashboardAggregates(items) {
 
 /**
  * Sync a single buyer's live External SO WIP snapshot from Odoo.
- * Super lightweight: ~3-4 batched RPC calls total per buyer (no workorder/wip_vendo fetch needed).
+ * Only includes SOs where x_studio_category IN ('POLOS', 'DIGITAL PRINT').
  */
 export async function syncBuyerSnapshotFromOdoo(buyerConfig) {
   const startedAt = Date.now();
@@ -420,12 +441,13 @@ export async function syncBuyerSnapshotFromOdoo(buyerConfig) {
     throw new Error('Konfigurasi buyer belum memiliki Partner ID Odoo.');
   }
 
-  // 1. Fetch confirmed External non-SAMPLE Sale Orders (including x_studio_category & x_studio_jenis_produk)
+  // 1. Fetch confirmed External non-SAMPLE Sale Orders WITH x_studio_category filled (POLOS / DIGITAL PRINT)
   const soDomain = [
     ['state', '=', 'sale'],
     ['x_studio_jenis_so', '=', 'Eksternal'],
     ['partner_id', 'in', partnerIds],
-    ['name', 'not ilike', 'SAMPLE']
+    ['name', 'not ilike', 'SAMPLE'],
+    ['x_studio_category', 'in', ALLOWED_SO_CATEGORIES]
   ];
 
   const orders = await odoo.executeKw('sale.order', 'search_read', [soDomain], {
@@ -439,7 +461,6 @@ export async function syncBuyerSnapshotFromOdoo(buyerConfig) {
       'x_studio_no_po_customer',
       'client_order_ref',
       'x_studio_category',
-      'x_studio_jenis_produk',
       'order_line'
     ],
     order: 'commitment_date asc, date_order desc',
@@ -453,6 +474,7 @@ export async function syncBuyerSnapshotFromOdoo(buyerConfig) {
     return {
       buyer_name: buyerConfig.buyer_name,
       start_date: startDateFilter,
+      today_wib: getTodayWibDateStr(),
       synced_at: new Date().toISOString(),
       sync_duration_ms: Date.now() - startedAt,
       ...emptyAgg,
@@ -515,11 +537,12 @@ export async function syncBuyerSnapshotFromOdoo(buyerConfig) {
     productIdsSet.add(line.product_id[0]);
   }
 
-  // 3. Parallel fetch: product.product metadata + chunked mrp.production records
+  // 3. Parallel fetch: product.product metadata + chunked mrp.production + confirmed purchase.order (partner_ref = SO)
   const productIds = Array.from(productIdsSet);
   const soIdsArr = Array.from(relevantSoIds);
+  const soNamesArr = soIdsArr.map((id) => orderById.get(id)?.name).filter(Boolean);
 
-  const [productRows, mos] = await Promise.all([
+  const [productRows, mos, confirmedPos] = await Promise.all([
     (async () => {
       const out = [];
       for (let i = 0; i < productIds.length; i += 300) {
@@ -575,8 +598,51 @@ export async function syncBuyerSnapshotFromOdoo(buyerConfig) {
           }
           return Array.from(moById.values());
         })()
+      : Promise.resolve([]),
+    soNamesArr.length > 0
+      ? odoo.executeKw(
+          'purchase.order',
+          'search_read',
+          [
+            [
+              ['state', '=', 'purchase'],
+              ['partner_ref', 'in', soNamesArr]
+            ]
+          ],
+          {
+            fields: ['id', 'name', 'partner_ref', 'order_line'],
+            limit: 500
+          }
+        )
       : Promise.resolve([])
   ]);
+
+  // 4. If any confirmed Purchase Orders match these SOs, batch-read their lines
+  const poLinesBySoName = new Map();
+  if (confirmedPos && confirmedPos.length > 0) {
+    const poRefById = new Map(
+      confirmedPos.map((p) => [p.id, String(p.partner_ref || '').trim()])
+    );
+    const allPoLineIds = confirmedPos.flatMap((p) => p.order_line || []);
+    const allPoLines = [];
+    for (let i = 0; i < allPoLineIds.length; i += 300) {
+      const chunk = allPoLineIds.slice(i, i + 300);
+      const rows = await odoo.executeKw('purchase.order.line', 'read', [chunk], {
+        fields: ['id', 'order_id', 'product_id', 'name']
+      });
+      allPoLines.push(...(rows || []));
+    }
+
+    for (const pl of allPoLines) {
+      const poId = pl.order_id?.[0];
+      const soName = poRefById.get(poId);
+      if (!soName) continue;
+      pl._isAccessory = isAccessoryPurchaseLine(pl);
+      pl._colorTokens = extractVariantColorTokens(pl.product_id?.[1] || pl.name);
+      if (!poLinesBySoName.has(soName)) poLinesBySoName.set(soName, []);
+      poLinesBySoName.get(soName).push(pl);
+    }
+  }
 
   const productById = new Map(productRows.map((p) => [p.id, p]));
 
@@ -598,7 +664,7 @@ export async function syncBuyerSnapshotFromOdoo(buyerConfig) {
     }
   }
 
-  // Pre-compute deduplicated SO MOs & effective category per SO
+  // Pre-compute deduplicated SO MOs, PO lines & category per SO
   const soContextMap = new Map();
   for (const soId of relevantSoIds) {
     const so = orderById.get(soId);
@@ -607,8 +673,9 @@ export async function syncBuyerSnapshotFromOdoo(buyerConfig) {
     for (const [mid, m] of mosBySoKey.get(`name:${so.name}`) || []) moMap.set(mid, m);
     const soMos = Array.from(moMap.values());
     const soPbMos = soMos.filter(isPbMo);
-    const category = resolveEffectiveCategory(so, soMos);
-    soContextMap.set(soId, { soMos, soPbMos, category });
+    const soPoLines = poLinesBySoName.get(String(so.name || '').trim()) || [];
+    const category = normalizeToken(so.x_studio_category) === 'DIGITAL PRINT' ? 'DIGITAL PRINT' : 'POLOS';
+    soContextMap.set(soId, { soMos, soPbMos, soPoLines, category });
   }
 
   const todayWib = getTodayWibDateStr();
@@ -620,13 +687,15 @@ export async function syncBuyerSnapshotFromOdoo(buyerConfig) {
     const productRec = productById.get(prodId);
     const { sku, artikel, warna, matchColors } = parseProductPresentation(line, productRec);
 
-    const { soMos, soPbMos, category } = soContextMap.get(so.id) || {
+    const { soMos, soPbMos, soPoLines, category } = soContextMap.get(so.id) || {
       soMos: [],
       soPbMos: [],
+      soPoLines: [],
       category: 'POLOS'
     };
 
     const lineMos = getLineMatchedMos(soMos, prodId, matchColors);
+    const hasPurchasedFabric = hasConfirmedPurchaseForLine(soPoLines, prodId, matchColors);
 
     const qtySisa = Math.max(0, Math.round((qtyPo - qtySelesai) * 100) / 100);
     const pctFinish = qtyPo > 0 ? Math.round((qtySelesai / qtyPo) * 1000) / 10 : 0;
@@ -637,7 +706,8 @@ export async function syncBuyerSnapshotFromOdoo(buyerConfig) {
       qtyPo,
       qtySelesai,
       lineMos,
-      soPbMos
+      soPbMos,
+      hasPurchasedFabric
     });
 
     const healthStatus = classifyHealthStatus({
@@ -695,7 +765,7 @@ export async function syncBuyerSnapshotFromOdoo(buyerConfig) {
 }
 
 /**
- * List distinct External Buyers from Odoo confirmed non-SAMPLE External SOs.
+ * List distinct External Buyers from Odoo confirmed non-SAMPLE External SOs (with POLOS/DIGITAL PRINT category).
  */
 export async function listOdooExternalBuyers() {
   const odoo = getOdooClient();
@@ -706,7 +776,8 @@ export async function listOdooExternalBuyers() {
       [
         ['state', '=', 'sale'],
         ['x_studio_jenis_so', '=', 'Eksternal'],
-        ['name', 'not ilike', 'SAMPLE']
+        ['name', 'not ilike', 'SAMPLE'],
+        ['x_studio_category', 'in', ALLOWED_SO_CATEGORIES]
       ]
     ],
     {
